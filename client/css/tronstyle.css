@@ -1,0 +1,44 @@
+/*
+ * Fonts
+ */
+@font-face {
+	font-family:Tr2n;
+	src:url(../font/Tr2n.ttf); /* from http://www.dafont.com/tr2n.font */
+}
+
+
+/*
+ * Colours
+ */
+#blue {
+	color:#00c2cc;
+}
+#orange {
+	color:#f2d91a;
+}
+
+
+/*
+ * Page Elements
+ */
+html,body {
+	margin:0;
+	padding:0;
+	border:0;
+	font-family:Tr2n,sans-serif;
+	color:#00c2cc;
+	background-color:#111b1a;
+	text-align:center;
+}
+h1 {
+	font-size:80px;
+	margin-bottom:.2em;
+	color:#ffffff;
+}
+canvas {
+	border:3px solid #00c2cc;
+	border-radius:15px;
+	width:560px;
+	height:560px;
+	margin:auto;
+}
