@@ -18,7 +18,15 @@ var webtron, // global phaser instance
 		orange: "#f2d91a",
 		purple: "#8a2ee5",
 		red: "#e5482e",
-		white: "#e5feff"
+		white: "#e5feff",
+	},
+	colorHexesNums = {
+		blue: 0x00c2cc,
+		green: 0x2ee5c7,
+		orange: 0xf2d91a,
+		purple: 0x8a2ee5,
+		red: 0xe5482e,
+		white: 0xe5feff,
 	};
 
 // Initialize
@@ -62,7 +70,7 @@ function create() {
 }
 
 function update() {
-	thisPlayer.move(webtron.time.physicsElapsed);
+	thisPlayer.update(webtron.time.physicsElapsed);
 }
 
 // Entities
@@ -117,7 +125,13 @@ function playerBike(initX, initY, color, speed, direction) {
 
 	this.trail = new lightTrail(this)
 
-	this.move = function(dt) {
+	this.justTurned = true
+	this.alive = true
+
+	this.update = function(dt) {
+		if (!this.alive) {
+			return
+		}
 		if (this.direction === "UP") {
 			this.sprite.y -= this.speed * dt;
 		} else if (this.direction === "RIGHT") {
@@ -131,54 +145,66 @@ function playerBike(initX, initY, color, speed, direction) {
 			this.sprite.y < 0 || this.sprite.y > webtron.height) {
 			this.die();
 		}
-		for (var i = 0; i < this.trail.cornerPts.length; i = i + 2) {
-			if (this.sprite.x.between(this.trail.cornerPts[i], this.trail.cornerPts[i + 2], true) && this.sprite.y.between(this.trail.cornerPts[i + 1], this.trail.cornerPts[i + 3], true)) {
-				this.die();
-			}
+		// needs to check all trails, not just this bike's
+		if (!this.justTurned && this.trail.detectPtCollision(this.frontCollidePt())) {
+			this.die();
 		}
-		this.trail.cornerPts.pop();
-		this.trail.cornerPts.pop();
-		this.trail.cornerPts.push(this.sprite.x);
-		this.trail.cornerPts.push(this.sprite.y);
-		this.trail.cornerPtsPoly.setTo(this.trail.cornerPts)
+		this.trail.update(this)
+		this.justTurned = false
 	}
 	this.turnUp = function() {
-		if (this.direction != "DOWN" && this.direction != "UP") {
-			this.trail.cornerPts.push(this.sprite.x);
-			this.trail.cornerPts.push(this.sprite.y);
+		if (this.alive && this.direction != "DOWN" && this.direction != "UP") {
+			this.trail.setTurn(this)
 			this.direction = "UP";
 			this.sprite.rotation = this.directionEnum[this.direction]
+			this.justTurned = true
 		}
 	}
 	this.turnLeft = function() {
-		if (this.direction != "RIGHT" && this.direction != "LEFT") {
-			this.trail.cornerPts.push(this.sprite.x);
-			this.trail.cornerPts.push(this.sprite.y);
+		if (this.alive && this.direction != "RIGHT" && this.direction != "LEFT") {
+			this.trail.setTurn(this)
 			this.direction = "LEFT";
 			this.sprite.rotation = this.directionEnum[this.direction]
+			this.justTurned = true
 		}
 	}
 	this.turnDown = function() {
-		if (this.direction != "UP" && this.direction != "DOWN") {
-			this.trail.cornerPts.push(this.sprite.x);
-			this.trail.cornerPts.push(this.sprite.y);
+		if (this.alive && this.direction != "UP" && this.direction != "DOWN") {
+			this.trail.setTurn(this)
 			this.direction = "DOWN";
 			this.sprite.rotation = this.directionEnum[this.direction]
+			this.justTurned = true
 		}
 	}
 	this.turnRight = function() {
-		if (this.direction != "LEFT" && this.direction != "RIGHT") {
-			this.trail.cornerPts.push(this.sprite.x);
-			this.trail.cornerPts.push(this.sprite.y);
+		if (this.alive && this.direction != "LEFT" && this.direction != "RIGHT") {
+			this.trail.setTurn(this)
 			this.direction = "RIGHT";
 			this.sprite.rotation = this.directionEnum[this.direction]
+			this.justTurned = true
 		}
 	}
+	this.frontCollidePt = function() {
+		switch (this.direction) {
+			case "UP":
+				return new Phaser.Point(this.sprite.x, this.sprite.y - 4)
+				break;
+			case "LEFT":
+				return new Phaser.Point(this.sprite.x - 4, this.sprite.y)
+				break;
+			case "RIGHT":
+				return new Phaser.Point(this.sprite.x + 4, this.sprite.y)
+				break;
+			case "DOWN":
+				return new Phaser.Point(this.sprite.x, this.sprite.y + 4)
+				break;
+		}
+		console.log("Player direction '" + this.direction + " is not valid")
+		return new Phaser.Point(this.sprite.x, this.sprite.y)
+	}
 	this.die = function() {
-		this.trail.cornerPts = [];
+		this.alive = false
 		this.speed = 0;
-		this.sprite.x = -20;
-		this.sprite.y = 20;
 	}
 }
 
@@ -201,26 +227,41 @@ function lightTrail(bike) {
 			console.log("Error: " + bike.color + " is not a trail color!")
 			break;
 	}
-	this.cornerPts = []
-	this.cornerPtsPoly = webtron.add.graphics(bike.sprite.x, bike.sprite.y)
-	this.cornerPtsPoly.closed = false
+	this.startX = bike.sprite.x
+	this.startY = bike.sprite.y
+	this.lines = [new Phaser.Line(
+		this.startX, this.startY, this.startX, this.startY
+	)]
+	this.graphics = webtron.add.graphics()
+	this.graphics.lineStyle(2, colorHexesNums[bike.color])
+	this.graphics.moveTo(this.startX, this.startY)
 
-	// Start trail at bike pos
-	this.cornerPts.push(bike.sprite.x);
-	this.cornerPts.push(bike.sprite.y);
-	this.cornerPts.push(bike.sprite.x);
-	this.cornerPts.push(bike.sprite.y);
+	this.update = function(bike) {
+		this.lines[this.lines.length - 1].
+		setTo(this.startX, this.startY, bike.sprite.x, bike.sprite.y)
 
-	this.draw = function() {
-		canvas.fillStyle = this.color;
-		canvas.beginPath();
-		canvas.lineWidth = 4;
-		canvas.strokeStyle = this.color;
-		canvas.moveTo(this.cornerPts[0], this.cornerPts[1]);
-		for (var i = 2; i < this.cornerPts.length; i = i + 2) {
-			canvas.lineTo(this.cornerPts[i], this.cornerPts[i + 1]);
+		this.graphics.lineStyle(2, colorHexesNums[bike.color])
+		this.graphics.lineTo(
+			this.lines[this.lines.length - 1].end.x,
+			this.lines[this.lines.length - 1].end.y)
+	}
+
+	this.setTurn = function(bike) {
+		this.update(bike)
+		this.startX = bike.sprite.x
+		this.startY = bike.sprite.y
+		this.lines.push(new Phaser.Line(
+			this.startX, this.startY, this.startX, this.startY
+		))
+	}
+
+	this.detectPtCollision = function(point) {
+		console.log(point.x, point.y)
+		for (var i = 0; i < this.lines.length; i++) {
+			if (this.lines[i].pointOnSegment(point.x, point.y)) {
+				return true
+			}
 		}
-		canvas.lineJoin = "miter";
-		canvas.stroke();
+		return false
 	}
 }
