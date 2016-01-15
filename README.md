@@ -1,6 +1,5 @@
 # Webtron
 ![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo-orange.png)
-2D hosted Tron lightcycle minigame
 
 # License
 Webtron - 2D hosted Tron lightcycle minigame
