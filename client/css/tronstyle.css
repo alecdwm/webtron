@@ -19,19 +19,38 @@
 
 
 /*
+ * Form
+ */
+.formbox {
+	display:block;
+	margin:auto;
+	width:300px;
+}
+.formbox label {
+	text-align:right;
+	float:left;
+}
+.formbox input, .formbox select {
+	text-align:right;
+	float:right;
+	width:140px;
+}
+
+/*
  * Page Elements
  */
 html,body {
 	margin:0;
 	padding:0;
 	border:0;
-	font-family:Tr2n,sans-serif;
+	font-family:"Lucida Console",Monaco,monospace;
 	color:#00c2cc;
 	background-color:#111b1a;
 	text-align:center;
 }
 h1 {
 	font-size:80px;
+	font-family:Tr2n,sans-serif;
 	margin-bottom:.2em;
 	color:#ffffff;
 }

@@ -8,13 +8,41 @@
 
 		<title>Webtron</title>
 
+		<link rel="stylesheet" type="text/css" href="css/formalize.css">
 		<link rel="stylesheet" type="text/css" href="css/tronstyle.css">
 		<link rel="shortcut icon" type="image/png" href="img/lightbike-blue.png"/>
 	</head>
 	<body>
 		<h1>{ <span id="orange">WEB</span><span id="blue">TRON</span> }</h1>
 
+		<form id="mainmenu" class="form-horizontal">
+			<h2>Prepare to enter The Grid</h2>
+
+			<div class="formbox">
+				<label for="name">Name</label>
+				<input id="name" name="name" type="text" placeholder="CLU">
+
+				<br />
+				<br />
+
+				<label for="colour">Colour</label>
+				<select id="colour" name="colour" class="form-control">
+					<option value="orange">Orange</option>
+					<option value="blue">Blue</option>
+					<option value="green">Green</option>
+					<option value="purple">Purple</option>
+					<option value="red">Red</option>
+					<option value="white">White</option>
+				</select>
+
+				<br />
+				<br />
+
+				<button id="submit" name="submit" class="btn btn-primary">Enter The Grid</button>
+			</div>
+		</form>
 		<div id="webtron"></div>
+		<div id="socketmessages"></div>
 
 		<!-- JS Libraries -->
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>

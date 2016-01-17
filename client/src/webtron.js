@@ -10,6 +10,8 @@ Number.prototype.between = function(a, b, inclusive) {
 
 // Variables
 var webtron, // global phaser instance
+	socket,
+	playerData = {},
 	background,
 	thisPlayer,
 	colorHexes = {
@@ -30,8 +32,24 @@ var webtron, // global phaser instance
 	};
 
 // Initialize
-$(window)
-	.load(function() {
+$("#submit")
+	.click(function(event) {
+		event.preventDefault()
+
+		var data = $("#mainmenu")
+			.serializeArray()
+
+		for (var i = 0; i < data.length; i++) {
+			playerData[data[i].name] = data[i].value
+		}
+
+		if (playerData.name === "" || playerData.name === undefined) {
+			playerData.name = "CLU"
+		}
+
+		$("#mainmenu")
+			.hide()
+
 		webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
 			preload: preload,
 			create: create,
@@ -41,6 +59,9 @@ $(window)
 
 // Callbacks
 function preload() {
+	// Prevent pausing on focus loss (bad for multiplayer)
+	webtron.stage.disableVisibilityChange = false
+
 	// Load Assets
 	webtron.load.image("background", "img/gridBG.png")
 	webtron.load.image("lightbike-blue", "img/lightbike-blue.png")
@@ -52,11 +73,31 @@ function preload() {
 }
 
 function create() {
+	// WebSocket
+	if (window.WebSocket) {
+		var sProtocol = location.protocol === "https:" ? "wss" : "ws";
+		var sPort = location.port ? ':' + location.port : ''
+
+		socket = new WebSocket(sProtocol + "://" + document.domain + sPort + "/ws")
+
+		socket.onopen = function() {
+			// socket.send("Meow!")
+		}
+
+		socket.onmessage = function(e) {
+			$("#socketmessages")
+				.append(e.data + "<br />")
+		}
+	} else {
+		$("#socketmessages")
+			.append("Your browser does not support websockets!" + "<br />")
+	}
+
 	// Background
 	background = webtron.add.image(0, 0, "background")
 
 	// Player
-	thisPlayer = new playerBike(250, 500)
+	thisPlayer = new playerBike(250, 500, playerData.colour)
 
 	// Player Input
 	var upKey = webtron.input.keyboard.addKey(Phaser.Keyboard.W)
@@ -256,7 +297,6 @@ function lightTrail(bike) {
 	}
 
 	this.detectPtCollision = function(point) {
-		console.log(point.x, point.y)
 		for (var i = 0; i < this.lines.length; i++) {
 			if (this.lines[i].pointOnSegment(point.x, point.y)) {
 				return true
