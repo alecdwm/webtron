@@ -1,32 +1,11 @@
-package main
+package server
 
 import (
-	"flag"
-	"net/http"
 	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 )
-
-func main() {
-	var listenPort string
-	flag.StringVar(&listenPort, "listenPort", "8080", "port to listen on")
-	flag.Parse()
-
-	http.HandleFunc("/ws", socketHandler)
-	http.Handle("/", http.FileServer(http.Dir("./client")))
-
-	err := http.ListenAndServe(":"+listenPort, nil)
-	if err != nil {
-		logrus.WithError(err).Error("serving http requests")
-	}
-}
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
 
 type Client struct {
 	Active     bool
@@ -42,6 +21,8 @@ type ClientHandler struct {
 
 var clientHandler ClientHandler
 
+// Adds a new websocket connection as a game client
+// Returns int>0 as ID of new client, or 0 if there is an error
 func (h *ClientHandler) Add(conn *websocket.Conn, err error) int {
 	if err != nil {
 		logrus.WithError(err).Error("establishing websocket connection")
@@ -56,6 +37,7 @@ func (h *ClientHandler) Add(conn *websocket.Conn, err error) int {
 	h.Clients[h.LatestID] = &Client{Active: true, ID: h.LatestID, Connection: conn}
 	h.NumClients++
 
+	logrus.WithField("ID", h.LatestID).Info("sending ID to newly connected client")
 	h.Send(h.LatestID, "ID:"+strconv.Itoa(h.LatestID))
 
 	return h.LatestID
@@ -117,18 +99,5 @@ func (h *ClientHandler) Get(clientID int) (string, bool) {
 		logrus.WithField("clientID", clientID).
 			Error("attempted to receive message from a client whose ID doesn't exist")
 		return "", false
-	}
-}
-
-func socketHandler(writer http.ResponseWriter, request *http.Request) {
-	id := clientHandler.Add(upgrader.Upgrade(writer, request, nil))
-
-	for clientHandler.Active(id) {
-		if message, ok := clientHandler.Get(id); ok {
-			logrus.WithFields(logrus.Fields{
-				"clientID": id,
-				"message":  message,
-			}).Info("message received")
-		}
 	}
 }
