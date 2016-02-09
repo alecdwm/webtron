@@ -10,52 +10,84 @@ Number.prototype.between = function(a, b, inclusive) {
 
 // Variables
 var webtron, // global phaser instance
-	socket,
-	playerData = {},
-	background,
-	thisPlayer,
+	socket, // global socket connection
+	players = {}, // global array of connected players
+	playerData = {}, // data from main menu form
 	colorHexes = {
-		blue: "#00c2cc",
-		green: "#2ee5c7",
-		orange: "#f2d91a",
-		purple: "#8a2ee5",
-		red: "#e5482e",
-		white: "#e5feff",
+		'blue': "#00c2cc",
+		'green': "#2ee5c7",
+		'orange': "#f2d91a",
+		'purple': "#8a2ee5",
+		'red': "#e5482e",
+		'white': "#e5feff",
 	},
 	colorHexesNums = {
-		blue: 0x00c2cc,
-		green: 0x2ee5c7,
-		orange: 0xf2d91a,
-		purple: 0x8a2ee5,
-		red: 0xe5482e,
-		white: 0xe5feff,
+		'blue': 0x00c2cc,
+		'green': 0x2ee5c7,
+		'orange': 0xf2d91a,
+		'purple': 0x8a2ee5,
+		'red': 0xe5482e,
+		'white': 0xe5feff,
 	};
 
 // Initialize
-$("#submit")
-	.click(function(event) {
-		event.preventDefault()
+$("#submit").click(function(event) {
+	event.preventDefault()
 
-		var data = $("#mainmenu")
-			.serializeArray()
+	var data = $("#mainmenu").serializeArray()
 
-		for (var i = 0; i < data.length; i++) {
-			playerData[data[i].name] = data[i].value
-		}
+	for (var i = 0; i < data.length; i++) {
+		playerData[data[i].name] = data[i].value
+	}
 
-		if (playerData.name === "" || playerData.name === undefined) {
-			playerData.name = "CLU"
-		}
+	if (playerData.name === "" || playerData.name === undefined) {
+		playerData.name = "CLU"
+	}
 
-		$("#mainmenu")
-			.hide()
+	$("#mainmenu").hide()
 
-		webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
-			preload: preload,
-			create: create,
-			update: update,
-		}, true);
+	// Socket
+	$("#socketmessages").append("Connecting<br />")
+	socket = glue(null, {
+		baseURL: "/",
+		forceSocketType: "WebSocket",
 	});
+
+	socket.onMessage(function(data) {
+		$("#socketmessages").append(data + "<br />")
+
+		var instructions = data.split(";")
+		for (var i = 0; i < instructions.length; i++) {
+			processInstruction(instructions[i])
+		}
+	})
+});
+
+// Network
+function processInstruction(instruction) {
+	var components = instruction.split(":")
+	if (components.length != 2) {
+		console.log("Number of components: " + components.length + " != 2!")
+	}
+
+	switch (components[0]) {
+		case "Connected":
+			webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
+				preload: preload,
+				create: create,
+				update: update,
+			}, true);
+			break;
+
+		case "ID":
+			console.log("Your ID is " + components[1])
+			break;
+
+		case "NAME":
+			console.log("A client's NAME is " + components[1])
+			break;
+	}
+}
 
 // Callbacks
 function preload() {
@@ -73,41 +105,35 @@ function preload() {
 }
 
 function create() {
-	// WebSocket
-	if (window.WebSocket) {
-		var sProtocol = location.protocol === "https:" ? "wss" : "ws";
-		var sPort = location.port ? ':' + location.port : ''
-
-		socket = new WebSocket(sProtocol + "://" + document.domain + sPort + "/ws")
-
-		socket.onopen = function() {
-			// socket.send("Meow!")
-		}
-
-		socket.onmessage = function(e) {
-			$("#socketmessages")
-				.append(e.data + "<br />")
-		}
-	} else {
-		$("#socketmessages")
-			.append("Your browser does not support websockets!" + "<br />")
-	}
-
 	// Background
-	background = webtron.add.image(0, 0, "background")
+	webtron.add.image(0, 0, "background")
 
 	// Player
 	thisPlayer = new playerBike(250, 500, playerData.colour)
 
 	// Player Input
-	var upKey = webtron.input.keyboard.addKey(Phaser.Keyboard.W)
-	var leftKey = webtron.input.keyboard.addKey(Phaser.Keyboard.A)
-	var downKey = webtron.input.keyboard.addKey(Phaser.Keyboard.S)
-	var rightKey = webtron.input.keyboard.addKey(Phaser.Keyboard.D)
-	upKey.onDown.add(thisPlayer.turnUp, thisPlayer)
-	leftKey.onDown.add(thisPlayer.turnLeft, thisPlayer)
-	downKey.onDown.add(thisPlayer.turnDown, thisPlayer)
-	rightKey.onDown.add(thisPlayer.turnRight, thisPlayer)
+	var keybinds = webtron.input.keyboard.addKeys({
+		'up': Phaser.Keyboard.W,
+		'left': Phaser.Keyboard.A,
+		'down': Phaser.Keyboard.S,
+		'right': Phaser.Keyboard.D,
+	})
+	var altKeybinds = webtron.input.keyboard.addKeys({
+		'up': Phaser.Keyboard.UP,
+		'left': Phaser.Keyboard.LEFT,
+		'down': Phaser.Keyboard.DOWN,
+		'right': Phaser.Keyboard.RIGHT,
+	})
+
+	keybinds.up.onDown.add(thisPlayer.turnUp, thisPlayer)
+	keybinds.left.onDown.add(thisPlayer.turnLeft, thisPlayer)
+	keybinds.down.onDown.add(thisPlayer.turnDown, thisPlayer)
+	keybinds.right.onDown.add(thisPlayer.turnRight, thisPlayer)
+
+	altKeybinds.up.onDown.add(thisPlayer.turnUp, thisPlayer)
+	altKeybinds.left.onDown.add(thisPlayer.turnLeft, thisPlayer)
+	altKeybinds.down.onDown.add(thisPlayer.turnDown, thisPlayer)
+	altKeybinds.right.onDown.add(thisPlayer.turnRight, thisPlayer)
 }
 
 function update() {

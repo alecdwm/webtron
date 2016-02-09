@@ -1,10 +1,5 @@
 package server
 
-import (
-	"github.com/gorilla/websocket"
-	"go.owls.io/webtron/server/msgdefs"
-)
-
 // clientHandler.NewClient(conn)
 
 // id := clientHandler.Add(upgrader.Upgrade(writer, request, nil))
@@ -27,7 +22,34 @@ import (
 func (gs *GameServer) HandlePlayer(id int) {
 	switch gs.ConnectedPlayers[id].State {
 	case Connecting:
-		gs.ConnectedPlayers[id].Conn.WriteMessage(websocket.TextMessage, msgdefs.ConnMsg)
+		// messageType, message, err := gs.ConnectedPlayers[id].Conn.ReadMessage()
+		//
+		// // if err != nil {
+		//
+		// if err != nil {
+		// 	if !checkDisconnect(clientID, err) {
+		// 		logrus.WithFields(logrus.Fields{
+		// 			"clientID": clientID,
+		// 			"error":    err,
+		// 		}).Error("attempted to receive message from a client whose ID does exist")
+		// 		logrus.WithField("clientID", clientID).Info("setting client to inactive")
+		// 		h.Clients[clientID].Active = false
+		// 		h.Clients[clientID].Connection.Close()
+		// 		return "", false
+		// 	}
+		// }
+		//
+		// if messageType != websocket.TextMessage {
+		// 	logrus.WithFields(logrus.Fields{
+		// 		"clientID":    clientID,
+		// 		"messageType": messageType,
+		// 		"message":     message,
+		// 	}).Info("received non-text message from client")
+		// 	return "", false
+		// }
+		//
+		// return string(message), true
+		// gs.ConnectedPlayers[id].Conn.WriteMessage(websocket.TextMessage, msgdefs.ConnMsg)
 
 	case InGame:
 

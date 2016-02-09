@@ -9,42 +9,53 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/desertbit/glue"
+	"github.com/kardianos/osext"
 	"go.owls.io/webtron/server"
 )
 
 func main() {
-	// Client Vars
+	// Command line variables
 	var listenPort string
-	flag.StringVar(&listenPort, "listenPort", "8080", "port to serve client on")
-
-	// Server Vars
 	var maxPlayers int
-	flag.IntVar(&maxPlayers, "maxPlayers", 4, "max number of players on server simultaneously")
 
+	flag.StringVar(&listenPort, "listenPort", "8080", "port to serve client on")
+	flag.IntVar(&maxPlayers, "maxPlayers", 4, "max number of players on server simultaneously")
 	flag.Parse()
 
-	// Configure GameServer
-	var webtronServer = server.GameServer{
-		MaxPlayers: maxPlayers,
+	// Find executable location
+	osextDir, err := osext.ExecutableFolder()
+	if err != nil {
+		logrus.WithError(err).Error("Finding executable location")
 	}
 
-	// Start GameServer
-	go webtronServer.Run()
-	defer webtronServer.End()
-
-	// Configure WebSocket bridge
-	http.HandleFunc("/ws", func(writer http.ResponseWriter, request *http.Request) {
-		server.SocketHandler(writer, request, webtronServer)
-	})
-
 	// Configure GameClient distributor
-	http.Handle("/", http.FileServer(http.Dir("client")))
+	http.Handle("/", http.FileServer(http.Dir(osextDir+"/client")))
 
-	// Listen for gameclient/websocket requests on http
+	// Configure Glue (websocket wrapper) bridge
+	glueServer := glue.NewServer(glue.Options{
+		HTTPSocketType:    glue.HTTPSocketTypeNone,
+		HTTPListenAddress: ":" + listenPort,
+		HTTPHandleURL:     "/",
+	})
+	defer glueServer.Release()
+	glueServer.OnNewSocket(server.OnNewSocket)
+	http.HandleFunc("/ws", glueServer.ServeHTTP)
+
+	// Configure GameServer
+	// var webtronServer = server.GameServer{
+	// 	MaxPlayers: maxPlayers,
+	// }
+
+	// Start GameServer
+	// go webtronServer.Run()
+	// defer webtronServer.End()
+
+	// Listen for gameclient/websocket requests on http(s)
 	go func() {
 		err := http.ListenAndServe(":"+listenPort, nil)
 		if err != nil {
-			logrus.WithError(err).Error("serving http requests")
+			logrus.WithError(err).Error("serving http(s) requests")
 		}
 	}()
 
