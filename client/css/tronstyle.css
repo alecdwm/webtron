@@ -27,13 +27,44 @@
 	width:300px;
 }
 .formbox label {
-	text-align:right;
+	color:#f1d91a;
 	float:left;
 }
 .formbox input, .formbox select {
-	text-align:right;
 	float:right;
 	width:140px;
+}
+
+/*
+ * Form Elements
+ */
+.formbox input[type="text"] {
+	border:1px solid #00c2cc;
+	border-radius:4px;
+	background:#111b1a;
+	color:#f2d91a;
+}
+.formbox input[type="text"]:hover {
+	background:#111;
+}
+.formbox select {
+	border:1px solid #00c2cc;
+	border-radius:4px;
+	background:#111b1a;
+	color:#f2d91a;
+}
+.formbox select:hover {
+	background:#111;
+}
+.formbox button {
+	border:1px solid #00c2cc;
+	border-radius:4px;
+	background:#111b1a;
+	color:#f2d91a;
+	text-shadow:none;
+}
+.formbox button:hover {
+	background:#111;
 }
 
 /*
