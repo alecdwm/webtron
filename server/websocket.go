@@ -12,18 +12,14 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-func SocketHandler(writer http.ResponseWriter, request *http.Request) {
-	id := clientHandler.Add(upgrader.Upgrade(writer, request, nil))
-	if id == 0 {
+// SocketHandler handles websocket connections to the game server
+func SocketHandler(writer http.ResponseWriter, request *http.Request, gameServer GameServer) {
+	conn, err := upgrader.Upgrade(writer, request, nil)
+	if err != nil {
+		logrus.WithError(err).Error("error upgrading connection to websocket")
+		conn.Close()
 		return
 	}
 
-	for clientHandler.Active(id) {
-		if message, ok := clientHandler.Get(id); ok {
-			logrus.WithFields(logrus.Fields{
-				"clientID": id,
-				"message":  message,
-			}).Info("message received")
-		}
-	}
+	gameServer.NewPlayer(conn)
 }
