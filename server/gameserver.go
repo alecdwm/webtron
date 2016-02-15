@@ -1,6 +1,8 @@
 package server
 
 import (
+	"time"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/desertbit/glue"
 	"go.owls.io/webtron/server/msgdefs"
@@ -75,7 +77,9 @@ func (gs *GameServer) Run(debug bool) {
 
 	// Run gameloop
 	for gs.Running {
-		GameLoop(gs)
+		// Do stuff
+		// GameLoop(gs)
+		time.Sleep(time.Millisecond)
 	}
 }
 
