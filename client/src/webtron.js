@@ -1,4 +1,5 @@
 /* jshint asi:true */
+"use strict";
 
 // Variables
 var webtron, // global phaser instance
@@ -23,6 +24,8 @@ var webtron, // global phaser instance
 	};
 
 // Initialize
+// TODO: Create phaserjs states for menu, ingame, etc
+// ALSO: Create socket in more elegant spot
 $("#submit").click(function(event) {
 	event.preventDefault()
 
@@ -43,27 +46,28 @@ $("#submit").click(function(event) {
 	socket = glue(null, {
 		baseURL: "/",
 		forceSocketType: "WebSocket",
+		reconnect: false,
 	});
 
 	socket.onMessage(function(data) {
 		$("#socketmessages").append(data + "<br />")
+		console.log("Message Received: " + data)
 
-		var instructions = data.split(";")
-		for (var i = 0; i < instructions.length; i++) {
-			processInstruction(instructions[i])
-		}
+		processNetwork(data)
 	})
 });
 
 // Network
-function processInstruction(instruction) {
-	var components = instruction.split(":")
-	if (components.length != 2) {
-		console.log("Number of components: " + components.length + " != 2!")
-	}
+function processNetwork(data) {
+	var instructions = data.split(";")
+	for (var i = 0; i < instructions.length; i++) {
+		var components = instructions[i].split(":")
+		// if (components.length != 2) {
+		// 	console.log("Number of components: " + components.length + " != 2!")
+		// }
 
-	switch (components[0]) {
-		case "Connected":
+		switch (components[0]) {
+			case "CONNECTED":
 			webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
 				preload: preload,
 				create: create,
@@ -71,13 +75,25 @@ function processInstruction(instruction) {
 			}, true);
 			break;
 
-		case "ID":
+			case "GAME_FULL":
+			console.log("Game full")
+			socket.close()
+			if (webtron) {
+				webtron.destroy()
+			}
+			$("#mainmenu").show()
+
+			case "ID":
 			console.log("Your ID is " + components[1])
 			break;
 
-		case "NAME":
+			case "NAME":
 			console.log("A client's NAME is " + components[1])
 			break;
+
+			default:
+			console.log(components[0])
+		}
 	}
 }
 
@@ -101,35 +117,35 @@ function create() {
 	webtron.add.image(0, 0, "background")
 
 	// Player
-	thisPlayer = new playerBike(250, 500, playerData.colour)
+	// thisPlayer = new playerBike(250, 500, playerData.colour)
 
 	// Player Input
-	var keybinds = webtron.input.keyboard.addKeys({
-		'up': Phaser.Keyboard.W,
-		'left': Phaser.Keyboard.A,
-		'down': Phaser.Keyboard.S,
-		'right': Phaser.Keyboard.D,
-	})
-	var altKeybinds = webtron.input.keyboard.addKeys({
-		'up': Phaser.Keyboard.UP,
-		'left': Phaser.Keyboard.LEFT,
-		'down': Phaser.Keyboard.DOWN,
-		'right': Phaser.Keyboard.RIGHT,
-	})
-
-	keybinds.up.onDown.add(thisPlayer.turnUp, thisPlayer)
-	keybinds.left.onDown.add(thisPlayer.turnLeft, thisPlayer)
-	keybinds.down.onDown.add(thisPlayer.turnDown, thisPlayer)
-	keybinds.right.onDown.add(thisPlayer.turnRight, thisPlayer)
-
-	altKeybinds.up.onDown.add(thisPlayer.turnUp, thisPlayer)
-	altKeybinds.left.onDown.add(thisPlayer.turnLeft, thisPlayer)
-	altKeybinds.down.onDown.add(thisPlayer.turnDown, thisPlayer)
-	altKeybinds.right.onDown.add(thisPlayer.turnRight, thisPlayer)
+	// var keybinds = webtron.input.keyboard.addKeys({
+	// 	'up': Phaser.Keyboard.W,
+	// 	'left': Phaser.Keyboard.A,
+	// 	'down': Phaser.Keyboard.S,
+	// 	'right': Phaser.Keyboard.D,
+	// })
+	// var altKeybinds = webtron.input.keyboard.addKeys({
+	// 	'up': Phaser.Keyboard.UP,
+	// 	'left': Phaser.Keyboard.LEFT,
+	// 	'down': Phaser.Keyboard.DOWN,
+	// 	'right': Phaser.Keyboard.RIGHT,
+	// })
+	//
+	// keybinds.up.onDown.add(thisPlayer.turnUp, thisPlayer)
+	// keybinds.left.onDown.add(thisPlayer.turnLeft, thisPlayer)
+	// keybinds.down.onDown.add(thisPlayer.turnDown, thisPlayer)
+	// keybinds.right.onDown.add(thisPlayer.turnRight, thisPlayer)
+	//
+	// altKeybinds.up.onDown.add(thisPlayer.turnUp, thisPlayer)
+	// altKeybinds.left.onDown.add(thisPlayer.turnLeft, thisPlayer)
+	// altKeybinds.down.onDown.add(thisPlayer.turnDown, thisPlayer)
+	// altKeybinds.right.onDown.add(thisPlayer.turnRight, thisPlayer)
 }
 
 function update() {
-	thisPlayer.update(webtron.time.physicsElapsed);
+	// thisPlayer.update(webtron.time.physicsElapsed);
 }
 
 // Entities

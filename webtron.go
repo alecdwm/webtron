@@ -16,9 +16,11 @@ import (
 
 func main() {
 	// Command line variables
+	var debug bool
 	var listenPort string
 	var maxPlayers int
 
+	flag.BoolVar(&debug, "debug", false, "run server in debug mode")
 	flag.StringVar(&listenPort, "listenPort", "8080", "port to serve client on")
 	flag.IntVar(&maxPlayers, "maxPlayers", 4, "max number of players on server simultaneously")
 	flag.Parse()
@@ -32,6 +34,15 @@ func main() {
 	// Configure GameClient distributor
 	http.Handle("/", http.FileServer(http.Dir(osextDir+"/client")))
 
+	// Configure GameServer
+	var webtronServer = server.GameServer{
+		MaxPlayers: maxPlayers,
+	}
+
+	// Start GameServer
+	go webtronServer.Run(debug)
+	defer webtronServer.End()
+
 	// Configure Glue (websocket wrapper) bridge
 	glueServer := glue.NewServer(glue.Options{
 		HTTPSocketType:    glue.HTTPSocketTypeNone,
@@ -39,17 +50,8 @@ func main() {
 		HTTPHandleURL:     "/",
 	})
 	defer glueServer.Release()
-	glueServer.OnNewSocket(server.OnNewSocket)
+	glueServer.OnNewSocket(webtronServer.ConnectPlayer)
 	http.HandleFunc("/ws", glueServer.ServeHTTP)
-
-	// Configure GameServer
-	// var webtronServer = server.GameServer{
-	// 	MaxPlayers: maxPlayers,
-	// }
-
-	// Start GameServer
-	// go webtronServer.Run()
-	// defer webtronServer.End()
 
 	// Listen for gameclient/websocket requests on http(s)
 	go func() {
