@@ -1,24 +1,14 @@
 {
-	"ecmaVersion": 6,
-	"libs": [
-		"browser",
-		"jquery"
-	],
-	"loadEagerly": [
-		"client/lib/*.js",
-		"client/src/*.js"
-	],
-	"plugins": {
-		"complete_strings": {},
-		"node": {},
-		"lint": {},
-		"angular": {},
-		"requirejs": {},
-		"modules": {},
-		"es_modules": {},
-		"doc_comment": {
-			"fullDocs": true
-		},
-		"phaser": {}
-	}
+  "ecmaVersion": 5,
+  "libs": [
+    "browser",
+    "jquery"
+  ],
+  "loadEagerly": [
+      "client/lib/**/*.js",
+      "client/src/**/*.js"
+  ],
+  "plugins": {
+    "phaser": {}
+  }
 }
