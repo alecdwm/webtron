@@ -5,6 +5,7 @@
 var	webtron,         // global reference to phaser instance
 	socket,          // global reference to socket connection
 	players = {},    // global array of connected players
+	slot = -1,       // player slot on server
 	playerData = {}, // data from main menu form
 	colorToHex = {   // convert color name to hex value
 		'blue': 0x00c2cc,
@@ -20,6 +21,10 @@ var	webtron,         // global reference to phaser instance
 		'RIGHT': Math.PI / 2,
 		'LEFT':  3 * Math.PI / 2,
 	};
+
+// Player Input
+var keybinds = {}
+var altKeybinds = {}
 
 // Initialize
 // TODO: Create phaserjs states for menu, ingame, etc
@@ -81,13 +86,57 @@ function processNetwork(data) {
 			}
 			$("#mainmenu").show()
 
-			case "ID":
-			console.log("Your ID is " + components[1])
+			case "SLOT":
+			console.log("Your slot is " + components[1])
+			slot = parseInt(components[1])
+
+			// players[slot] = new playerBike(100 * slot, 500, playerData.color)
+			//
+			// keybinds.up.onDown.add(players[slot].turnUp, players[slot])
+			// keybinds.left.onDown.add(players[slot].turnLeft, players[slot])
+			// keybinds.down.onDown.add(players[slot].turnDown, players[slot])
+			// keybinds.right.onDown.add(players[slot].turnRight, players[slot])
+			//
+			// altKeybinds.up.onDown.add(players[slot].turnUp, players[slot])
+			// altKeybinds.left.onDown.add(players[slot].turnLeft, players[slot])
+			// altKeybinds.down.onDown.add(players[slot].turnDown, players[slot])
+			// altKeybinds.right.onDown.add(players[slot].turnRight, players[slot])
+			//
+			// socket.send("NEWBIKE:" + slot + "-" + 100 * slot + "-500-" + playerData.colour + "-120-UP")
 			break;
 
 			case "NAME":
 			console.log("A client's NAME is " + components[1])
 			break;
+
+			case "NEWBIKE":
+			var params = components[1].split("-")
+			players[parseInt(params[0])] = new playerBike(
+				parseInt(params[1]),
+				parseInt(params[2]),
+				params[3],
+				params[4],
+				params[5])
+
+			case "TURNBIKE":
+			var params = components[1].split("-")
+			switch (params[1]) {
+				case "UP":
+				players[parseInt(params[0])].turnUp()
+				break
+
+				case "LEFT":
+				players[parseInt(params[0])].turnLeft()
+				break
+
+				case "DOWN":
+				players[parseInt(params[0])].turnDown()
+				break
+
+				case "RIGHT":
+				players[parseInt(params[0])].turnRight()
+				break
+			}
 
 			default:
 			console.log(components[0])
@@ -114,23 +163,40 @@ function create() {
 	// Background
 	webtron.add.image(0, 0, "background")
 
-	// // Player
+	// Player
 	// players[0] = new playerBike(250, 500, playerData.colour)
-	//
-	// // Player Input
-	// var keybinds = webtron.input.keyboard.addKeys({
-	// 	'up': Phaser.Keyboard.W,
-	// 	'left': Phaser.Keyboard.A,
-	// 	'down': Phaser.Keyboard.S,
-	// 	'right': Phaser.Keyboard.D,
-	// })
-	// var altKeybinds = webtron.input.keyboard.addKeys({
-	// 	'up': Phaser.Keyboard.UP,
-	// 	'left': Phaser.Keyboard.LEFT,
-	// 	'down': Phaser.Keyboard.DOWN,
-	// 	'right': Phaser.Keyboard.RIGHT,
-	// })
-	//
+
+	keybinds = webtron.input.keyboard.addKeys({
+		'up': Phaser.Keyboard.W,
+		'left': Phaser.Keyboard.A,
+		'down': Phaser.Keyboard.S,
+		'right': Phaser.Keyboard.D,
+	})
+	altKeybinds = webtron.input.keyboard.addKeys({
+		'up': Phaser.Keyboard.UP,
+		'left': Phaser.Keyboard.LEFT,
+		'down': Phaser.Keyboard.DOWN,
+		'right': Phaser.Keyboard.RIGHT,
+	})
+
+	if (slot == -1) {
+		console.log("SLOT IS NOT SET YET!!")
+	}
+	players[slot] = new playerBike(100 * slot, 500, playerData.colour)
+
+	keybinds.up.onDown.add(players[slot].turnUp, players[slot])
+	keybinds.left.onDown.add(players[slot].turnLeft, players[slot])
+	keybinds.down.onDown.add(players[slot].turnDown, players[slot])
+	keybinds.right.onDown.add(players[slot].turnRight, players[slot])
+
+	altKeybinds.up.onDown.add(players[slot].turnUp, players[slot])
+	altKeybinds.left.onDown.add(players[slot].turnLeft, players[slot])
+	altKeybinds.down.onDown.add(players[slot].turnDown, players[slot])
+	altKeybinds.right.onDown.add(players[slot].turnRight, players[slot])
+
+	socket.send("NEWBIKE:" + slot + "-" + 100 * slot + "-500-" + playerData.colour + "-120-UP")
+
+
 	// keybinds.up.onDown.add(players[0].turnUp, players[0])
 	// keybinds.left.onDown.add(players[0].turnLeft, players[0])
 	// keybinds.down.onDown.add(players[0].turnDown, players[0])
@@ -143,7 +209,11 @@ function create() {
 }
 
 function update() {
-	// players[0].update(webtron.time.physicsElapsed);
+	for (var i=0; i<4; i++) {
+		if (players[i] != null && players[i] != undefined && players[i].alive) {
+			players[i].update(webtron.time.physicsElapsed);
+		}
+	}
 }
 
 // Entities
@@ -225,6 +295,7 @@ playerBike.prototype.update = function(dt) {
 }
 playerBike.prototype.turnUp = function() {
 	if (this.alive && this.direction != "DOWN" && this.direction != "UP") {
+		socket.send("TURNBIKE:" + slot + "-UP")
 		this.trail.setTurn(this)
 		this.direction = "UP";
 		this.sprite.rotation = dirToRot[this.direction]
@@ -233,6 +304,7 @@ playerBike.prototype.turnUp = function() {
 }
 playerBike.prototype.turnLeft = function() {
 	if (this.alive && this.direction != "RIGHT" && this.direction != "LEFT") {
+		socket.send("TURNBIKE:" + slot + "-LEFT")
 		this.trail.setTurn(this)
 		this.direction = "LEFT";
 		this.sprite.rotation = dirToRot[this.direction]
@@ -241,6 +313,7 @@ playerBike.prototype.turnLeft = function() {
 }
 playerBike.prototype.turnDown = function() {
 	if (this.alive && this.direction != "UP" && this.direction != "DOWN") {
+		socket.send("TURNBIKE:" + slot + "-DOWN")
 		this.trail.setTurn(this)
 		this.direction = "DOWN";
 		this.sprite.rotation = dirToRot[this.direction]
@@ -249,6 +322,7 @@ playerBike.prototype.turnDown = function() {
 }
 playerBike.prototype.turnRight = function() {
 	if (this.alive && this.direction != "LEFT" && this.direction != "RIGHT") {
+		socket.send("TURNBIKE:" + slot + "-RIGHT")
 		this.trail.setTurn(this)
 		this.direction = "RIGHT";
 		this.sprite.rotation = dirToRot[this.direction]

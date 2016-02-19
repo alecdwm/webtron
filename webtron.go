@@ -17,10 +17,12 @@ import (
 func main() {
 	// Command line variables
 	var debug bool
+	var daemon bool
 	var listenPort string
 	var maxPlayers int
 
 	flag.BoolVar(&debug, "debug", false, "run server in debug mode")
+	flag.BoolVar(&daemon, "daemon", false, "run server in daemon mode (no console prompt)")
 	flag.StringVar(&listenPort, "listenPort", "8080", "port to serve client on")
 	flag.IntVar(&maxPlayers, "maxPlayers", 4, "max number of players on server simultaneously")
 	flag.Parse()
@@ -34,14 +36,9 @@ func main() {
 	// Configure GameClient distributor
 	http.Handle("/", http.FileServer(http.Dir(osextDir+"/client")))
 
-	// Configure GameServer
-	var webtronServer = server.GameServer{
-		MaxPlayers: maxPlayers,
-	}
-
-	// Start GameServer
-	go webtronServer.Run(debug)
-	defer webtronServer.End()
+	// Configure webtron GameServer
+	webtronServer := server.New(debug, maxPlayers)
+	defer webtronServer.Shutdown()
 
 	// Configure Glue (websocket wrapper) bridge
 	glueServer := glue.NewServer(glue.Options{
@@ -53,34 +50,44 @@ func main() {
 	glueServer.OnNewSocket(webtronServer.ConnectPlayer)
 	http.HandleFunc("/ws", glueServer.ServeHTTP)
 
-	// Listen for gameclient/websocket requests on http(s)
-	go func() {
-		err := http.ListenAndServe(":"+listenPort, nil)
-		if err != nil {
-			logrus.WithError(err).Error("serving http(s) requests")
+	if daemon {
+		listenAndServe(listenPort)
+
+	} else {
+		// Listen for gameclient/websocket requests on http(s)
+		go listenAndServe(listenPort)
+
+		// Command line input
+		if daemon {
+			reader := bufio.NewReader(os.Stdin)
+		input_loop:
+			for {
+				fmt.Print("console@webtron:~$ ")
+				input, _ := reader.ReadString('\n')
+				input = strings.Trim(input, "\n")
+				switch input {
+				case "":
+
+				case "help":
+					fmt.Println(
+						"Available commands:\n" +
+							"help, exit")
+
+				case "exit", "quit":
+					break input_loop
+
+				default:
+					fmt.Println("Unknown command: " + input)
+				}
+			}
 		}
-	}()
+	}
+}
 
-	// Command line input
-	reader := bufio.NewReader(os.Stdin)
-input_loop:
-	for {
-		fmt.Print("console@webtron:~$ ")
-		input, _ := reader.ReadString('\n')
-		input = strings.Trim(input, "\n")
-		switch input {
-		case "":
-
-		case "help":
-			fmt.Println(
-				"Available commands:\n" +
-					"help, exit")
-
-		case "exit", "quit":
-			break input_loop
-
-		default:
-			fmt.Println("Unknown command: " + input)
-		}
+// Listen for gameclient/websocket requests on http(s)
+func listenAndServe(listenPort string) {
+	err := http.ListenAndServe(":"+listenPort, nil)
+	if err != nil {
+		logrus.WithError(err).Error("serving http(s) requests")
 	}
 }

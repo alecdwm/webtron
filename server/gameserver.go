@@ -1,7 +1,7 @@
 package server
 
 import (
-	"time"
+	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/desertbit/glue"
@@ -16,8 +16,7 @@ type PlayerState int
 // Player States
 const (
 	Connecting PlayerState = iota
-	InGame
-	Dead
+	Connected
 	Disconnected
 )
 
@@ -29,7 +28,7 @@ type Player struct {
 }
 
 // ReadLoop receives data from the player client
-func (p *Player) ReadLoop() {
+func (p *Player) ReadLoop(gs *GameServer) {
 	for {
 		// Wait for available data.
 		// Optional: pass a timeout duration to read.ca
@@ -44,8 +43,16 @@ func (p *Player) ReadLoop() {
 			continue
 		}
 
-		// Echo the received data back to the client.
-		p.Socket.Write(data)
+		// // Echo the received data back to the client.
+		// p.Socket.Write(data)
+
+		// Echo the received data to all other clients
+		for i := range gs.ConnectedPlayers {
+			if gs.ConnectedPlayers[i].Socket.ID() == p.Socket.ID() {
+				continue
+			}
+			gs.ConnectedPlayers[i].Socket.Write(data)
+		}
 	}
 }
 
@@ -64,28 +71,27 @@ type GameServer struct {
 
 //// Callbacks /////////////////////////////////////////////////////////////////
 
-// Run launches the server gameloop
-func (gs *GameServer) Run(debug bool) {
+// New creates a new game server
+func New(debug bool, maxPlayers int) *GameServer {
+	// New game server
+	gs := &GameServer{
+		MaxPlayers: maxPlayers,
+	}
+
 	// Debug flag
 	if debug {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 
 	// Initialize vars
-	gs.Running = true
 	gs.ConnectedPlayers = make(map[int]*Player)
 
-	// Run gameloop
-	for gs.Running {
-		// Do stuff
-		// GameLoop(gs)
-		time.Sleep(time.Millisecond)
-	}
+	return gs
 }
 
-// End ends the server gameloop
-func (gs *GameServer) End() {
-	gs.Running = false
+// Shutdown is called when the gameserver should prepare for program termination
+func (gs *GameServer) Shutdown() {
+	// add shutdown sequence here
 }
 
 // ConnectPlayer handles connecting a new player to the Game
@@ -108,8 +114,8 @@ func (gs *GameServer) ConnectPlayer(s *glue.Socket) {
 			logrus.WithField("address", s.RemoteAddr()).Debug("socket closed")
 			gs.RemovePlayerOnSlot(slot)
 		})
-		gs.ConnectedPlayers[slot].Socket.Write(msgdefs.ConnMsg)
-		go gs.ConnectedPlayers[slot].ReadLoop()
+		gs.ConnectedPlayers[slot].Socket.Write("SLOT:" + strconv.Itoa(slot) + ";" + msgdefs.ConnMsg)
+		go gs.ConnectedPlayers[slot].ReadLoop(gs)
 	} else {
 		// No free slots available
 		logrus.Info("Rejecting new player connection: Server is full!")
