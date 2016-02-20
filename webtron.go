@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/desertbit/glue"
+	"github.com/inconshreveable/log15"
 	"github.com/kardianos/osext"
 	"go.owls.io/webtron/server"
 )
@@ -30,7 +30,7 @@ func main() {
 	// Find executable location
 	osextDir, err := osext.ExecutableFolder()
 	if err != nil {
-		logrus.WithError(err).Error("Finding executable location")
+		log15.Error("Finding executable location", "error", err)
 	}
 
 	// Configure GameClient distributor
@@ -58,27 +58,25 @@ func main() {
 		go listenAndServe(listenPort)
 
 		// Command line input
-		if daemon {
-			reader := bufio.NewReader(os.Stdin)
-		input_loop:
-			for {
-				fmt.Print("console@webtron:~$ ")
-				input, _ := reader.ReadString('\n')
-				input = strings.Trim(input, "\n")
-				switch input {
-				case "":
+		reader := bufio.NewReader(os.Stdin)
+	input_loop:
+		for {
+			fmt.Print("console@webtron:~$ ")
+			input, _ := reader.ReadString('\n')
+			input = strings.Trim(input, "\n")
+			switch input {
+			case "":
 
-				case "help":
-					fmt.Println(
-						"Available commands:\n" +
-							"help, exit")
+			case "help":
+				fmt.Println(
+					"Available commands:\n" +
+						"help, exit")
 
-				case "exit", "quit":
-					break input_loop
+			case "exit", "quit":
+				break input_loop
 
-				default:
-					fmt.Println("Unknown command: " + input)
-				}
+			default:
+				fmt.Println("Unknown command: " + input)
 			}
 		}
 	}
@@ -88,6 +86,6 @@ func main() {
 func listenAndServe(listenPort string) {
 	err := http.ListenAndServe(":"+listenPort, nil)
 	if err != nil {
-		logrus.WithError(err).Error("serving http(s) requests")
+		log15.Error("serving http(s) requests", "error", err)
 	}
 }

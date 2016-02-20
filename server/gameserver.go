@@ -1,10 +1,13 @@
 package server
 
 import (
+	"math"
 	"strconv"
+	"strings"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/desertbit/glue"
+	"github.com/inconshreveable/log15"
+	"github.com/ungerik/go3d/float64/vec2"
 	"go.owls.io/webtron/server/msgdefs"
 )
 
@@ -25,6 +28,8 @@ type Player struct {
 	Slot   int
 	State  PlayerState
 	Socket *glue.Socket
+
+	Bike *GridBike
 }
 
 // ReadLoop receives data from the player client
@@ -39,21 +44,69 @@ func (p *Player) ReadLoop(gs *GameServer) {
 				return
 			}
 
-			logrus.Printf("read error: %v", err)
+			log15.Error("read error", "error", err)
 			continue
 		}
 
-		// // Echo the received data back to the client.
-		// p.Socket.Write(data)
-
-		// Echo the received data to all other clients
-		for i := range gs.ConnectedPlayers {
-			if gs.ConnectedPlayers[i].Socket.ID() == p.Socket.ID() {
-				continue
+		components := strings.Split(data, ":")
+		switch components[0] {
+		case "SPAWN":
+			if !neededComponents(components, 2) {
+				break
 			}
-			gs.ConnectedPlayers[i].Socket.Write(data)
+			x, err := strconv.ParseFloat(components[1], 64)
+			if err != nil {
+				log15.Error("converting str to int (x)", "error", err, "x", x)
+			}
+			y, err := strconv.ParseFloat(components[2], 64)
+			if err != nil {
+				log15.Error("converting str to int (y)", "error", err, "y", y)
+			}
+
+			p.Bike = gs.Sim.SpawnGridBike(vec2.T{x, y}, 0, 120)
+
+		case "TURN":
+			if !neededComponents(components, 2) {
+				break
+			}
+			dir := components[1]
+			switch dir {
+			case "RIGHT":
+				p.Bike.SetTurn(0)
+			case "UP":
+				p.Bike.SetTurn(math.Pi / 2)
+			case "LEFT":
+				p.Bike.SetTurn(math.Pi)
+			case "DOWN":
+				p.Bike.SetTurn(-math.Pi / 2)
+			default:
+				log15.Error("invalid TURN argument", "arg", dir)
+			}
+
+		case "BROADCAST":
+			// Echo the received data to all other clients
+			for i := range gs.ConnectedPlayers {
+				if gs.ConnectedPlayers[i].Socket.ID() == p.Socket.ID() {
+					continue
+				}
+				gs.ConnectedPlayers[i].Socket.Write(strings.Join(components[1:], ":"))
+			}
+
+		default:
+			log15.Info("Returning unknown request to the client", "request", data)
+			p.Socket.Write(data)
 		}
 	}
+}
+
+func neededComponents(components []string, num int) bool {
+	for i := range components {
+		if i >= num {
+			return true
+		}
+	}
+	log15.Error("not enough components given to command", "given", components, "needed", num)
+	return false
 }
 
 //// Server ////////////////////////////////////////////////////////////////////
@@ -62,6 +115,7 @@ func (p *Player) ReadLoop(gs *GameServer) {
 type GameServer struct {
 	// Const
 	MaxPlayers int
+	Sim        SimManager
 
 	// Var
 	Running             bool
@@ -80,7 +134,7 @@ func New(debug bool, maxPlayers int) *GameServer {
 
 	// Debug flag
 	if debug {
-		logrus.SetLevel(logrus.DebugLevel)
+		log15.Root().SetHandler(log15.CallerFileHandler(log15.StdoutHandler))
 	}
 
 	// Initialize vars
@@ -97,28 +151,28 @@ func (gs *GameServer) Shutdown() {
 // ConnectPlayer handles connecting a new player to the Game
 func (gs *GameServer) ConnectPlayer(s *glue.Socket) {
 	// Logging
-	logrus.WithField("address", s.RemoteAddr()).Debug("socket connected")
+	log15.Debug("socket connected", "address", s.RemoteAddr())
 	s.OnClose(func() {
-		logrus.WithField("address", s.RemoteAddr()).Debug("socket closed")
+		log15.Debug("socket closed", "address", s.RemoteAddr())
 	})
 
 	// Attempt to allocate free player Slot
 	if slot := gs.nextSlot(); slot != -1 {
-		logrus.WithField("slot", slot).Info("Accepting new player connection")
+		log15.Info("Accepting new player connection", "slot", slot)
 		gs.ConnectedPlayers[slot] = &Player{
 			Slot:   slot,
 			State:  Connecting,
 			Socket: s,
 		}
 		gs.ConnectedPlayers[slot].Socket.OnClose(func() {
-			logrus.WithField("address", s.RemoteAddr()).Debug("socket closed")
+			log15.Debug("socket closed", "address", s.RemoteAddr())
 			gs.RemovePlayerOnSlot(slot)
 		})
 		gs.ConnectedPlayers[slot].Socket.Write("SLOT:" + strconv.Itoa(slot) + ";" + msgdefs.ConnMsg)
 		go gs.ConnectedPlayers[slot].ReadLoop(gs)
 	} else {
 		// No free slots available
-		logrus.Info("Rejecting new player connection: Server is full!")
+		log15.Info("Rejecting new player connection: Server is full!")
 		s.Write(msgdefs.FullMsg)
 	}
 
@@ -129,10 +183,7 @@ func (gs *GameServer) ConnectPlayer(s *glue.Socket) {
 
 // RemovePlayerOnSlot handles removing a player from the game
 func (gs *GameServer) RemovePlayerOnSlot(slot int) {
-	logrus.WithFields(logrus.Fields{
-		"address": gs.ConnectedPlayers[slot].Socket.RemoteAddr(),
-		"slot":    slot,
-	}).Info("Removing player on slot")
+	log15.Info("Removing player on slot", "address", gs.ConnectedPlayers[slot].Socket.RemoteAddr(), "slot", slot)
 	gs.ConnectedPlayers[slot].State = Disconnected
 
 	gs.NumConnectedPlayers--

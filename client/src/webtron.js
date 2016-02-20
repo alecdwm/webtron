@@ -4,7 +4,6 @@
 // Variables
 var	webtron,         // global reference to phaser instance
 	socket,          // global reference to socket connection
-	players = {},    // global array of connected players
 	slot = -1,       // player slot on server
 	playerData = {}, // data from main menu form
 	colorToHex = {   // convert color name to hex value
@@ -14,12 +13,6 @@ var	webtron,         // global reference to phaser instance
 		'purple': 0x8a2ee5,
 		'red': 0xe5482e,
 		'white': 0xe5feff,
-	},
-	dirToRot = { // convert direction name to rotation value
-		'UP':    0,
-		'DOWN':  Math.PI,
-		'RIGHT': Math.PI / 2,
-		'LEFT':  3 * Math.PI / 2,
 	};
 
 // Player Input
@@ -27,8 +20,6 @@ var keybinds = {}
 var altKeybinds = {}
 
 // Initialize
-// TODO: Create phaserjs states for menu, ingame, etc
-// ALSO: Create socket in more elegant spot
 $("#submit").click(function(event) {
 	event.preventDefault()
 
@@ -45,7 +36,7 @@ $("#submit").click(function(event) {
 	$("#mainmenu").hide()
 
 	// Socket
-	$("#socketmessages").append("Connecting<br />")
+	document.getElementById("socketmessages").textContent = "Connecting\n"
 	socket = glue(null, {
 		baseURL: "/",
 		forceSocketType: "WebSocket",
@@ -53,7 +44,7 @@ $("#submit").click(function(event) {
 	});
 
 	socket.onMessage(function(data) {
-		$("#socketmessages").append(data + "<br />")
+		document.getElementById("socketmessages").textContent = data + "\n" + document.getElementById("socketmessages").textContent
 		console.log("Message Received: " + data)
 
 		processNetwork(data)
@@ -62,61 +53,55 @@ $("#submit").click(function(event) {
 
 // Network
 function processNetwork(data) {
-	var instructions = data.split(";")
-	for (var i = 0; i < instructions.length; i++) {
-		var components = instructions[i].split(":")
-		// if (components.length != 2) {
-		// 	console.log("Number of components: " + components.length + " != 2!")
-		// }
+	var components = instructions[i].split(":")
 
-		switch (components[0]) {
-			case "CONNECTED":
-			webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
-				preload: preload,
-				create: create,
-				update: update,
-			}, true);
-			break;
+	switch (components[0]) {
+		case "CONNECTED":
+		webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
+			preload: preload,
+			create: create,
+		}, true);
+		break;
 
-			case "GAME_FULL":
-			console.log("Game full")
-			socket.close()
-			if (webtron) {
-				webtron.destroy()
-			}
-			$("#mainmenu").show()
+		case "GAME_FULL":
+		console.log("Game full")
+		socket.close()
+		if (webtron) {
+			webtron.destroy()
+		}
+		$("#mainmenu").show()
 
-			case "SLOT":
-			console.log("Your slot is " + components[1])
-			slot = parseInt(components[1])
+		case "SLOT":
+		console.log("Your slot is " + components[1])
+		slot = parseInt(components[1])
 
-			// players[slot] = new playerBike(100 * slot, 500, playerData.color)
-			//
-			// keybinds.up.onDown.add(players[slot].turnUp, players[slot])
-			// keybinds.left.onDown.add(players[slot].turnLeft, players[slot])
-			// keybinds.down.onDown.add(players[slot].turnDown, players[slot])
-			// keybinds.right.onDown.add(players[slot].turnRight, players[slot])
-			//
-			// altKeybinds.up.onDown.add(players[slot].turnUp, players[slot])
-			// altKeybinds.left.onDown.add(players[slot].turnLeft, players[slot])
-			// altKeybinds.down.onDown.add(players[slot].turnDown, players[slot])
-			// altKeybinds.right.onDown.add(players[slot].turnRight, players[slot])
-			//
-			// socket.send("NEWBIKE:" + slot + "-" + 100 * slot + "-500-" + playerData.colour + "-120-UP")
-			break;
+		// players[slot] = new playerBike(100 * slot, 500, playerData.color)
+		//
+		// keybinds.up.onDown.add(players[slot].turnUp, players[slot])
+		// keybinds.left.onDown.add(players[slot].turnLeft, players[slot])
+		// keybinds.down.onDown.add(players[slot].turnDown, players[slot])
+		// keybinds.right.onDown.add(players[slot].turnRight, players[slot])
+		//
+		// altKeybinds.up.onDown.add(players[slot].turnUp, players[slot])
+		// altKeybinds.left.onDown.add(players[slot].turnLeft, players[slot])
+		// altKeybinds.down.onDown.add(players[slot].turnDown, players[slot])
+		// altKeybinds.right.onDown.add(players[slot].turnRight, players[slot])
+		//
+		// socket.send("NEWBIKE:" + slot + "-" + 100 * slot + "-500-" + playerData.colour + "-120-UP")
+		break;
 
-			case "NAME":
-			console.log("A client's NAME is " + components[1])
-			break;
+		case "NAME":
+		console.log("A client's NAME is " + components[1])
+		break;
 
-			case "NEWBIKE":
-			var params = components[1].split("-")
-			players[parseInt(params[0])] = new playerBike(
-				parseInt(params[1]),
-				parseInt(params[2]),
-				params[3],
-				params[4],
-				params[5])
+		case "NEWBIKE":
+		var params = components[1].split("-")
+		players[parseInt(params[0])] = new playerBike(
+			parseInt(params[1]),
+			parseInt(params[2]),
+			params[3],
+			params[4],
+			params[5])
 
 			case "TURNBIKE":
 			var params = components[1].split("-")
@@ -139,9 +124,8 @@ function processNetwork(data) {
 			}
 
 			default:
-			console.log(components[0])
+				console.log("unknown command:" + components[0])
 		}
-	}
 }
 
 // Callbacks
@@ -163,10 +147,9 @@ function create() {
 	// Background
 	webtron.add.image(0, 0, "background")
 
-	// Player
-	// players[0] = new playerBike(250, 500, playerData.colour)
-
+	// Input
 	keybinds = webtron.input.keyboard.addKeys({
+		'spawn': Phaser.Keyboard.SPACEBAR,
 		'up': Phaser.Keyboard.W,
 		'left': Phaser.Keyboard.A,
 		'down': Phaser.Keyboard.S,
@@ -179,41 +162,17 @@ function create() {
 		'right': Phaser.Keyboard.RIGHT,
 	})
 
-	if (slot == -1) {
-		console.log("SLOT IS NOT SET YET!!")
-	}
-	players[slot] = new playerBike(100 * slot, 500, playerData.colour)
+	webtron.input.keyboard.addKeyCapture([ Phaser.Keyboard.SPACEBAR ]);
 
-	keybinds.up.onDown.add(players[slot].turnUp, players[slot])
-	keybinds.left.onDown.add(players[slot].turnLeft, players[slot])
-	keybinds.down.onDown.add(players[slot].turnDown, players[slot])
-	keybinds.right.onDown.add(players[slot].turnRight, players[slot])
-
-	altKeybinds.up.onDown.add(players[slot].turnUp, players[slot])
-	altKeybinds.left.onDown.add(players[slot].turnLeft, players[slot])
-	altKeybinds.down.onDown.add(players[slot].turnDown, players[slot])
-	altKeybinds.right.onDown.add(players[slot].turnRight, players[slot])
-
-	socket.send("NEWBIKE:" + slot + "-" + 100 * slot + "-500-" + playerData.colour + "-120-UP")
-
-
-	// keybinds.up.onDown.add(players[0].turnUp, players[0])
-	// keybinds.left.onDown.add(players[0].turnLeft, players[0])
-	// keybinds.down.onDown.add(players[0].turnDown, players[0])
-	// keybinds.right.onDown.add(players[0].turnRight, players[0])
-	//
-	// altKeybinds.up.onDown.add(players[0].turnUp, players[0])
-	// altKeybinds.left.onDown.add(players[0].turnLeft, players[0])
-	// altKeybinds.down.onDown.add(players[0].turnDown, players[0])
-	// altKeybinds.right.onDown.add(players[0].turnRight, players[0])
-}
-
-function update() {
-	for (var i=0; i<4; i++) {
-		if (players[i] != null && players[i] != undefined && players[i].alive) {
-			players[i].update(webtron.time.physicsElapsed);
-		}
-	}
+	keybinds.spawn   .onDown.add(function(){socket.send("SPAWN:80:80")})
+	keybinds.up      .onDown.add(function(){socket.send("TURN:UP")})
+	altKeybinds.up   .onDown.add(function(){socket.send("TURN:UP")})
+	keybinds.left    .onDown.add(function(){socket.send("TURN:LEFT")})
+	altKeybinds.left .onDown.add(function(){socket.send("TURN:LEFT")})
+	keybinds.down    .onDown.add(function(){socket.send("TURN:DOWN")})
+	altKeybinds.down .onDown.add(function(){socket.send("TURN:DOWN")})
+	keybinds.right   .onDown.add(function(){socket.send("TURN:RIGHT")})
+	altKeybinds.right.onDown.add(function(){socket.send("TURN:RIGHT")})
 }
 
 // Entities
