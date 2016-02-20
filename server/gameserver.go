@@ -50,6 +50,9 @@ func (p *Player) ReadLoop(gs *GameServer) {
 
 		components := strings.Split(data, ":")
 		switch components[0] {
+		case "REQUESTSTATE":
+			p.Socket.Write("NEWSTATE:" + gs.Sim.LatestState)
+
 		case "SPAWN":
 			if !neededComponents(components, 2) {
 				break
@@ -66,7 +69,10 @@ func (p *Player) ReadLoop(gs *GameServer) {
 			p.Bike = gs.Sim.SpawnGridBike(vec2.T{x, y}, 0, 120)
 
 		case "TURN":
-			if !neededComponents(components, 2) {
+			if !neededComponents(components, 1) {
+				break
+			}
+			if p.Bike == nil {
 				break
 			}
 			dir := components[1]
@@ -74,11 +80,11 @@ func (p *Player) ReadLoop(gs *GameServer) {
 			case "RIGHT":
 				p.Bike.SetTurn(0)
 			case "UP":
-				p.Bike.SetTurn(math.Pi / 2)
+				p.Bike.SetTurn(3 * math.Pi / 2)
 			case "LEFT":
 				p.Bike.SetTurn(math.Pi)
 			case "DOWN":
-				p.Bike.SetTurn(-math.Pi / 2)
+				p.Bike.SetTurn(math.Pi / 2)
 			default:
 				log15.Error("invalid TURN argument", "arg", dir)
 			}
@@ -130,6 +136,9 @@ func New(debug bool, maxPlayers int) *GameServer {
 	// New game server
 	gs := &GameServer{
 		MaxPlayers: maxPlayers,
+		Sim: SimManager{
+			GridSize: vec2.T{0: 560, 1: 560},
+		},
 	}
 
 	// Debug flag
@@ -168,8 +177,11 @@ func (gs *GameServer) ConnectPlayer(s *glue.Socket) {
 			log15.Debug("socket closed", "address", s.RemoteAddr())
 			gs.RemovePlayerOnSlot(slot)
 		})
-		gs.ConnectedPlayers[slot].Socket.Write("SLOT:" + strconv.Itoa(slot) + ";" + msgdefs.ConnMsg)
+		gs.NumConnectedPlayers++
+		gs.ConnectedPlayers[slot].Socket.Write(msgdefs.ConnMsg)
+		gs.ConnectedPlayers[slot].Socket.Write("SLOT:" + strconv.Itoa(slot))
 		go gs.ConnectedPlayers[slot].ReadLoop(gs)
+
 	} else {
 		// No free slots available
 		log15.Info("Rejecting new player connection: Server is full!")

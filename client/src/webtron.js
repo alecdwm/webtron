@@ -5,6 +5,9 @@
 var	webtron,         // global reference to phaser instance
 	socket,          // global reference to socket connection
 	slot = -1,       // player slot on server
+	now,             // timing network updates
+	then,            // timing network updates
+	accumulator,     // timing network updates
 	playerData = {}, // data from main menu form
 	colorToHex = {   // convert color name to hex value
 		'blue': 0x00c2cc,
@@ -44,87 +47,66 @@ $("#submit").click(function(event) {
 	});
 
 	socket.onMessage(function(data) {
-		document.getElementById("socketmessages").textContent = data + "\n" + document.getElementById("socketmessages").textContent
-		console.log("Message Received: " + data)
-
 		processNetwork(data)
 	})
-});
 
-// Network
-function processNetwork(data) {
-	var components = instructions[i].split(":")
-
-	switch (components[0]) {
-		case "CONNECTED":
-		webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
-			preload: preload,
-			create: create,
-		}, true);
-		break;
-
-		case "GAME_FULL":
-		console.log("Game full")
+	socket.on("disconnected", function() {
+		document.getElementById("socketmessages").textContent = "Disconnected\n" + document.getElementById("socketmessages").textContent
+		console.log("Disconnected")
 		socket.close()
 		if (webtron) {
 			webtron.destroy()
 		}
 		$("#mainmenu").show()
+	})
+});
+
+// Network
+function processNetwork(data) {
+	var components = data.split(":")
+
+	switch (components[0]) {
+		case "CONNECTED":
+			webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
+				preload: preload,
+				create: create,
+				update: update,
+			}, true);
+			break;
+
+		case "GAME_FULL":
+			console.log("Game full")
+			socket.close()
+			if (webtron) {
+				webtron.destroy()
+			}
+			$("#mainmenu").show()
+			break;
 
 		case "SLOT":
-		console.log("Your slot is " + components[1])
-		slot = parseInt(components[1])
-
-		// players[slot] = new playerBike(100 * slot, 500, playerData.color)
-		//
-		// keybinds.up.onDown.add(players[slot].turnUp, players[slot])
-		// keybinds.left.onDown.add(players[slot].turnLeft, players[slot])
-		// keybinds.down.onDown.add(players[slot].turnDown, players[slot])
-		// keybinds.right.onDown.add(players[slot].turnRight, players[slot])
-		//
-		// altKeybinds.up.onDown.add(players[slot].turnUp, players[slot])
-		// altKeybinds.left.onDown.add(players[slot].turnLeft, players[slot])
-		// altKeybinds.down.onDown.add(players[slot].turnDown, players[slot])
-		// altKeybinds.right.onDown.add(players[slot].turnRight, players[slot])
-		//
-		// socket.send("NEWBIKE:" + slot + "-" + 100 * slot + "-500-" + playerData.colour + "-120-UP")
-		break;
+			console.log("Your slot is " + components[1])
+			slot = parseInt(components[1])
+			break;
 
 		case "NAME":
-		console.log("A client's NAME is " + components[1])
-		break;
+			console.log("A client's NAME is " + components[1])
+			break;
 
-		case "NEWBIKE":
-		var params = components[1].split("-")
-		players[parseInt(params[0])] = new playerBike(
-			parseInt(params[1]),
-			parseInt(params[2]),
-			params[3],
-			params[4],
-			params[5])
+		case "NEWSTATE":
+			var newState = JSON.parse(data.replace("NEWSTATE:",""))
 
-			case "TURNBIKE":
-			var params = components[1].split("-")
-			switch (params[1]) {
-				case "UP":
-				players[parseInt(params[0])].turnUp()
-				break
-
-				case "LEFT":
-				players[parseInt(params[0])].turnLeft()
-				break
-
-				case "DOWN":
-				players[parseInt(params[0])].turnDown()
-				break
-
-				case "RIGHT":
-				players[parseInt(params[0])].turnRight()
-				break
+			for (var i=0; i<newState.BIKES.length; i++) {
+				webtron.add.image(newState.BIKES[i].X, newState.BIKES[i].Y, "lightbike-orange")
+			}
+			for (var i=0; i<newState.TRAILS.length; i++) {
+				webtron.add.image(newState.TRAILS[i].ENDX, newState.TRAILS[i].ENDY, "trail-dev")
 			}
 
-			default:
-				console.log("unknown command:" + components[0])
+			console.log(newState)
+			break;
+
+		default:
+			console.log("unknown command:" + components[0])
 		}
 }
 
@@ -141,6 +123,8 @@ function preload() {
 	webtron.load.image("lightbike-purple", "img/lightbike-purple.png")
 	webtron.load.image("lightbike-red", "img/lightbike-red.png")
 	webtron.load.image("lightbike-white", "img/lightbike-white.png")
+
+	webtron.load.image("trail-dev", "img/trail-dev.png")
 }
 
 function create() {
@@ -173,6 +157,19 @@ function create() {
 	altKeybinds.down .onDown.add(function(){socket.send("TURN:DOWN")})
 	keybinds.right   .onDown.add(function(){socket.send("TURN:RIGHT")})
 	altKeybinds.right.onDown.add(function(){socket.send("TURN:RIGHT")})
+
+	now = webtron.time.now
+	then = now
+	accumulator = 0
+}
+
+function update() {
+	now = webtron.time.now
+	accumulator += (now - then)
+	if (accumulator > 1/30) {
+		socket.send("REQUESTSTATE")
+	}
+	then = now
 }
 
 // Entities
