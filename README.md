@@ -2,8 +2,8 @@
 ![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo-orange.png)
 
 # License
-Webtron - 2D hosted Tron lightcycle minigame
-Copyright (C) 2016 alecdwm
+Webtron - A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!
+Copyright (C) 2016 alecdwm <owls.io>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

@@ -2,12 +2,20 @@
 "use strict";
 
 // Variables
-var	webtron,         // global reference to phaser instance
-	socket,          // global reference to socket connection
-	slot = -1,       // player slot on server
-	accumulator,     // timing network updates
-	playerData = {}, // data from main menu form
-	colorToHex = {   // convert color name to hex value
+var	webtron,          // global reference to phaser instance
+	socket,           // global reference to socket connection
+	bikes = {},       // global reference to drawn bike sprites
+	names = {},       // global reference to drawn bike name sprites
+	trails = {},      // global reference to drawn trail sprites
+	accumulator,      // timing network updates
+	keybinds = {},    // player input
+	altKeybinds = {}, // player input
+	playerData = {},  // data from main menu form
+	textStyle = {     // style for in-game text labels
+		font: "12px \"Lucida Console\",Monaco,monospace",
+		fill: "#ffffff",
+	},
+	colorToHex = {    // convert color name to hex value
 		'blue': 0x00c2cc,
 		'green': 0x2ee5c7,
 		'orange': 0xf2d91a,
@@ -15,10 +23,6 @@ var	webtron,         // global reference to phaser instance
 		'red': 0xe5482e,
 		'white': 0xe5feff,
 	};
-
-// Player Input
-var keybinds = {}
-var altKeybinds = {}
 
 // Initialize
 $("#submit").click(function(event) {
@@ -49,10 +53,10 @@ $("#submit").click(function(event) {
 	})
 
 	socket.on("disconnected", function() {
-		document.getElementById("socketmessages").textContent = "Disconnected\n" + document.getElementById("socketmessages").textContent
+		document.getElementById("socketmessages").textContent = "Disconnected\n"
 		console.log("Disconnected")
 		socket.close()
-		if (webtron) {
+		if (webtron != null && webtron != undefined) {
 			webtron.destroy()
 		}
 		$("#mainmenu").show()
@@ -64,48 +68,56 @@ function processNetwork(data) {
 	var components = data.split(":")
 
 	switch (components[0]) {
-		case "CONNECTED":
-			webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
-				preload: preload,
-				create: create,
-				update: update,
-			}, true);
-			break;
+	case "CONNECTED":
+		document.getElementById("socketmessages").textContent = "Connected\n"
+		webtron = new Phaser.Game(560, 560, Phaser.AUTO, "webtron", {
+			preload: preload,
+			create: create,
+			update: update,
+		}, true);
+		break;
 
-		case "GAME_FULL":
-			console.log("Game full")
-			socket.close()
-			if (webtron) {
-				webtron.destroy()
-			}
-			$("#mainmenu").show()
-			break;
-
-		case "SLOT":
-			console.log("Your slot is " + components[1])
-			slot = parseInt(components[1])
-			break;
-
-		case "NAME":
-			console.log("A client's NAME is " + components[1])
-			break;
-
-		case "NEWSTATE":
-			var newState = JSON.parse(data.replace("NEWSTATE:",""))
-
-			for (var i=0; i<newState.BIKES.length; i++) {
-				webtron.add.image(newState.BIKES[i].X, newState.BIKES[i].Y, "lightbike-orange")
-			}
-			for (var i=0; i<newState.TRAILS.length; i++) {
-				webtron.add.image(newState.TRAILS[i].ENDX, newState.TRAILS[i].ENDY, "trail-dev")
-			}
-
-			console.log(newState)
-			break;
-
-		default:
-			console.log("unknown command:" + components[0])
+	case "GAME_FULL":
+		document.getElementById("socketmessages").textContent = "Game Full\n"
+		console.log("Game Full!")
+		socket.close()
+		if (webtron != null && webtron != undefined) {
+			webtron.destroy()
 		}
+		$("#mainmenu").show()
+		break;
+
+	case "NEWSTATE":
+		var json = data.replace("NEWSTATE:","")
+		if (json == "") {
+			break;
+		}
+		var newState = JSON.parse(json)
+
+		for (var i=0; i<newState.BIKES.length; i++) {
+			if (bikes[i] == null || bikes[i] == undefined) {
+				bikes[i] = webtron.add.sprite(newState.BIKES[i].X, newState.BIKES[i].Y, "gridbike-" + newState.BIKES[i].COLOUR)
+				bikes[i].anchor = new Phaser.Point(0.5, 0.5)
+				bikes[i].rotation = newState.BIKES[i].ROT
+				names[i] = webtron.add.text(newState.BIKES[i].X, newState.BIKES[i].Y-20, newState.BIKES[i].NAME, textStyle)
+				names[i].anchor = new Phaser.Point(0.5, 0.5)
+			} else {
+				bikes[i].x = newState.BIKES[i].X
+				bikes[i].y = newState.BIKES[i].Y
+				bikes[i].rotation = newState.BIKES[i].ROT
+				names[i].x = bikes[i].x
+				names[i].y = bikes[i].y-20
+			}
+		}
+		for (var i=0; i<newState.TRAILS.length; i++) {
+			// webtron.add.image(newState.TRAILS[i].ENDX, newState.TRAILS[i].ENDY, "trail-dev")
+		}
+		break;
+
+	default:
+		console.log("unknown command:" + components[0])
+		break;
+	}
 }
 
 // Callbacks
@@ -115,14 +127,12 @@ function preload() {
 
 	// Load Assets
 	webtron.load.image("background", "img/gridBG.png")
-	webtron.load.image("lightbike-blue", "img/lightbike-blue.png")
-	webtron.load.image("lightbike-green", "img/lightbike-green.png")
-	webtron.load.image("lightbike-orange", "img/lightbike-orange.png")
-	webtron.load.image("lightbike-purple", "img/lightbike-purple.png")
-	webtron.load.image("lightbike-red", "img/lightbike-red.png")
-	webtron.load.image("lightbike-white", "img/lightbike-white.png")
-
-	webtron.load.image("trail-dev", "img/trail-dev.png")
+	webtron.load.image("gridbike-blue", "img/gridbike-blue.png")
+	webtron.load.image("gridbike-green", "img/gridbike-green.png")
+	webtron.load.image("gridbike-orange", "img/gridbike-orange.png")
+	webtron.load.image("gridbike-purple", "img/gridbike-purple.png")
+	webtron.load.image("gridbike-red", "img/gridbike-red.png")
+	webtron.load.image("gridbike-white", "img/gridbike-white.png")
 }
 
 function create() {
@@ -146,7 +156,7 @@ function create() {
 
 	webtron.input.keyboard.addKeyCapture([ Phaser.Keyboard.SPACEBAR ]);
 
-	keybinds.spawn   .onDown.add(function(){socket.send("SPAWN:80:80")})
+	keybinds.spawn   .onDown.add(function(){socket.send("SPAWN:"+playerData.name+":"+playerData.colour)})
 	keybinds.up      .onDown.add(function(){socket.send("TURN:UP")})
 	altKeybinds.up   .onDown.add(function(){socket.send("TURN:UP")})
 	keybinds.left    .onDown.add(function(){socket.send("TURN:LEFT")})
@@ -156,17 +166,21 @@ function create() {
 	keybinds.right   .onDown.add(function(){socket.send("TURN:RIGHT")})
 	altKeybinds.right.onDown.add(function(){socket.send("TURN:RIGHT")})
 
+	bikes = {}
+	names = {}
+	trails = {}
 	accumulator = 0
 }
 
 function update() {
 	accumulator += webtron.time.physicsElapsed
-	if (accumulator > 1/15) {
+	if (accumulator > 1/10) {
 		socket.send("REQUESTSTATE")
-		accumulator -= 1/15
+		accumulator -= 1/10
 	}
 }
 
+// old code, left for reference when implementing client-side prediction
 // Entities
 function playerBike(x, y, color, speed, direction) {
 	switch (color) {
@@ -207,15 +221,15 @@ function playerBike(x, y, color, speed, direction) {
 			break;
 	}
 	//
-	// Phaser.Sprite.call(this, x, y, "lightbike-" + this.color)
+	// Phaser.Sprite.call(this, x, y, "gridbike-" + this.color)
 	// this.anchor = new Phaser.Point(0.5, 0.5)
 	// this.rotation = dirToRot[this.direction]
 
-	this.sprite = webtron.add.sprite(x, y, "lightbike-" + this.color)
+	this.sprite = webtron.add.sprite(x, y, "gridbike-" + this.color)
 	this.sprite.anchor = new Phaser.Point(0.5, 0.5);
 	this.sprite.rotation = dirToRot[this.direction]
 
-	this.trail = new lightTrail(this)
+	this.trail = new gridTrail(this)
 
 	this.justTurned = true
 	this.alive = true
@@ -303,7 +317,7 @@ playerBike.prototype.die = function() {
 	this.speed = 0;
 }
 
-function lightTrail(bike) {
+function gridTrail(bike) {
 	switch (bike.color) {
 		case "blue":
 		case "green":
@@ -332,7 +346,7 @@ function lightTrail(bike) {
 	this.graphics.moveTo(this.startX, this.startY)
 }
 
-lightTrail.prototype.update = function(bike) {
+gridTrail.prototype.update = function(bike) {
 	this.lines[this.lines.length - 1].
 	setTo(this.startX, this.startY, bike.sprite.x, bike.sprite.y)
 
@@ -342,7 +356,7 @@ lightTrail.prototype.update = function(bike) {
 		this.lines[this.lines.length - 1].end.y)
 }
 
-lightTrail.prototype.setTurn = function(bike) {
+gridTrail.prototype.setTurn = function(bike) {
 	this.update(bike)
 	this.startX = bike.sprite.x
 	this.startY = bike.sprite.y
@@ -351,7 +365,7 @@ lightTrail.prototype.setTurn = function(bike) {
 	))
 }
 
-lightTrail.prototype.detectPtCollision = function(point) {
+gridTrail.prototype.detectPtCollision = function(point) {
 	for (var i = 0; i < this.lines.length; i++) {
 		if (this.lines[i].pointOnSegment(point.x, point.y)) {
 			return true

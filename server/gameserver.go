@@ -2,8 +2,9 @@ package server
 
 import (
 	"math"
-	"strconv"
+	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/desertbit/glue"
 	"github.com/inconshreveable/log15"
@@ -50,25 +51,21 @@ func (p *Player) ReadLoop(gs *GameServer) {
 
 		components := strings.Split(data, ":")
 		switch components[0] {
-		case "REQUESTSTATE":
-			p.Socket.Write("NEWSTATE:" + gs.Sim.LatestState)
+		case msgdefs.CReqStateMsg:
+			p.Socket.Write(msgdefs.SNewStateMsg + ":" + gs.Sim.LatestState)
 
-		case "SPAWN":
+		case msgdefs.CSpawnMsg:
 			if !neededComponents(components, 2) {
 				break
 			}
-			x, err := strconv.ParseFloat(components[1], 64)
-			if err != nil {
-				log15.Error("converting str to int (x)", "error", err, "x", x)
-			}
-			y, err := strconv.ParseFloat(components[2], 64)
-			if err != nil {
-				log15.Error("converting str to int (y)", "error", err, "y", y)
+
+			if p.Bike != nil && p.Bike.state != "dead" {
+				break
 			}
 
-			p.Bike = gs.Sim.SpawnGridBike(vec2.T{x, y}, 0, 120)
+			p.Bike = gs.Sim.SpawnGridBike(components[1], components[2])
 
-		case "TURN":
+		case msgdefs.CTurnMsg:
 			if !neededComponents(components, 1) {
 				break
 			}
@@ -79,24 +76,24 @@ func (p *Player) ReadLoop(gs *GameServer) {
 			switch dir {
 			case "RIGHT":
 				p.Bike.SetTurn(0)
-			case "UP":
-				p.Bike.SetTurn(3 * math.Pi / 2)
-			case "LEFT":
-				p.Bike.SetTurn(math.Pi)
 			case "DOWN":
 				p.Bike.SetTurn(math.Pi / 2)
+			case "LEFT":
+				p.Bike.SetTurn(math.Pi)
+			case "UP":
+				p.Bike.SetTurn(3 * math.Pi / 2)
 			default:
 				log15.Error("invalid TURN argument", "arg", dir)
 			}
 
-		case "BROADCAST":
-			// Echo the received data to all other clients
-			for i := range gs.ConnectedPlayers {
-				if gs.ConnectedPlayers[i].Socket.ID() == p.Socket.ID() {
-					continue
-				}
-				gs.ConnectedPlayers[i].Socket.Write(strings.Join(components[1:], ":"))
-			}
+		// case "BROADCAST":
+		// 	// Echo the received data to all other clients
+		// 	for i := range gs.ConnectedPlayers {
+		// 		if gs.ConnectedPlayers[i].Socket.ID() == p.Socket.ID() {
+		// 			continue
+		// 		}
+		// 		gs.ConnectedPlayers[i].Socket.Write(strings.Join(components[1:], ":"))
+		// 	}
 
 		default:
 			log15.Info("Returning unknown request to the client", "request", data)
@@ -138,6 +135,7 @@ func New(debug bool, maxPlayers int) *GameServer {
 		MaxPlayers: maxPlayers,
 		Sim: SimManager{
 			GridSize: vec2.T{0: 560, 1: 560},
+			Rand:     rand.New(rand.NewSource(time.Now().UnixNano())),
 		},
 	}
 
@@ -178,14 +176,13 @@ func (gs *GameServer) ConnectPlayer(s *glue.Socket) {
 			gs.RemovePlayerOnSlot(slot)
 		})
 		gs.NumConnectedPlayers++
-		gs.ConnectedPlayers[slot].Socket.Write(msgdefs.ConnMsg)
-		gs.ConnectedPlayers[slot].Socket.Write("SLOT:" + strconv.Itoa(slot))
+		gs.ConnectedPlayers[slot].Socket.Write(msgdefs.SConnMsg)
 		go gs.ConnectedPlayers[slot].ReadLoop(gs)
 
 	} else {
 		// No free slots available
 		log15.Info("Rejecting new player connection: Server is full!")
-		s.Write(msgdefs.FullMsg)
+		s.Write(msgdefs.SFullMsg)
 	}
 
 	// go readLoop(s)

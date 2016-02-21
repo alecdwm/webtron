@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"time"
 
 	"github.com/inconshreveable/log15"
@@ -16,24 +17,31 @@ type SimManager struct {
 	GridBikes   []*GridBike
 	GridTrails  []*GridTrail
 
+	Rand        *rand.Rand
 	LatestState string
 }
 
 // SpawnGridBike spawns a new gridbike
-func (sm *SimManager) SpawnGridBike(position vec2.T, rotation, speed float64) *GridBike {
-	log15.Debug("Spawning bike", "at", position, "rot", rotation, "speed", speed)
+func (sm *SimManager) SpawnGridBike(name string, colour string) *GridBike {
+	pos, rot := sm.calcNewSpawnpoint()
+	speed := 120.0
+
+	log15.Debug("Spawning bike", "at", pos, "rot", rot, "speed", speed, "name", name, "colour", colour)
 
 	newGridTrail := &GridTrail{
-		origin: position,
+		origin: pos,
 	}
 
 	newGridBike := &GridBike{
-		state: "new",
-		pos:   position,
-		rot:   rotation,
+		state:  "new",
+		name:   name,
+		colour: colour,
+
+		pos:   pos,
+		rot:   rot,
 		speed: speed,
 
-		rotNew: rotation,
+		rotNew: rot,
 
 		trail:     newGridTrail,
 		simulator: sm,
@@ -63,7 +71,10 @@ func (sm *SimManager) SpawnGridBike(position vec2.T, rotation, speed float64) *G
 // GridBike is a player vehicle
 type GridBike struct {
 	// state
-	state string // new, move, turn, dead
+	state  string // new, move, turn, dead
+	name   string
+	colour string
+
 	pos   vec2.T
 	rot   float64
 	speed float64
@@ -82,12 +93,15 @@ func (sm *SimManager) Simulate(deltaTime float64) {
 		switch sm.GridBikes[i].state {
 		case "new":
 			sm.GridBikes[i].state = "move"
+			sm.GridBikes[i].Move(deltaTime)
 
 		case "move":
 			sm.GridBikes[i].Move(deltaTime)
 
 		case "turn":
 			sm.GridBikes[i].Turn()
+			sm.GridBikes[i].state = "move"
+			sm.GridBikes[i].Move(deltaTime)
 		}
 	}
 
@@ -118,36 +132,43 @@ func (sm *SimManager) Simulate(deltaTime float64) {
 	}
 
 	// update json string to send to clients
-	newState := "{\"BIKES\":["
+	newState := `{"BIKES":[`
 	for i := range sm.GridBikes {
 		if i != 0 {
-			newState += ","
+			newState += `,`
 		}
-		newState += "{" +
-			"\"X\":" + fmt.Sprint(sm.GridBikes[i].pos[0]) + "," +
-			"\"Y\":" + fmt.Sprint(sm.GridBikes[i].pos[1]) + "," +
-			"\"ROT\":" + fmt.Sprint(sm.GridBikes[i].rot) + "}"
+		newState += fmt.Sprintf(`{"NAME":"%s","COLOUR":"%s","X":%f,"Y":%f,"ROT":%f}`,
+			sm.GridBikes[i].name,
+			sm.GridBikes[i].colour,
+			sm.GridBikes[i].pos[0],
+			sm.GridBikes[i].pos[1],
+			sm.GridBikes[i].rot,
+		)
 	}
-	newState += "],\"TRAILS\":["
+	newState += `],"TRAILS":[`
 	for i := range sm.GridTrails {
 		if i != 0 {
-			newState += ","
+			newState += `,`
 		}
-		newState += "{" +
-			"\"STARTX\":" + fmt.Sprint(sm.GridTrails[i].origin[0]) + "," +
-			"\"STARTY\":" + fmt.Sprint(sm.GridTrails[i].origin[1]) + "," +
-			"\"VERTS\":["
+		newState += fmt.Sprintf(`{"STARTX":%f,"STARTY":%f,"VERTS":[`,
+			sm.GridTrails[i].origin[0],
+			sm.GridTrails[i].origin[1],
+		)
 		for v := range sm.GridTrails[i].verts {
 			if v != 0 {
 				newState += ","
 			}
-			newState += "{\"X\":" + fmt.Sprint(sm.GridTrails[i].verts[v][0]) + "," +
-				"\"Y\":" + fmt.Sprint(sm.GridTrails[i].verts[v][1]) + "}"
+			newState += fmt.Sprintf(`{"X":%f,"Y":%f}`,
+				sm.GridTrails[i].verts[v][0],
+				sm.GridTrails[i].verts[v][1],
+			)
 		}
-		newState += "],\"ENDX\":" + fmt.Sprint(sm.GridTrails[i].end[0]) + "," +
-			"\"ENDY\":" + fmt.Sprint(sm.GridTrails[i].end[1]) + "}"
+		newState += fmt.Sprintf(`],"ENDX":%f,"ENDY":%f}`,
+			sm.GridTrails[i].end[0],
+			sm.GridTrails[i].end[1],
+		)
 	}
-	newState += "]}"
+	newState += `]}`
 	sm.LatestState = newState
 }
 
@@ -172,7 +193,6 @@ func (gb *GridBike) Turn() {
 	gb.trail.end = gb.pos
 	gb.trail.verts = append(gb.trail.verts, gb.pos)
 	gb.rot = gb.rotNew
-	gb.state = "move"
 }
 
 // Kill this grid bike
@@ -233,4 +253,44 @@ func cmp(a, b float64) float64 {
 		return 0
 	}
 	return 1
+}
+
+func (sm *SimManager) calcNewSpawnpoint() (vec2.T, float64) {
+	pos := vec2.T{
+		0: sm.Rand.Float64() * sm.GridSize[0],
+		1: sm.Rand.Float64() * sm.GridSize[1],
+	}
+	rot := 0.0
+
+	if pos[0] < sm.GridSize[0]/2 { // left half
+		if pos[1] < sm.GridSize[1]/2 { // top left quad
+			if pos[0] < pos[1] { // closer to left than top
+				rot = 0.0 // right
+			} else { // closer to top than left
+				rot = math.Pi / 2.0 // down
+			}
+		} else { // bottom left quad
+			if pos[0] < sm.GridSize[1]-pos[1] { // closer to left than bottom
+				rot = 0.0 // right
+			} else { // closer to bottom than left
+				rot = 3 * math.Pi / 2.0 // up
+			}
+		}
+	} else { // right half
+		if pos[1] < sm.GridSize[1]/2 { // top right quad
+			if sm.GridSize[0]-pos[0] < pos[1] { // closer to right than top
+				rot = math.Pi // left
+			} else { // closer to top than right
+				rot = math.Pi / 2.0 // down
+			}
+		} else { // bottom right quad
+			if sm.GridSize[0]-pos[0] < sm.GridSize[1]-pos[1] { // closer to right than bottom
+				rot = math.Pi // left
+			} else { // closer to bottom than right
+				rot = 3 * math.Pi / 2.0 // up
+			}
+		}
+	}
+
+	return pos, rot
 }
