@@ -5,8 +5,6 @@
 var	webtron,         // global reference to phaser instance
 	socket,          // global reference to socket connection
 	slot = -1,       // player slot on server
-	now,             // timing network updates
-	then,            // timing network updates
 	accumulator,     // timing network updates
 	playerData = {}, // data from main menu form
 	colorToHex = {   // convert color name to hex value
@@ -158,18 +156,15 @@ function create() {
 	keybinds.right   .onDown.add(function(){socket.send("TURN:RIGHT")})
 	altKeybinds.right.onDown.add(function(){socket.send("TURN:RIGHT")})
 
-	now = webtron.time.now
-	then = now
 	accumulator = 0
 }
 
 function update() {
-	now = webtron.time.now
-	accumulator += (now - then)
-	if (accumulator > 1/30) {
+	accumulator += webtron.time.physicsElapsed
+	if (accumulator > 1/15) {
 		socket.send("REQUESTSTATE")
+		accumulator -= 1/15
 	}
-	then = now
 }
 
 // Entities
