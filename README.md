@@ -1,4 +1,3 @@
-# Webtron
 ![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo.png)
 
 # License
