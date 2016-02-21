@@ -1,5 +1,5 @@
 # Webtron
-![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo-orange.png)
+![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo.png)
 
 # License
 Webtron - A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!
