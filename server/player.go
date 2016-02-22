@@ -24,11 +24,10 @@ type Player struct {
 // ReadLoop receives data from the player client
 func (p *Player) ReadLoop() {
 	for {
-		// Wait for available data.
-		// Optional: pass a timeout duration to read.ca
+		// Wait for available data
 		data, err := p.Socket.Read()
 		if err != nil {
-			// Just return and release this goroutine if the socket was closed.
+			// return and release this goroutine if the socket was closed
 			if err == glue.ErrSocketClosed {
 				return
 			}

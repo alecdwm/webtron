@@ -1,5 +1,10 @@
 ![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo.png)
 
+# Todo
+* Implement some sort of client versioning &/ cache defeat
+* Clean up long-dead bikes and trails to reduce load on network and rendering
+* Implement client-side prediction between network updates
+
 # License
 Webtron - A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!
 Copyright (C) 2016 alecdwm <owls.io>
