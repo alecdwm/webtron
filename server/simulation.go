@@ -127,7 +127,7 @@ func (sm *SimManager) Simulate(deltaTime float64) {
 				continue
 			}
 			if sm.GridTrails[i].OnTrail(checkPos) {
-				log15.Debug("Bike collision with grid trail", "at", sm.GridBikes[i].pos)
+				log15.Debug("Bike collision with grid trail", "at", sm.GridBikes[i].pos, "collision point", checkPos)
 				sm.GridBikes[i].Kill()
 			}
 		}
@@ -192,6 +192,11 @@ func (gb *GridBike) SetTurn(newRot float64) {
 
 // Turn this grid bike
 func (gb *GridBike) Turn() {
+	if gb.rot+math.Pi == gb.rotNew || gb.rot-math.Pi == gb.rotNew {
+		log15.Debug("Bike can't turn 180°", "at", gb.pos)
+		gb.rotNew = gb.rot
+		return
+	}
 	log15.Debug("Bike turned", "at", gb.pos)
 	gb.trail.end = gb.pos
 	gb.trail.verts = append(gb.trail.verts, gb.pos)
@@ -228,23 +233,30 @@ func (gt *GridTrail) OnTrail(pos vec2.T) bool {
 			continue
 		}
 
-		if pointOnLine(verts[i-1], verts[i], pos) {
+		if pointOnLine(pos, verts[i-1], verts[i]) {
 			return true
 		}
 	}
-
 	return false
 }
 
-// Check if point is on line:
-// 1. is slope of a to c the same as a to b?
-// 2. is c.x between a.x and b.x, and c.y between a.y and b.y?
-func pointOnLine(a, b, c vec2.T) bool {
-	// if (b[0]-a[0])*(c[1]-a[1]) == (c[0]-a[0])*(b[1]-a[1]) &&
-	// 	math.Abs(cmp(a[0], c[0])+cmp(b[0], c[0])) <= 1 &&
-	// 	math.Abs(cmp(a[1], c[1])+cmp(b[1], c[1])) <= 1 {
-	// 	return true
-	// }
+// Check if point is on line
+func pointOnLine(pt, lst, lnd vec2.T) bool {
+	threshold := 1.0
+
+	if lst[0] != lnd[0] {
+		if lst[0] < lnd[0] {
+			return math.Abs(pt[1]-lst[1]) < threshold && lst[0] < pt[0] && pt[0] < lnd[0]
+		}
+		return math.Abs(pt[1]-lst[1]) < threshold && lnd[0] < pt[0] && pt[0] < lst[0]
+	}
+	if lst[1] != lnd[1] {
+		if lst[1] < lnd[1] {
+			return math.Abs(pt[0]-lst[0]) < threshold && lst[1] < pt[1] && pt[1] < lnd[1]
+		}
+		return math.Abs(pt[0]-lst[0]) < threshold && lnd[1] < pt[1] && pt[1] < lst[1]
+	}
+	// bike probably just turned, since lst == lnd
 	return false
 }
 
