@@ -4,6 +4,7 @@
 * Implement some sort of client versioning &/ cache defeat
 * Clean up long-dead bikes and trails to reduce load on network and rendering
 * Implement client-side prediction between network updates
+* Add touch/mobile-friendly controls
 
 # License
 Webtron - A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!
