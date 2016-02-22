@@ -127,6 +127,9 @@ function processNetwork(data) {
 		}
 		break;
 
+	case "DISPMSG":
+		document.getElementById("socketmessages").textContent = data.replace("DISPMSG:","") + "\n"
+
 	default:
 		console.log("unknown command:" + components[0])
 		break;

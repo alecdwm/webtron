@@ -65,6 +65,7 @@ func (p *Player) ReadLoop(gs *GameServer) {
 			}
 
 			p.Bike = gs.Sim.SpawnGridBike(components[1], components[2])
+			p.Socket.Write(msgdefs.SDispMsgMsg + ":")
 
 		case msgdefs.CTurnMsg:
 			if !neededComponents(components, 1) {
@@ -179,6 +180,7 @@ func (gs *GameServer) ConnectPlayer(s *glue.Socket) {
 		})
 		gs.NumConnectedPlayers++
 		gs.ConnectedPlayers[slot].Socket.Write(msgdefs.SConnMsg)
+		gs.ConnectedPlayers[slot].Socket.Write(msgdefs.SDispMsgMsg + ":Press [SPACEBAR] To Spawn!")
 		go gs.ConnectedPlayers[slot].ReadLoop(gs)
 
 	} else {
