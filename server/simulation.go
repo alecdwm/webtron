@@ -139,7 +139,8 @@ func (sm *SimManager) Simulate(deltaTime float64) {
 		if i != 0 {
 			newState += `,`
 		}
-		newState += fmt.Sprintf(`{"NAME":"%s","COLOUR":"%s","X":%f,"Y":%f,"ROT":%f}`,
+		newState += fmt.Sprintf(`{"STATE":"%s","NAME":"%s","COLOUR":"%s","X":%f,"Y":%f,"ROT":%f}`,
+			sm.GridBikes[i].state,
 			sm.GridBikes[i].name,
 			sm.GridBikes[i].colour,
 			sm.GridBikes[i].pos[0],
@@ -152,7 +153,8 @@ func (sm *SimManager) Simulate(deltaTime float64) {
 		if i != 0 {
 			newState += `,`
 		}
-		newState += fmt.Sprintf(`{"COLOUR":"%s","STARTX":%f,"STARTY":%f,"VERTS":[`,
+		newState += fmt.Sprintf(`{"STATE":"%s","COLOUR":"%s","STARTX":%f,"STARTY":%f,"VERTS":[`,
+			sm.GridTrails[i].state,
 			sm.GridTrails[i].colour,
 			sm.GridTrails[i].origin[0],
 			sm.GridTrails[i].origin[1],
@@ -208,7 +210,7 @@ func (gb *GridBike) Kill() {
 	gb.state = "dead"
 	gb.simulator.ActiveBikes--
 	go func() {
-		time.Sleep(3)
+		time.Sleep(3 * time.Second)
 		gb.trail.state = "inactive"
 	}()
 }
@@ -233,7 +235,7 @@ func (gt *GridTrail) OnTrail(pos vec2.T) bool {
 			continue
 		}
 
-		if pointOnLine(pos, verts[i-1], verts[i]) {
+		if gt.pointOnLine(pos, verts[i-1], verts[i]) {
 			return true
 		}
 	}
@@ -241,7 +243,7 @@ func (gt *GridTrail) OnTrail(pos vec2.T) bool {
 }
 
 // Check if point is on line
-func pointOnLine(pt, lst, lnd vec2.T) bool {
+func (gt *GridTrail) pointOnLine(pt, lst, lnd vec2.T) bool {
 	threshold := 1.0
 
 	if lst[0] != lnd[0] {
@@ -258,18 +260,6 @@ func pointOnLine(pt, lst, lnd vec2.T) bool {
 	}
 	// bike probably just turned, since lst == lnd
 	return false
-}
-
-// stolen from python
-// returns -1 if a < b, 0 if a == b, 1 if a > b
-func cmp(a, b float64) float64 {
-	if a < b {
-		return -1
-	}
-	if a == b {
-		return 0
-	}
-	return 1
 }
 
 func (sm *SimManager) calcNewSpawnpoint() (vec2.T, float64) {

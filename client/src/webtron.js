@@ -102,6 +102,9 @@ function processNetwork(data) {
 				names[i] = webtron.add.text(newState.BIKES[i].X, newState.BIKES[i].Y-20, newState.BIKES[i].NAME, textStyle)
 				names[i].anchor = new Phaser.Point(0.5, 0.5)
 			} else {
+				if (newState.BIKES[i].STATE == "dead") {
+					bikes[i].alpha = 0.2
+				}
 				bikes[i].x = newState.BIKES[i].X
 				bikes[i].y = newState.BIKES[i].Y
 				bikes[i].rotation = newState.BIKES[i].ROT
@@ -114,7 +117,11 @@ function processNetwork(data) {
 				trails[i] = webtron.add.graphics()
 			}
 			trails[i].clear()
-			trails[i].lineStyle(2, colorToHex[newState.TRAILS[i].COLOUR])
+			if (newState.TRAILS[i].STATE == "inactive") {
+				trails[i].lineStyle(1, colorToHex[newState.TRAILS[i].COLOUR], 0.2)
+			} else {
+				trails[i].lineStyle(2, colorToHex[newState.TRAILS[i].COLOUR])
+			}
 			trails[i].moveTo(newState.TRAILS[i].STARTX, newState.TRAILS[i].STARTY)
 			for (var v=0; v<newState.TRAILS[i].VERTS.length; v++) {
 				trails[i].lineTo(
@@ -129,6 +136,7 @@ function processNetwork(data) {
 
 	case "DISPMSG":
 		document.getElementById("socketmessages").textContent = data.replace("DISPMSG:","") + "\n"
+		break;
 
 	default:
 		console.log("unknown command:" + components[0])
