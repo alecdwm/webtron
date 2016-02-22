@@ -87,8 +87,8 @@ function processNetwork(data) {
 		$("#mainmenu").show()
 		break;
 
-	case "NEWSTATE":
-		var json = data.replace("NEWSTATE:","")
+	case "NEW_STATE":
+		var json = data.replace("NEW_STATE:","")
 		if (json == "") {
 			break;
 		}
@@ -104,6 +104,7 @@ function processNetwork(data) {
 			} else {
 				if (newState.BIKES[i].STATE == "dead") {
 					bikes[i].alpha = 0.2
+					names[i].alpha = 0.2
 				}
 				bikes[i].x = newState.BIKES[i].X
 				bikes[i].y = newState.BIKES[i].Y
@@ -134,8 +135,8 @@ function processNetwork(data) {
 		}
 		break;
 
-	case "DISPMSG":
-		document.getElementById("socketmessages").textContent = data.replace("DISPMSG:","") + "\n"
+	case "DISPLAY_MESSAGE":
+		document.getElementById("socketmessages").textContent = data.replace("DISPLAY_MESSAGE:","") + "\n"
 		break;
 
 	default:
@@ -199,7 +200,7 @@ function create() {
 function update() {
 	accumulator += webtron.time.physicsElapsed
 	if (accumulator > 1/10) {
-		socket.send("REQUESTSTATE")
+		socket.send("REQUEST_STATE")
 		accumulator -= 1/10
 	}
 }

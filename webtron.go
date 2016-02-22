@@ -36,7 +36,7 @@ func main() {
 	// Configure GameClient distributor
 	http.Handle("/", http.FileServer(http.Dir(osextDir+"/client")))
 
-	// Configure webtron GameServer
+	// Configure webtron server
 	webtronServer := server.New(debug, maxPlayers)
 	defer webtronServer.Shutdown()
 
