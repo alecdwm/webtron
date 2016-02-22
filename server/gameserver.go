@@ -60,6 +60,7 @@ func (p *Player) ReadLoop(gs *GameServer) {
 			}
 
 			if p.Bike != nil && p.Bike.state != "dead" {
+				log15.Debug("Player attempted to spawn with existing bike", "bike", p.Bike)
 				break
 			}
 
@@ -69,7 +70,8 @@ func (p *Player) ReadLoop(gs *GameServer) {
 			if !neededComponents(components, 1) {
 				break
 			}
-			if p.Bike == nil {
+			if p.Bike == nil || p.Bike.state != "move" {
+				log15.Debug("Player attemped to turn without existing bike", "bike", p.Bike)
 				break
 			}
 			dir := components[1]

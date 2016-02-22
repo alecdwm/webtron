@@ -110,7 +110,20 @@ function processNetwork(data) {
 			}
 		}
 		for (var i=0; i<newState.TRAILS.length; i++) {
-			// webtron.add.image(newState.TRAILS[i].ENDX, newState.TRAILS[i].ENDY, "trail-dev")
+			if (trails[i] == null || trails[i] == undefined) {
+				trails[i] = webtron.add.graphics()
+			}
+			trails[i].clear()
+			trails[i].lineStyle(2, colorToHex[newState.TRAILS[i].COLOUR])
+			trails[i].moveTo(newState.TRAILS[i].STARTX, newState.TRAILS[i].STARTY)
+			for (var v=0; v<newState.TRAILS[i].VERTS.length; v++) {
+				trails[i].lineTo(
+					newState.TRAILS[i].VERTS[v].X,
+					newState.TRAILS[i].VERTS[v].Y)
+			}
+			trails[i].lineTo(
+				newState.TRAILS[i].ENDX,
+				newState.TRAILS[i].ENDY)
 		}
 		break;
 

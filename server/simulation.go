@@ -29,6 +29,8 @@ func (sm *SimManager) SpawnGridBike(name string, colour string) *GridBike {
 	log15.Debug("Spawning bike", "at", pos, "rot", rot, "speed", speed, "name", name, "colour", colour)
 
 	newGridTrail := &GridTrail{
+		state:  "active",
+		colour: colour,
 		origin: pos,
 	}
 
@@ -150,7 +152,8 @@ func (sm *SimManager) Simulate(deltaTime float64) {
 		if i != 0 {
 			newState += `,`
 		}
-		newState += fmt.Sprintf(`{"STARTX":%f,"STARTY":%f,"VERTS":[`,
+		newState += fmt.Sprintf(`{"COLOUR":"%s","STARTX":%f,"STARTY":%f,"VERTS":[`,
+			sm.GridTrails[i].colour,
 			sm.GridTrails[i].origin[0],
 			sm.GridTrails[i].origin[1],
 		)
@@ -208,6 +211,8 @@ func (gb *GridBike) Kill() {
 // GridTrail is an impassible wall of grid... stuff
 type GridTrail struct {
 	state  string // active, inactive
+	colour string
+
 	origin vec2.T
 	verts  []vec2.T
 	end    vec2.T
