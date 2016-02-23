@@ -1,7 +1,6 @@
 ![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo.png)
 
 # Todo
-* Implement some sort of client versioning &/ cache defeat
 * Clean up long-dead bikes and trails to reduce load on network and rendering
 * Implement client-side prediction between network updates
 * Add touch/mobile-friendly controls
