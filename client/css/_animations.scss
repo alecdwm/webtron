@@ -1,0 +1,27 @@
+html {
+	animation: fadein 1s ease;
+}
+
+@keyframes fadein {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+canvas {
+	animation: canvasgrow 0.3s ease;
+}
+
+@keyframes canvasgrow {
+	from {
+		height: 0px;
+		width: 0px;
+	}
+	to {
+		height: 560px;
+		width: 560px;
+	}
+}

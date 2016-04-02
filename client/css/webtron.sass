@@ -1,0 +1,86 @@
+@import normalize
+@import formalize
+@import animations
+
+// Fonts
+@import url(https://fonts.googleapis.com/css?family=Inconsolata:400,700)
+@font-face
+	font-family: Tr2n
+	src: url(../font/Tr2n.ttf) // from http://www.dafont.com/tr2n.font
+
+// Colours
+$lt:     #ffffff
+$dk:     #111111
+$dkaqua: #111b1a
+$blue:   #00c2cc
+$orange: #f2d91a
+
+#blue
+	color: $blue
+
+#orange
+	color: $orange
+
+// Form
+.formbox
+	display: block
+	margin: auto
+	width: 300px
+	label
+		color: $orange
+		float: left
+	input, select
+		float: right
+		width: 140px
+
+// Form Elements
+.formbox
+	input[type="text"]
+		border: 1px solid $blue
+		border-radius: 4px
+		background: $dkaqua
+		color: $orange
+	input[type="text"]:hover
+		background: $dk
+	select
+		border: 1px solid $blue
+		border-radius: 4px
+		background: $dkaqua
+		color: $orange
+		&:hover
+			background: $dk
+	button
+		border: 1px solid $blue
+		border-radius: 4px
+		background: $dkaqua
+		color: $orange
+		text-shadow: none
+		&:hover
+			background: $dk
+
+// Page Elements
+html, body
+	margin: 0
+	padding: 0
+	border: 0
+	font-family: "Inconsolata","Lucida Console",Monaco,monospace
+	color: $blue
+	background-color: $dkaqua
+	text-align: center
+
+h1
+	font-size: 80px
+	font-family: Tr2n,sans-serif
+	margin-bottom: .2em
+	color: $lt
+
+canvas
+	border: 3px solid $blue
+	border-radius: 15px
+	width: 560px
+	height: 560px
+	margin: auto
+
+#socketmessages
+	white-space: pre-line
+
