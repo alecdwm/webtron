@@ -18,11 +18,13 @@ func main() {
 	// Command line variables
 	var debug bool
 	var daemon bool
+	var bindAddress string
 	var listenPort string
 	var maxPlayers int
 
 	flag.BoolVar(&debug, "debug", false, "run server in debug mode")
 	flag.BoolVar(&daemon, "daemon", false, "run server in daemon mode (no console prompt)")
+	flag.StringVar(&bindAddress, "bindAddress", "0.0.0.0", "address to bind to")
 	flag.StringVar(&listenPort, "listenPort", "8080", "port to serve client on")
 	flag.IntVar(&maxPlayers, "maxPlayers", 4, "max number of players on server simultaneously")
 	flag.Parse()
@@ -51,11 +53,11 @@ func main() {
 	http.HandleFunc("/ws", glueServer.ServeHTTP)
 
 	if daemon {
-		listenAndServe(listenPort)
+		listenAndServe(bindAddress, listenPort)
 
 	} else {
 		// Listen for gameclient/websocket requests on http(s)
-		go listenAndServe(listenPort)
+		go listenAndServe(bindAddress, listenPort)
 
 		// Command line input
 		reader := bufio.NewReader(os.Stdin)
@@ -83,8 +85,8 @@ func main() {
 }
 
 // Listen for gameclient/websocket requests on http(s)
-func listenAndServe(listenPort string) {
-	err := http.ListenAndServe(":"+listenPort, nil)
+func listenAndServe(bindAddress, listenPort string) {
+	err := http.ListenAndServe(bindAddress+":"+listenPort, nil)
 	if err != nil {
 		log15.Error("serving http(s) requests", "error", err)
 	}
