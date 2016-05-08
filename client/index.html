@@ -12,43 +12,21 @@
 		<link rel="shortcut icon" type="image/png" href="img/gridbike-blue.png">
 	</head>
 	<body>
-		<h1>{ <span id="orange">WEB</span><span id="blue">TRON</span> }</h1>
-
-		<form id="mainmenu" class="form-horizontal">
-			<h2>Prepare to enter The Grid</h2>
-
-			<div class="formbox">
-				<label for="name">Name</label>
-				<input id="name" name="name" type="text" placeholder="CLU" autofocus>
-
-				<br />
-				<br />
-
-				<label for="colour">Colour</label>
-				<select id="colour" name="colour" class="form-control">
-					<option value="orange">Orange</option>
-					<option value="blue">Blue</option>
-					<option value="green">Green</option>
-					<option value="purple">Purple</option>
-					<option value="red">Red</option>
-					<option value="white">White</option>
-				</select>
-
-				<br />
-				<br />
-
-				<button id="submit" name="submit" class="btn btn-primary">Enter The Grid</button>
-			</div>
-		</form>
-		<div id="webtron"></div>
-		<div id="socketmessages"></div>
-
-		<!-- JS Libraries -->
-		<script src="lib/jquery.min.js"></script>
-		<script src="lib/phaser.min.js"></script>
-		<script src="lib/glue.min.js"></script>
+		<header>
+			<img src="img/webtron.svg" alt="webtron" />
+		</header>
+		<content>
+			<div id="webtron"></div>
+			<pre id="socketmessages"></pre>
+		</content>
+		<footer>
+			<!-- <p>© owls.io 2016</p> -->
+			<a href="https://owls.io">owls.io</a>
+		</footer>
 
 		<!-- JS -->
-		<script src="src/webtron.js?v1"></script>
+		<script src="src/lib/phaser.min.js"></script>
+		<script src="src/lib/glue.min.js"></script>
+		<script data-main="bin/boot" src="bin/require.min.js"></script>
 	</body>
 </html>

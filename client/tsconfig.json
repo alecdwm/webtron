@@ -1,0 +1,12 @@
+{
+	"compilerOptions": {
+		"module": "amd",
+		"target": "es5",
+		"removeComments": true,
+		"sourceMap": true,
+		"outFile": "bin/webtron.js"
+	},
+	"files": [
+		"src/webtron.ts"
+	]
+}

@@ -2,6 +2,29 @@ html {
 	animation: fadein 1s ease;
 }
 
+a {
+	transition: color 0.5s ease;
+}
+
+canvas {
+	animation: hidden 0.1s ease,
+	           canvasgrow 0.3s ease 0.1s;
+}
+
+footer {
+	animation: hidden 2s ease,
+	           fadein 1s ease 2s;
+}
+
+@keyframes hidden {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
 @keyframes fadein {
 	from {
 		opacity: 0;
@@ -11,17 +34,15 @@ html {
 	}
 }
 
-canvas {
-	animation: canvasgrow 0.3s ease;
-}
-
 @keyframes canvasgrow {
 	from {
 		height: 0px;
+		margin-top: 280px;
 		width: 0px;
 	}
 	to {
 		height: 560px;
+		margin-top: 0px;
 		width: 560px;
 	}
 }
