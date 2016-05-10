@@ -5,173 +5,224 @@ var __extends = (this && this.__extends) || function (d, b) {
 };
 define("webtron", ["require", "exports", 'jquery'], function (require, exports, $) {
     "use strict";
-    var Webtron = (function (_super) {
-        __extends(Webtron, _super);
-        function Webtron() {
-            var width = 560, height = 560, renderer = Phaser.WEBGL, parent = "webtron", state = null, transparent = true, antialias = true;
-            _super.call(this, width, height, renderer, parent, state, transparent, antialias);
-            this.state.add("menu", Menu, false);
-            this.state.add("game", Game, false);
-            this.state.start("menu");
-        }
-        return Webtron;
-    }(Phaser.Game));
-    exports.Webtron = Webtron;
-    var Menu = (function (_super) {
-        __extends(Menu, _super);
-        function Menu() {
-            _super.apply(this, arguments);
-        }
-        Menu.prototype.preload = function () {
-            this.colors = [
-                "orange",
-                "blue",
-                "green",
-                "purple",
-                "red",
-                "white"
-            ];
-            this.colorsToHex = {
-                'blue': "#00c2cc",
-                'green': "#2ee5c7",
-                'orange': "#f2d91a",
-                'purple': "#8a2ee5",
-                'red': "#e5482e",
-                'white': "#e5feff",
+    var Webtron;
+    (function (Webtron) {
+        var playerName = "", playerColor = "orange", socket, uiFont = '"Courier New", Courier, monospace', colors = [
+            "orange",
+            "blue",
+            "green",
+            "purple",
+            "red",
+            "white"
+        ], colorsToHexString = {
+            'blue': "#00c2cc",
+            'green': "#2ee5c7",
+            'orange': "#f2d91a",
+            'purple': "#8a2ee5",
+            'red': "#e5482e",
+            'white': "#e5feff",
+        }, colorsToHex = {
+            'blue': 0x00c2cc,
+            'green': 0x2ee5c7,
+            'orange': 0xf2d91a,
+            'purple': 0x8a2ee5,
+            'red': 0xe5482e,
+            'white': 0xe5feff,
+        };
+        var Game = (function (_super) {
+            __extends(Game, _super);
+            function Game() {
+                var width = 560, height = 560, renderer = Phaser.WEBGL, parent = "webtron", state = null, transparent = true, antialias = true;
+                _super.call(this, width, height, renderer, parent, state, transparent, antialias);
+                this.state.add("mainmenu", MainMenu, false);
+                this.state.add("connect", Connect, false);
+                this.state.add("gamemenu", GameMenu, false);
+                this.state.add("ingame", InGame, false);
+                this.state.start("mainmenu");
+            }
+            return Game;
+        }(Phaser.Game));
+        Webtron.Game = Game;
+        var MainMenu = (function (_super) {
+            __extends(MainMenu, _super);
+            function MainMenu() {
+                _super.apply(this, arguments);
+            }
+            MainMenu.prototype.preload = function () {
+                this.game.load.image("button_name", "img/button_name.png");
+                this.game.load.image("button_color", "img/button_color.png");
+                this.game.load.image("button_join", "img/button_join.png");
+                this.game.load.audiosprite("scifi5", ["sfx/scifi5.mp3"]);
+                this.game.load.audiosprite("keyboard_key", ["sfx/keyboard_key.mp3"]);
             };
-            this.game.load.image("button_name", "img/button_name.png");
-            this.game.load.image("button_color", "img/button_color.png");
-            this.game.load.image("button_join", "img/button_join.png");
-            this.game.load.audiosprite("scifi5", ["sfx/scifi5.mp3"]);
-            this.game.load.audiosprite("keyboard_key", ["sfx/keyboard_key.mp3"]);
-        };
-        Menu.prototype.create = function () {
-            this.name = "";
-            this.nameMaxLength = 10;
-            this.color = this.colors[0];
-            this.game.input.keyboard.callbackContext = this;
-            this.game.input.keyboard.onPressCallback = this.keyPress;
-            this.game.input.keyboard.onDownCallback = this.keyDown;
-            this.nameButton = this.game.add.button(0, 0, "button_name");
-            this.colorSelectPrevButton = this.game.add.button(0, 200, "button_color", this.colorSelectPrev, this);
-            this.colorSelectNextButton = this.game.add.button(280, 200, "button_color", this.colorSelectNext, this);
-            this.joinGameButton = this.game.add.button(0, 460, "button_join", this.joinGame, this);
-            this.nameField = this.game.add.text(this.game.width / 2, 100, "_TYPE_NAME_", null);
-            this.nameField.anchor.set(0.5, 0.5);
-            this.colorPrevText = this.game.add.text(140, 330, "←", null);
-            this.colorPrevText.anchor.set(0.5, 0.5);
-            this.colorNextText = this.game.add.text(this.game.width - 140, 330, "→", null);
-            this.colorNextText.anchor.set(0.5, 0.5);
-            this.joinGameText = this.game.add.text(this.game.width / 2, 510, "ENTER THE GRID", null);
-            this.joinGameText.anchor.set(0.5, 0.5);
-            this.nameTypeSound = this.game.add.audio("keyboard_key");
-            this.nameTypeSound.allowMultiple = true;
-            this.colorSelectSound = this.game.add.audio("scifi5");
-            this.colorSelectSound.allowMultiple = true;
-            this.updateMenuTextColors();
-        };
-        Menu.prototype.keyPress = function (char) {
-            switch (char) {
-                case " ":
-                    this.name += "_";
-                    break;
-                default:
-                    this.name += char;
-                    break;
+            MainMenu.prototype.create = function () {
+                this.name = "";
+                this.nameMaxLength = 10;
+                this.color = colors[0];
+                this.game.input.keyboard.callbackContext = this;
+                this.game.input.keyboard.onPressCallback = this.keyPress;
+                this.game.input.keyboard.onDownCallback = this.keyDown;
+                this.nameButton = this.game.add.button(0, 0, "button_name");
+                this.colorSelectPrevButton = this.game.add.button(0, 200, "button_color", this.colorSelectPrev, this);
+                this.colorSelectNextButton = this.game.add.button(280, 200, "button_color", this.colorSelectNext, this);
+                this.enterGameButton = this.game.add.button(0, 460, "button_join", this.enterGame, this);
+                this.nameField = this.game.add.text(this.game.width / 2, 100, "_TYPE_NAME_", null);
+                this.nameField.anchor.set(0.5, 0.5);
+                this.colorSelectText = this.game.add.text(this.game.width / 2, 306, "SELECT_COLOUR", null);
+                this.colorSelectText.anchor.set(0.5, 0.5);
+                this.colorPrevText = this.game.add.text(100, 300, "←", null);
+                this.colorPrevText.anchor.set(0.5, 0.5);
+                this.colorNextText = this.game.add.text(this.game.width - 100, 300, "→", null);
+                this.colorNextText.anchor.set(0.5, 0.5);
+                this.enterGameText = this.game.add.text(this.game.width / 2, 510, "ENTER_THE_GRID", null);
+                this.enterGameText.anchor.set(0.5, 0.5);
+                this.nameTypeSound = this.game.add.audio("keyboard_key");
+                this.nameTypeSound.allowMultiple = true;
+                this.colorSelectSound = this.game.add.audio("scifi5");
+                this.colorSelectSound.allowMultiple = true;
+                this.updateMenuTextColors();
+            };
+            MainMenu.prototype.keyPress = function (char) {
+                switch (char) {
+                    case " ":
+                        this.name += "_";
+                        break;
+                    default:
+                        this.name += char;
+                        break;
+                }
+                if (this.name.length <= this.nameMaxLength) {
+                    this.nameTypeSound.play();
+                }
+                this.name = this.name.substring(0, this.nameMaxLength);
+                this.nameField.setText(this.name);
+            };
+            MainMenu.prototype.keyDown = function (event) {
+                switch (event.code) {
+                    case "Backspace":
+                        event.preventDefault();
+                        if (this.name.length > 0) {
+                            this.nameTypeSound.play();
+                        }
+                        this.name = (this.name.length > 0) ? this.name.substring(0, this.name.length - 1) : "";
+                        this.nameField.setText(this.name);
+                        break;
+                    case "ArrowLeft":
+                        this.colorSelectPrev();
+                        break;
+                    case "ArrowRight":
+                        this.colorSelectNext();
+                        break;
+                    case "Enter":
+                    case "Return":
+                        this.enterGame();
+                        break;
+                }
+            };
+            MainMenu.prototype.colorSelectPrev = function () {
+                this.colorSelectSound.play();
+                this.color = colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1];
+                this.updateMenuTextColors();
+            };
+            MainMenu.prototype.colorSelectNext = function () {
+                this.colorSelectSound.play();
+                this.color = colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0];
+                this.updateMenuTextColors();
+            };
+            MainMenu.prototype.updateMenuTextColors = function () {
+                $('#webtron canvas').css('border', '3px solid ' + colorsToHexString[this.color]);
+                this.nameField.setStyle({
+                    "font": "30px " + uiFont,
+                    "fill": colorsToHexString[this.color]
+                });
+                this.colorSelectText.setStyle({
+                    "font": "30px " + uiFont,
+                    "fill": colorsToHexString[this.color]
+                });
+                this.colorPrevText.setStyle({
+                    "font": "50px " + uiFont,
+                    "fill": colorsToHexString[colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1]]
+                });
+                this.colorNextText.setStyle({
+                    "font": "50px " + uiFont,
+                    "fill": colorsToHexString[colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0]]
+                });
+                this.enterGameText.setStyle({
+                    "font": "30px " + uiFont,
+                    "fill": colorsToHexString[this.color]
+                });
+            };
+            MainMenu.prototype.enterGame = function () {
+                this.name = (this.name == "") ? "CLU" : this.name;
+                playerName = this.name;
+                playerColor = this.color;
+                this.game.state.start("connect");
+            };
+            MainMenu.prototype.shutdown = function () {
+                this.game.input.keyboard.callbackContext = null;
+                this.game.input.keyboard.onPressCallback = null;
+                this.game.input.keyboard.onDownCallback = null;
+            };
+            return MainMenu;
+        }(Phaser.State));
+        Webtron.MainMenu = MainMenu;
+        var Connect = (function (_super) {
+            __extends(Connect, _super);
+            function Connect() {
+                _super.apply(this, arguments);
             }
-            if (this.name.length <= this.nameMaxLength) {
-                this.nameTypeSound.play();
+            Connect.prototype.create = function () {
+                this.connectingText = this.game.add.text(this.game.width / 2, this.game.height / 2, "CONNECTING", null);
+                this.connectingText.anchor.set(0.5, 0.5);
+                this.connectingText.setStyle({
+                    "font": "30px " + uiFont,
+                    "fill": colorsToHexString[playerColor]
+                });
+                var protocol = (window.location.protocol == "https:") ? "wss:" : "ws:", hostname = window.location.hostname, port = window.location.port, path = "/ws", address = protocol + "//" + hostname + ":" + port + path;
+                var state = this;
+                socket = new WebSocket(address);
+                socket.onerror = function (event) {
+                    state.game.state.start("mainmenu");
+                };
+                socket.onclose = function (event) {
+                    state.game.state.start("mainmenu");
+                };
+                socket.onopen = function (event) {
+                    state.game.state.start("gamemenu");
+                };
+            };
+            return Connect;
+        }(Phaser.State));
+        Webtron.Connect = Connect;
+        var GameMenu = (function (_super) {
+            __extends(GameMenu, _super);
+            function GameMenu() {
+                _super.apply(this, arguments);
             }
-            this.name = this.name.substring(0, this.nameMaxLength);
-            this.nameField.setText(this.name);
-        };
-        Menu.prototype.keyDown = function (event) {
-            switch (event.code) {
-                case "Backspace":
-                    event.preventDefault();
-                    if (this.name.length > 0) {
-                        this.nameTypeSound.play();
-                    }
-                    this.name = (this.name.length > 0) ? this.name.substring(0, this.name.length - 1) : "";
-                    this.nameField.setText(this.name);
-                    break;
-                case "ArrowLeft":
-                    this.colorSelectPrev();
-                    break;
-                case "ArrowRight":
-                    this.colorSelectNext();
-                    break;
-                case "Enter":
-                case "Return":
-                    this.joinGame();
-                    break;
+            GameMenu.prototype.create = function () {
+            };
+            return GameMenu;
+        }(Phaser.State));
+        Webtron.GameMenu = GameMenu;
+        var InGame = (function (_super) {
+            __extends(InGame, _super);
+            function InGame() {
+                _super.apply(this, arguments);
             }
-        };
-        Menu.prototype.colorSelectPrev = function () {
-            this.colorSelectSound.play();
-            this.color = this.colors[(this.colors.indexOf(this.color) - 1 >= 0) ? this.colors.indexOf(this.color) - 1 : this.colors.length - 1];
-            this.updateMenuTextColors();
-        };
-        Menu.prototype.colorSelectNext = function () {
-            this.colorSelectSound.play();
-            this.color = this.colors[(this.colors.indexOf(this.color) + 1 < this.colors.length) ? this.colors.indexOf(this.color) + 1 : 0];
-            this.updateMenuTextColors();
-        };
-        Menu.prototype.updateMenuTextColors = function () {
-            $('#webtron canvas').css('border', '3px solid ' + this.colorsToHex[this.color]);
-            this.nameField.setStyle({
-                "font": "30px \"Courier New\", Courier, monospace",
-                "fill": this.colorsToHex[this.color]
-            });
-            this.colorPrevText.setStyle({
-                "font": "50px \"Courier New\", Courier, monospace",
-                "fill": this.colorsToHex[this.colors[(this.colors.indexOf(this.color) - 1 >= 0) ? this.colors.indexOf(this.color) - 1 : this.colors.length - 1]]
-            });
-            this.colorNextText.setStyle({
-                "font": "50px \"Courier New\", Courier, monospace",
-                "fill": this.colorsToHex[this.colors[(this.colors.indexOf(this.color) + 1 < this.colors.length) ? this.colors.indexOf(this.color) + 1 : 0]]
-            });
-            this.joinGameText.setStyle({
-                "font": "30px \"Courier New\", Courier, monospace",
-                "fill": this.colorsToHex[this.color]
-            });
-        };
-        Menu.prototype.joinGame = function () {
-            if (this.name == "") {
-                this.name = "CLU";
-            }
-            this.game.state.clearCurrentState();
-            this.game.state.start("game");
-        };
-        Menu.prototype.shutdown = function () {
-            this.game.input.keyboard.callbackContext = null;
-            this.game.input.keyboard.onPressCallback = null;
-            this.game.input.keyboard.onDownCallback = null;
-        };
-        return Menu;
-    }(Phaser.State));
-    exports.Menu = Menu;
-    var Game = (function (_super) {
-        __extends(Game, _super);
-        function Game() {
-            _super.apply(this, arguments);
-        }
-        Game.prototype.preload = function () {
-            this.game.load.image("background", "img/gridBG.png");
-            this.game.load.image("gridbike-blue", "img/gridbike-blue.png");
-            this.game.load.image("gridbike-green", "img/gridbike-green.png");
-            this.game.load.image("gridbike-orange", "img/gridbike-orange.png");
-            this.game.load.image("gridbike-purple", "img/gridbike-purple.png");
-            this.game.load.image("gridbike-red", "img/gridbike-red.png");
-            this.game.load.image("gridbike-white", "img/gridbike-white.png");
-        };
-        Game.prototype.create = function () {
-            this.game.add.image(0, 0, "background");
-        };
-        Game.prototype.shutdown = function () {
-        };
-        return Game;
-    }(Phaser.State));
-    exports.Game = Game;
+            InGame.prototype.preload = function () {
+                this.game.load.image("background", "img/gridBG.png");
+                this.game.load.image("gridbike-blue", "img/gridbike-blue.png");
+                this.game.load.image("gridbike-green", "img/gridbike-green.png");
+                this.game.load.image("gridbike-orange", "img/gridbike-orange.png");
+                this.game.load.image("gridbike-purple", "img/gridbike-purple.png");
+                this.game.load.image("gridbike-red", "img/gridbike-red.png");
+                this.game.load.image("gridbike-white", "img/gridbike-white.png");
+            };
+            InGame.prototype.shutdown = function () {
+            };
+            return InGame;
+        }(Phaser.State));
+        Webtron.InGame = InGame;
+    })(Webtron = exports.Webtron || (exports.Webtron = {}));
 });
 //# sourceMappingURL=webtron.js.map

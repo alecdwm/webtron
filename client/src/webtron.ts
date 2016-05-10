@@ -5,234 +5,469 @@
 // import Phaser = require('phaser')
 import $ = require('jquery')
 
-export class Webtron extends Phaser.Game
+export module Webtron
 {
-	constructor() {
-		var width: number = 560,
-			height: number = 560,
-			renderer: number = Phaser.WEBGL,
-			parent: string = "webtron",
-			state: string = null,
-			transparent: boolean = true,
-			antialias: boolean = true
-
-		super(width, height, renderer, parent, state, transparent, antialias)
-
-		this.state.add("menu", Menu, false)
-		this.state.add("game", Game, false)
-		this.state.start("menu")
-	}
-}
-
-export class Menu extends Phaser.State
-{
-	name: string
-	nameMaxLength: number
-	nameField: Phaser.Text
-	nameButton: Phaser.Button
-	nameTypeSound: Phaser.Sound
-
-	colors: string[]
-	colorsToHex: {}
-	color: string
-	colorText: Phaser.Text
-
-	colorPrevText: Phaser.Text
-	colorNextText: Phaser.Text
-	colorSelectPrevButton: Phaser.Button
-	colorSelectNextButton: Phaser.Button
-	colorSelectSound: Phaser.Sound
-
-	joinGameButton: Phaser.Button
-	joinGameText: Phaser.Text
-
-	preload() {
-		this.colors = [
+	var playerName: string = "",
+		playerColor: string = "orange",
+		socket: WebSocket,
+		uiFont: string = '"Courier New", Courier, monospace',
+		colors: string[] = [
 			"orange",
 			"blue",
 			"green",
 			"purple",
 			"red",
 			"white"
-		]
-		this.colorsToHex = {
+		],
+		colorsToHexString: {} = {
 			'blue':   "#00c2cc",
 			'green':  "#2ee5c7",
 			'orange': "#f2d91a",
 			'purple': "#8a2ee5",
 			'red':    "#e5482e",
 			'white':  "#e5feff",
-		};
-
-		this.game.load.image("button_name", "img/button_name.png")
-		this.game.load.image("button_color", "img/button_color.png")
-		this.game.load.image("button_join", "img/button_join.png")
-
-		this.game.load.audiosprite("scifi5", ["sfx/scifi5.mp3"])
-		this.game.load.audiosprite("keyboard_key", ["sfx/keyboard_key.mp3"])
-	}
-
-	create() {
-		// default player settings
-		this.name = ""
-		this.nameMaxLength = 10
-		this.color = this.colors[0]
-
-		// setup input callbacks for the menu
-		this.game.input.keyboard.callbackContext = this
-		this.game.input.keyboard.onPressCallback = this.keyPress
-		this.game.input.keyboard.onDownCallback = this.keyDown
-
-		// create the buttons
-		this.nameButton = this.game.add.button(0, 0, "button_name")
-		this.colorSelectPrevButton = this.game.add.button(0, 200, "button_color", this.colorSelectPrev, this)
-		this.colorSelectNextButton = this.game.add.button(280, 200, "button_color", this.colorSelectNext, this)
-		this.joinGameButton = this.game.add.button(0, 460, "button_join", this.joinGame, this)
-
-		// create the text field(s)
-		this.nameField = this.game.add.text(
-			this.game.width / 2,
-			100,
-			"_TYPE_NAME_",
-			null)
-		this.nameField.anchor.set(0.5, 0.5)
-		this.colorPrevText = this.game.add.text(
-			140,
-			330,
-			"←",
-			null)
-		this.colorPrevText.anchor.set(0.5, 0.5)
-		this.colorNextText = this.game.add.text(
-			this.game.width - 140,
-			330,
-			"→",
-			null)
-		this.colorNextText.anchor.set(0.5, 0.5)
-		this.joinGameText = this.game.add.text(
-			this.game.width / 2,
-			510,
-			"ENTER THE GRID",
-			null)
-		this.joinGameText.anchor.set(0.5, 0.5)
-
-		// setup audio
-		this.nameTypeSound = this.game.add.audio("keyboard_key")
-		this.nameTypeSound.allowMultiple = true
-		this.colorSelectSound = this.game.add.audio("scifi5")
-		this.colorSelectSound.allowMultiple = true
-
-		// set their colors based on the player's color
-		this.updateMenuTextColors()
-	}
-
-	keyPress(char) {
-		switch (char) {
-			case " ":
-				this.name += "_"
-				break;
-
-			default:
-				this.name += char
-				break;
+		},
+		colorsToHex: {} = {
+			'blue':   0x00c2cc,
+			'green':  0x2ee5c7,
+			'orange': 0xf2d91a,
+			'purple': 0x8a2ee5,
+			'red':    0xe5482e,
+			'white':  0xe5feff,
 		}
-		if (this.name.length <= this.nameMaxLength) {
-			this.nameTypeSound.play()
-		}
-		this.name = this.name.substring(0, this.nameMaxLength)
-		this.nameField.setText(this.name)
-	}
 
-	keyDown(event) {
-		switch (event.code) {
-			case "Backspace":
-				event.preventDefault()
-				if (this.name.length > 0) {
-					this.nameTypeSound.play()
-				}
-				this.name = (this.name.length > 0) ? this.name.substring(0, this.name.length - 1) : ""
-				this.nameField.setText(this.name)
-				break;
+	export class Game extends Phaser.Game
+	{
+		constructor() {
+			var width: number = 560,
+				height: number = 560,
+				renderer: number = Phaser.WEBGL,
+				parent: string = "webtron",
+				state: string = null,
+				transparent: boolean = true,
+				antialias: boolean = true
 
-			case "ArrowLeft":
-				this.colorSelectPrev()
-				break;
+			super(width, height, renderer, parent, state, transparent, antialias)
 
-			case "ArrowRight":
-				this.colorSelectNext()
-				break;
+			this.state.add("mainmenu", MainMenu, false)
+			this.state.add("connect", Connect, false)
+			this.state.add("gamemenu", GameMenu, false)
+			this.state.add("ingame", InGame, false)
 
-			case "Enter":
-			case "Return":
-				this.joinGame()
-				break;
+			this.state.start("mainmenu")
 		}
 	}
 
-	colorSelectPrev() {
-		this.colorSelectSound.play()
-		this.color = this.colors[(this.colors.indexOf(this.color) - 1 >= 0) ? this.colors.indexOf(this.color) - 1 : this.colors.length - 1]
-		this.updateMenuTextColors()
-	}
+	export class MainMenu extends Phaser.State
+	{
+		name: string
+		nameMaxLength: number
+		nameField: Phaser.Text
+		nameButton: Phaser.Button
+		nameTypeSound: Phaser.Sound
 
-	colorSelectNext() {
-		this.colorSelectSound.play()
-		this.color = this.colors[(this.colors.indexOf(this.color) + 1 < this.colors.length) ? this.colors.indexOf(this.color) + 1 : 0]
-		this.updateMenuTextColors()
-	}
+		color: string
+		colorText: Phaser.Text
 
-	updateMenuTextColors() {
-		$('#webtron canvas').css('border', '3px solid ' + this.colorsToHex[this.color])
-		this.nameField.setStyle({
-			"font": "30px \"Courier New\", Courier, monospace",
-			"fill": this.colorsToHex[this.color]
-		})
-		this.colorPrevText.setStyle({
-			"font": "50px \"Courier New\", Courier, monospace",
-			"fill": this.colorsToHex[this.colors[(this.colors.indexOf(this.color) - 1 >= 0) ? this.colors.indexOf(this.color) - 1 : this.colors.length - 1]]
-		})
-		this.colorNextText.setStyle({
-			"font": "50px \"Courier New\", Courier, monospace",
-			"fill": this.colorsToHex[this.colors[(this.colors.indexOf(this.color) + 1 < this.colors.length) ? this.colors.indexOf(this.color) + 1 : 0]]
-		})
-		this.joinGameText.setStyle({
-			"font": "30px \"Courier New\", Courier, monospace",
-			"fill": this.colorsToHex[this.color]
-		})
-	}
+		colorPrevText: Phaser.Text
+		colorNextText: Phaser.Text
+		colorSelectText: Phaser.Text
+		colorSelectPrevButton: Phaser.Button
+		colorSelectNextButton: Phaser.Button
+		colorSelectSound: Phaser.Sound
 
-	joinGame() {
-		if (this.name == "") {
-			this.name = "CLU"
+		enterGameButton: Phaser.Button
+		enterGameText: Phaser.Text
+
+		preload() {
+			this.game.load.image("button_name", "img/button_name.png")
+			this.game.load.image("button_color", "img/button_color.png")
+			this.game.load.image("button_join", "img/button_join.png")
+
+			this.game.load.audiosprite("scifi5", ["sfx/scifi5.mp3"])
+			this.game.load.audiosprite("keyboard_key", ["sfx/keyboard_key.mp3"])
 		}
-		this.game.state.clearCurrentState()
-		this.game.state.start("game")
+
+		create() {
+			// default player settings
+			this.name = ""
+			this.nameMaxLength = 10
+			this.color = colors[0]
+
+			// setup input callbacks for the menu
+			this.game.input.keyboard.callbackContext = this
+			this.game.input.keyboard.onPressCallback = this.keyPress
+			this.game.input.keyboard.onDownCallback = this.keyDown
+
+			// create the buttons
+			this.nameButton = this.game.add.button(0, 0, "button_name")
+			this.colorSelectPrevButton = this.game.add.button(0, 200, "button_color", this.colorSelectPrev, this)
+			this.colorSelectNextButton = this.game.add.button(280, 200, "button_color", this.colorSelectNext, this)
+			this.enterGameButton = this.game.add.button(0, 460, "button_join", this.enterGame, this)
+
+			// create the text field(s)
+			this.nameField = this.game.add.text(
+				this.game.width / 2,
+				100,
+				"_TYPE_NAME_",
+				null)
+			this.nameField.anchor.set(0.5, 0.5)
+			this.colorSelectText = this.game.add.text(
+				this.game.width / 2,
+				306,
+				"SELECT_COLOUR",
+				null)
+			this.colorSelectText.anchor.set(0.5, 0.5)
+			this.colorPrevText = this.game.add.text(
+				100,
+				300,
+				"←",
+				null)
+			this.colorPrevText.anchor.set(0.5, 0.5)
+			this.colorNextText = this.game.add.text(
+				this.game.width - 100,
+				300,
+				"→",
+				null)
+			this.colorNextText.anchor.set(0.5, 0.5)
+			this.enterGameText = this.game.add.text(
+				this.game.width / 2,
+				510,
+				"ENTER_THE_GRID",
+				null)
+			this.enterGameText.anchor.set(0.5, 0.5)
+
+			// setup audio
+			this.nameTypeSound = this.game.add.audio("keyboard_key")
+			this.nameTypeSound.allowMultiple = true
+			this.colorSelectSound = this.game.add.audio("scifi5")
+			this.colorSelectSound.allowMultiple = true
+
+			// set their colors based on the player's color
+			this.updateMenuTextColors()
+		}
+
+		keyPress(char) {
+			switch (char) {
+				case " ":
+					this.name += "_"
+					break;
+
+				default:
+					this.name += char
+					break;
+			}
+			if (this.name.length <= this.nameMaxLength) {
+				this.nameTypeSound.play()
+			}
+			this.name = this.name.substring(0, this.nameMaxLength)
+			this.nameField.setText(this.name)
+		}
+
+		keyDown(event) {
+			switch (event.code) {
+				case "Backspace":
+					event.preventDefault()
+					if (this.name.length > 0) {
+						this.nameTypeSound.play()
+					}
+					this.name = (this.name.length > 0) ? this.name.substring(0, this.name.length - 1) : ""
+					this.nameField.setText(this.name)
+					break;
+
+				case "ArrowLeft":
+					this.colorSelectPrev()
+					break;
+
+				case "ArrowRight":
+					this.colorSelectNext()
+					break;
+
+				case "Enter":
+				case "Return":
+					this.enterGame()
+					break;
+			}
+		}
+
+		colorSelectPrev() {
+			this.colorSelectSound.play()
+			this.color = colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1]
+			this.updateMenuTextColors()
+		}
+
+		colorSelectNext() {
+			this.colorSelectSound.play()
+			this.color = colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0]
+			this.updateMenuTextColors()
+		}
+
+		updateMenuTextColors() {
+			$('#webtron canvas').css('border', '3px solid ' + colorsToHexString[this.color])
+			this.nameField.setStyle({
+				"font": "30px " + uiFont,
+				"fill": colorsToHexString[this.color]
+			})
+			this.colorSelectText.setStyle({
+				"font": "30px " + uiFont,
+				"fill": colorsToHexString[this.color]
+			})
+			this.colorPrevText.setStyle({
+				"font": "50px " + uiFont,
+				"fill": colorsToHexString[colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1]]
+			})
+			this.colorNextText.setStyle({
+				"font": "50px " + uiFont,
+				"fill": colorsToHexString[colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0]]
+			})
+			this.enterGameText.setStyle({
+				"font": "30px " + uiFont,
+				"fill": colorsToHexString[this.color]
+			})
+		}
+
+		enterGame() {
+			this.name = (this.name == "") ? "CLU" : this.name
+			playerName = this.name
+			playerColor = this.color
+
+			this.game.state.start("connect")
+		}
+
+		shutdown() {
+			this.game.input.keyboard.callbackContext = null
+			this.game.input.keyboard.onPressCallback = null
+			this.game.input.keyboard.onDownCallback = null
+		}
 	}
 
-	shutdown() {
-		this.game.input.keyboard.callbackContext = null
-		this.game.input.keyboard.onPressCallback = null
-		this.game.input.keyboard.onDownCallback = null
+	export class Connect extends Phaser.State
+	{
+		connectingText: Phaser.Text
+
+		create() {
+			this.connectingText = this.game.add.text(
+				this.game.width / 2,
+				this.game.height / 2,
+				"CONNECTING",
+				null)
+			this.connectingText.anchor.set(0.5, 0.5)
+			this.connectingText.setStyle({
+				"font": "30px " + uiFont,
+				"fill": colorsToHexString[playerColor]
+			})
+
+			var protocol = (window.location.protocol == "https:") ? "wss:" : "ws:",
+			    hostname = window.location.hostname,
+			    port     = window.location.port,
+			    path     = "/ws",
+			    address  = protocol + "//" + hostname + ":" + port + path
+
+			var state = this
+			socket = new WebSocket(address)
+			socket.onerror = function(event) {
+				state.game.state.start("mainmenu")
+			}
+			socket.onclose = function(event) {
+				state.game.state.start("mainmenu")
+			}
+			socket.onopen = function(event) {
+				state.game.state.start("gamemenu")
+			}
+		}
 	}
-}
 
-export class Game extends Phaser.State
-{
-	preload() {
-		// Load Assets
-		this.game.load.image("background", "img/gridBG.png")
-		this.game.load.image("gridbike-blue", "img/gridbike-blue.png")
-		this.game.load.image("gridbike-green", "img/gridbike-green.png")
-		this.game.load.image("gridbike-orange", "img/gridbike-orange.png")
-		this.game.load.image("gridbike-purple", "img/gridbike-purple.png")
-		this.game.load.image("gridbike-red", "img/gridbike-red.png")
-		this.game.load.image("gridbike-white", "img/gridbike-white.png")
+	export class GameMenu extends Phaser.State
+	{
+		create() {
+			// connect to the server
+		}
 	}
 
-	create() {
-		this.game.add.image(0, 0, "background")
-	}
+	export class InGame extends Phaser.State
+	{
+		// socket
+		// bikes
+		// names
+		// trails
+		// accumulator
+		// keybinds
+		// altKeybinds
+		// playerData
+		// textStyle
+		// colorToHex
+		// connected: boolean
 
-	shutdown() {
+		preload() {
+			// Load Assets
+			this.game.load.image("background", "img/gridBG.png")
+			this.game.load.image("gridbike-blue", "img/gridbike-blue.png")
+			this.game.load.image("gridbike-green", "img/gridbike-green.png")
+			this.game.load.image("gridbike-orange", "img/gridbike-orange.png")
+			this.game.load.image("gridbike-purple", "img/gridbike-purple.png")
+			this.game.load.image("gridbike-red", "img/gridbike-red.png")
+			this.game.load.image("gridbike-white", "img/gridbike-white.png")
+		}
 
+		// create() {
+
+		// 	this.colorToHex = {
+		// 		'blue': 0x00c2cc,
+		// 		'green': 0x2ee5c7,
+		// 		'orange': 0xf2d91a,
+		// 		'purple': 0x8a2ee5,
+		// 		'red': 0xe5482e,
+		// 		'white': 0xe5feff,
+		// 	};
+
+		// 	this.game.add.image(0, 0, "background")
+
+		// 	// Input
+		// 	this.keybinds = this.game.input.keyboard.addKeys({
+		// 		'spawn': Phaser.Keyboard.SPACEBAR,
+		// 		'up': Phaser.Keyboard.W,
+		// 		'left': Phaser.Keyboard.A,
+		// 		'down': Phaser.Keyboard.S,
+		// 		'right': Phaser.Keyboard.D,
+		// 	})
+		// 	this.altKeybinds = this.game.input.keyboard.addKeys({
+		// 		'up': Phaser.Keyboard.UP,
+		// 		'left': Phaser.Keyboard.LEFT,
+		// 		'down': Phaser.Keyboard.DOWN,
+		// 		'right': Phaser.Keyboard.RIGHT,
+		// 	})
+
+		// 	this.game.input.keyboard.addKeyCapture([Phaser.Keyboard.SPACEBAR]);
+
+		// 	var state = this
+
+		// 	// this.keybinds.spawn.onDown.add(function() { this.socket.send("SPAWN:" + playerData.name + ":" + playerData.colour) })
+		// 	this.keybinds.spawn.onDown.add(function() { state.socket.send("SPAWN:" + "FRED" + ":" + "orange") })
+		// 	this.keybinds.up.onDown.add(function() { state.socket.send("TURN:UP") })
+		// 	this.altKeybinds.up.onDown.add(function() { state.socket.send("TURN:UP") })
+		// 	this.keybinds.left.onDown.add(function() { state.socket.send("TURN:LEFT") })
+		// 	this.altKeybinds.left.onDown.add(function() { state.socket.send("TURN:LEFT") })
+		// 	this.keybinds.down.onDown.add(function() { state.socket.send("TURN:DOWN") })
+		// 	this.altKeybinds.down.onDown.add(function() { state.socket.send("TURN:DOWN") })
+		// 	this.keybinds.right.onDown.add(function() { state.socket.send("TURN:RIGHT") })
+		// 	this.altKeybinds.right.onDown.add(function() { state.socket.send("TURN:RIGHT") })
+
+		// 	this.bikes = {}
+		// 	this.names = {}
+		// 	this.trails = {}
+		// 	this.accumulator = 0
+
+		// 	// Socket
+		// 	var state = this
+		// 	document.getElementById("socketmessages").textContent = "Connecting\n"
+		// 	this.socket = glue(null, {
+		// 		baseURL: "/",
+		// 		forceSocketType: "WebSocket",
+		// 		reconnect: false,
+		// 	});
+
+		// 	this.socket.onMessage(function(data) {
+		// 		state.processNetwork(state, data)
+		// 	})
+
+		// 	this.socket.on("disconnected", function() {
+		// 		document.getElementById("socketmessages").textContent = "Disconnected\n"
+		// 		console.log("Disconnected")
+		// 		state.socket.close()
+		// 		state.game.state.clearCurrentState()
+		// 		state.game.state.start("mainmenu")
+		// 	})
+		// }
+
+		// update() {
+		// 	if (this.connected) {
+		// 		this.accumulator += this.game.time.physicsElapsed
+		// 		if (this.accumulator > 1 / 10) {
+		// 			this.socket.send("REQUEST_STATE")
+		// 			this.accumulator -= 1 / 10
+		// 		}
+		// 	}
+		// }
+
+		// goToMenu() {
+		// 	this.game.state.clearCurrentState()
+		// 	this.game.state.start("mainmenu")
+		// }
+
+		// processNetwork(state, data) {
+		// 	var components = data.split(":")
+
+		// 	switch (components[0]) {
+		// 		case "CONNECTED":
+		// 			document.getElementById("socketmessages").textContent = "Connected\n"
+		// 			state.connected = true
+		// 			break;
+
+		// 		case "GAME_FULL":
+		// 			document.getElementById("socketmessages").textContent = "Game Full\n"
+		// 			state.goToMenu()
+		// 			break;
+
+		// 		case "NEW_STATE":
+		// 			var json = data.replace("NEW_STATE:", "")
+		// 			if (json == "") {
+		// 				break;
+		// 			}
+		// 			var newState = JSON.parse(json)
+
+		// 			for (var i = 0; i < newState.BIKES.length; i++) {
+		// 				if (state.bikes[i] == null || state.bikes[i] == undefined) {
+		// 					state.bikes[i] = state.game.add.sprite(newState.state.bikes[i].X, newState.state.bikes[i].Y, "gridbike-" + newState.state.bikes[i].COLOUR)
+		// 					state.bikes[i].anchor = new Phaser.Point(0.5, 0.5)
+		// 					state.bikes[i].rotation = newState.state.bikes[i].ROT
+		// 					state.names[i] = state.game.add.text(newState.state.bikes[i].X, newState.state.bikes[i].Y - 20, newState.state.bikes[i].NAME, state.textStyle)
+		// 					state.names[i].anchor = new Phaser.Point(0.5, 0.5)
+		// 				} else {
+		// 					if (newState.state.bikes[i].STATE == "dead") {
+		// 						state.bikes[i].alpha = 0.2
+		// 						state.names[i].alpha = 0.2
+		// 					}
+		// 					state.bikes[i].x = newState.state.bikes[i].X
+		// 					state.bikes[i].y = newState.state.bikes[i].Y
+		// 					state.bikes[i].rotation = newState.state.bikes[i].ROT
+		// 					state.names[i].x = state.bikes[i].x
+		// 					state.names[i].y = state.bikes[i].y - 20
+		// 				}
+		// 			}
+		// 			for (var i = 0; i < newState.TRAILS.length; i++) {
+		// 				if (state.trails[i] == null || state.trails[i] == undefined) {
+		// 					state.trails[i] = state.game.add.graphics(0, 0)
+		// 				}
+		// 				state.trails[i].clear()
+		// 				if (newState.TRAILS[i].STATE == "inactive") {
+		// 					state.trails[i].lineStyle(1, state.colorToHex[newState.TRAILS[i].COLOUR], 0.2)
+		// 				} else {
+		// 					state.trails[i].lineStyle(2, state.colorToHex[newState.TRAILS[i].COLOUR])
+		// 				}
+		// 				state.trails[i].moveTo(newState.TRAILS[i].STARTX, newState.TRAILS[i].STARTY)
+		// 				for (var v = 0; v < newState.TRAILS[i].VERTS.length; v++) {
+		// 					state.trails[i].lineTo(
+		// 						newState.TRAILS[i].VERTS[v].X,
+		// 						newState.TRAILS[i].VERTS[v].Y)
+		// 				}
+		// 				state.trails[i].lineTo(
+		// 					newState.TRAILS[i].ENDX,
+		// 					newState.TRAILS[i].ENDY)
+		// 			}
+		// 			break;
+
+		// 		case "DISPLAY_MESSAGE":
+		// 			document.getElementById("socketmessages").textContent = data.replace("DISPLAY_MESSAGE:", "") + "\n"
+		// 			break;
+
+		// 		default:
+		// 			console.log("unknown command:" + components[0])
+		// 			break;
+		// 	}
+		// }
+
+		shutdown() {
+
+		}
 	}
 }

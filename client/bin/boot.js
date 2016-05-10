@@ -11,6 +11,6 @@ require(['jquery', 'webtron'], function(jquery, webtron) {
 	var webtron = require('webtron')
 
 	$(document).ready(function() {
-		new webtron.Webtron()
+		new webtron.Webtron.Game()
 	})
 })
