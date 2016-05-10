@@ -5,6 +5,7 @@ import (
 	"github.com/inconshreveable/log15"
 	"go.owls.io/webtron/server/msg"
 	"go.owls.io/webtron/server/simulation"
+	"golang.org/x/net/websocket"
 )
 
 //// Server ////////////////////////////////////////////////////////////////////
@@ -14,7 +15,7 @@ import (
 // disconnected clients
 // it also contains a reference to the gameworld simulation
 type Server struct {
-	MaxPlayers          int
+	MaxClients          int
 	NumConnectedPlayers int
 	ConnectedPlayers    map[int]*Player
 
@@ -22,10 +23,10 @@ type Server struct {
 }
 
 // New creates a new server
-func New(debug bool, maxPlayers int) *Server {
+func New(debug bool, maxClients int) *Server {
 	// New server
 	s := &Server{
-		MaxPlayers:          maxPlayers,
+		MaxClients:          maxClients,
 		NumConnectedPlayers: 0,
 		ConnectedPlayers:    make(map[int]*Player),
 
@@ -38,6 +39,23 @@ func New(debug bool, maxPlayers int) *Server {
 	}
 
 	return s
+}
+
+// SocketConnect handles a new client connecting via websockets
+func (s *Server) SocketConnect(ws *websocket.Conn) {
+
+	var msg string
+	var err error
+	for {
+		err = websocket.Message.Receive(ws, &msg)
+		if err != nil {
+			log15.Error("Error reading ws", "error", err)
+			break
+		}
+		log15.Info("Message Received", "message", msg)
+	}
+
+	ws.Close()
 }
 
 // Shutdown is called when the server should prepare for program termination
@@ -90,7 +108,7 @@ func (s *Server) DisconnectPlayer(slot int) {
 
 // nextSlot returns the next available player slot, or -1 if no slots available
 func (s *Server) nextSlot() int {
-	for i := 0; i < s.MaxPlayers; i++ {
+	for i := 0; i < s.MaxClients; i++ {
 		if _, exists := s.ConnectedPlayers[i]; !exists {
 			return i
 		}

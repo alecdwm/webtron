@@ -7,7 +7,7 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
     "use strict";
     var Webtron;
     (function (Webtron) {
-        var playerName = "", playerColor = "orange", socket, uiFont = '"Courier New", Courier, monospace', colors = [
+        var playerName = "", playerColor = "", socket, uiFont = '"Courier New", Courier, monospace', colors = [
             "orange",
             "blue",
             "green",
@@ -52,13 +52,13 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
                 this.game.load.image("button_name", "img/button_name.png");
                 this.game.load.image("button_color", "img/button_color.png");
                 this.game.load.image("button_join", "img/button_join.png");
-                this.game.load.audiosprite("scifi5", ["sfx/scifi5.mp3"]);
-                this.game.load.audiosprite("keyboard_key", ["sfx/keyboard_key.mp3"]);
+                this.game.load.audio("scifi5", ["sfx/scifi5.mp3"]);
+                this.game.load.audio("keyboard_key", ["sfx/keyboard_key.mp3"]);
             };
             MainMenu.prototype.create = function () {
-                this.name = "";
+                playerName = (playerName == "") ? "" : playerName;
+                playerColor = (playerColor == "") ? colors[0] : playerColor;
                 this.nameMaxLength = 10;
-                this.color = colors[0];
                 this.game.input.keyboard.callbackContext = this;
                 this.game.input.keyboard.onPressCallback = this.keyPress;
                 this.game.input.keyboard.onDownCallback = this.keyDown;
@@ -66,7 +66,7 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
                 this.colorSelectPrevButton = this.game.add.button(0, 200, "button_color", this.colorSelectPrev, this);
                 this.colorSelectNextButton = this.game.add.button(280, 200, "button_color", this.colorSelectNext, this);
                 this.enterGameButton = this.game.add.button(0, 460, "button_join", this.enterGame, this);
-                this.nameField = this.game.add.text(this.game.width / 2, 100, "_TYPE_NAME_", null);
+                this.nameField = this.game.add.text(this.game.width / 2, 100, (playerName == "") ? "_TYPE_NAME_" : playerName, null);
                 this.nameField.anchor.set(0.5, 0.5);
                 this.colorSelectText = this.game.add.text(this.game.width / 2, 306, "SELECT_COLOUR", null);
                 this.colorSelectText.anchor.set(0.5, 0.5);
@@ -85,27 +85,30 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
             MainMenu.prototype.keyPress = function (char) {
                 switch (char) {
                     case " ":
-                        this.name += "_";
+                        playerName += "_";
+                        break;
+                    case "\n":
+                    case "\r":
                         break;
                     default:
-                        this.name += char;
+                        playerName += char;
                         break;
                 }
-                if (this.name.length <= this.nameMaxLength) {
+                if (playerName.length <= this.nameMaxLength) {
                     this.nameTypeSound.play();
                 }
-                this.name = this.name.substring(0, this.nameMaxLength);
-                this.nameField.setText(this.name);
+                playerName = playerName.substring(0, this.nameMaxLength);
+                this.nameField.setText(playerName);
             };
             MainMenu.prototype.keyDown = function (event) {
                 switch (event.code) {
                     case "Backspace":
                         event.preventDefault();
-                        if (this.name.length > 0) {
+                        if (playerName.length > 0) {
                             this.nameTypeSound.play();
                         }
-                        this.name = (this.name.length > 0) ? this.name.substring(0, this.name.length - 1) : "";
-                        this.nameField.setText(this.name);
+                        playerName = (playerName.length > 0) ? playerName.substring(0, playerName.length - 1) : "";
+                        this.nameField.setText(playerName);
                         break;
                     case "ArrowLeft":
                         this.colorSelectPrev();
@@ -121,41 +124,39 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
             };
             MainMenu.prototype.colorSelectPrev = function () {
                 this.colorSelectSound.play();
-                this.color = colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1];
+                playerColor = colors[(colors.indexOf(playerColor) - 1 >= 0) ? colors.indexOf(playerColor) - 1 : colors.length - 1];
                 this.updateMenuTextColors();
             };
             MainMenu.prototype.colorSelectNext = function () {
                 this.colorSelectSound.play();
-                this.color = colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0];
+                playerColor = colors[(colors.indexOf(playerColor) + 1 < colors.length) ? colors.indexOf(playerColor) + 1 : 0];
                 this.updateMenuTextColors();
             };
             MainMenu.prototype.updateMenuTextColors = function () {
-                $('#webtron canvas').css('border', '3px solid ' + colorsToHexString[this.color]);
+                $('#webtron canvas').css('border', '3px solid ' + colorsToHexString[playerColor]);
                 this.nameField.setStyle({
                     "font": "30px " + uiFont,
-                    "fill": colorsToHexString[this.color]
+                    "fill": colorsToHexString[playerColor]
                 });
                 this.colorSelectText.setStyle({
                     "font": "30px " + uiFont,
-                    "fill": colorsToHexString[this.color]
+                    "fill": colorsToHexString[playerColor]
                 });
                 this.colorPrevText.setStyle({
                     "font": "50px " + uiFont,
-                    "fill": colorsToHexString[colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1]]
+                    "fill": colorsToHexString[colors[(colors.indexOf(playerColor) - 1 >= 0) ? colors.indexOf(playerColor) - 1 : colors.length - 1]]
                 });
                 this.colorNextText.setStyle({
                     "font": "50px " + uiFont,
-                    "fill": colorsToHexString[colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0]]
+                    "fill": colorsToHexString[colors[(colors.indexOf(playerColor) + 1 < colors.length) ? colors.indexOf(playerColor) + 1 : 0]]
                 });
                 this.enterGameText.setStyle({
                     "font": "30px " + uiFont,
-                    "fill": colorsToHexString[this.color]
+                    "fill": colorsToHexString[playerColor]
                 });
             };
             MainMenu.prototype.enterGame = function () {
-                this.name = (this.name == "") ? "CLU" : this.name;
-                playerName = this.name;
-                playerColor = this.color;
+                playerName = (playerName == "") ? "ANON" : playerName;
                 this.game.state.start("connect");
             };
             MainMenu.prototype.shutdown = function () {
@@ -200,6 +201,11 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
                 _super.apply(this, arguments);
             }
             GameMenu.prototype.create = function () {
+                socket.onmessage = this.socketmessage;
+                socket.send("HELO " + playerName);
+            };
+            GameMenu.prototype.socketmessage = function (event) {
+                console.log(event);
             };
             return GameMenu;
         }(Phaser.State));

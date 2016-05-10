@@ -8,7 +8,7 @@ import $ = require('jquery')
 export module Webtron
 {
 	var playerName: string = "",
-		playerColor: string = "orange",
+		playerColor: string = "",
 		socket: WebSocket,
 		uiFont: string = '"Courier New", Courier, monospace',
 		colors: string[] = [
@@ -60,13 +60,11 @@ export module Webtron
 
 	export class MainMenu extends Phaser.State
 	{
-		name: string
 		nameMaxLength: number
 		nameField: Phaser.Text
 		nameButton: Phaser.Button
 		nameTypeSound: Phaser.Sound
 
-		color: string
 		colorText: Phaser.Text
 
 		colorPrevText: Phaser.Text
@@ -84,15 +82,16 @@ export module Webtron
 			this.game.load.image("button_color", "img/button_color.png")
 			this.game.load.image("button_join", "img/button_join.png")
 
-			this.game.load.audiosprite("scifi5", ["sfx/scifi5.mp3"])
-			this.game.load.audiosprite("keyboard_key", ["sfx/keyboard_key.mp3"])
+			// TODO: Use an audio sprite
+			this.game.load.audio("scifi5", ["sfx/scifi5.mp3"])
+			this.game.load.audio("keyboard_key", ["sfx/keyboard_key.mp3"])
 		}
 
 		create() {
 			// default player settings
-			this.name = ""
+			playerName = (playerName == "") ? "" : playerName
+			playerColor = (playerColor == "") ? colors[0] : playerColor
 			this.nameMaxLength = 10
-			this.color = colors[0]
 
 			// setup input callbacks for the menu
 			this.game.input.keyboard.callbackContext = this
@@ -109,7 +108,7 @@ export module Webtron
 			this.nameField = this.game.add.text(
 				this.game.width / 2,
 				100,
-				"_TYPE_NAME_",
+				(playerName == "") ? "_TYPE_NAME_" : playerName,
 				null)
 			this.nameField.anchor.set(0.5, 0.5)
 			this.colorSelectText = this.game.add.text(
@@ -150,29 +149,33 @@ export module Webtron
 		keyPress(char) {
 			switch (char) {
 				case " ":
-					this.name += "_"
+					playerName += "_"
+					break;
+
+				case "\n":
+				case "\r":
 					break;
 
 				default:
-					this.name += char
+					playerName += char
 					break;
 			}
-			if (this.name.length <= this.nameMaxLength) {
+			if (playerName.length <= this.nameMaxLength) {
 				this.nameTypeSound.play()
 			}
-			this.name = this.name.substring(0, this.nameMaxLength)
-			this.nameField.setText(this.name)
+			playerName = playerName.substring(0, this.nameMaxLength)
+			this.nameField.setText(playerName)
 		}
 
 		keyDown(event) {
 			switch (event.code) {
 				case "Backspace":
 					event.preventDefault()
-					if (this.name.length > 0) {
+					if (playerName.length > 0) {
 						this.nameTypeSound.play()
 					}
-					this.name = (this.name.length > 0) ? this.name.substring(0, this.name.length - 1) : ""
-					this.nameField.setText(this.name)
+					playerName = (playerName.length > 0) ? playerName.substring(0, playerName.length - 1) : ""
+					this.nameField.setText(playerName)
 					break;
 
 				case "ArrowLeft":
@@ -192,45 +195,42 @@ export module Webtron
 
 		colorSelectPrev() {
 			this.colorSelectSound.play()
-			this.color = colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1]
+			playerColor = colors[(colors.indexOf(playerColor) - 1 >= 0) ? colors.indexOf(playerColor) - 1 : colors.length - 1]
 			this.updateMenuTextColors()
 		}
 
 		colorSelectNext() {
 			this.colorSelectSound.play()
-			this.color = colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0]
+			playerColor = colors[(colors.indexOf(playerColor) + 1 < colors.length) ? colors.indexOf(playerColor) + 1 : 0]
 			this.updateMenuTextColors()
 		}
 
 		updateMenuTextColors() {
-			$('#webtron canvas').css('border', '3px solid ' + colorsToHexString[this.color])
+			$('#webtron canvas').css('border', '3px solid ' + colorsToHexString[playerColor])
 			this.nameField.setStyle({
 				"font": "30px " + uiFont,
-				"fill": colorsToHexString[this.color]
+				"fill": colorsToHexString[playerColor]
 			})
 			this.colorSelectText.setStyle({
 				"font": "30px " + uiFont,
-				"fill": colorsToHexString[this.color]
+				"fill": colorsToHexString[playerColor]
 			})
 			this.colorPrevText.setStyle({
 				"font": "50px " + uiFont,
-				"fill": colorsToHexString[colors[(colors.indexOf(this.color) - 1 >= 0) ? colors.indexOf(this.color) - 1 : colors.length - 1]]
+				"fill": colorsToHexString[colors[(colors.indexOf(playerColor) - 1 >= 0) ? colors.indexOf(playerColor) - 1 : colors.length - 1]]
 			})
 			this.colorNextText.setStyle({
 				"font": "50px " + uiFont,
-				"fill": colorsToHexString[colors[(colors.indexOf(this.color) + 1 < colors.length) ? colors.indexOf(this.color) + 1 : 0]]
+				"fill": colorsToHexString[colors[(colors.indexOf(playerColor) + 1 < colors.length) ? colors.indexOf(playerColor) + 1 : 0]]
 			})
 			this.enterGameText.setStyle({
 				"font": "30px " + uiFont,
-				"fill": colorsToHexString[this.color]
+				"fill": colorsToHexString[playerColor]
 			})
 		}
 
 		enterGame() {
-			this.name = (this.name == "") ? "CLU" : this.name
-			playerName = this.name
-			playerColor = this.color
-
+			playerName = (playerName == "") ? "ANON" : playerName
 			this.game.state.start("connect")
 		}
 
@@ -265,6 +265,7 @@ export module Webtron
 
 			var state = this
 			socket = new WebSocket(address)
+			// TODO: Show connection error / disconnect messages on client
 			socket.onerror = function(event) {
 				state.game.state.start("mainmenu")
 			}
@@ -281,6 +282,12 @@ export module Webtron
 	{
 		create() {
 			// connect to the server
+			socket.onmessage = this.socketmessage
+			socket.send("HELO " + playerName)
+		}
+
+		socketmessage(event) {
+			console.log(event)
 		}
 	}
 

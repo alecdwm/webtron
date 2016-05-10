@@ -11,15 +11,21 @@ $red:      #e5482e
 $white:    #e5feff
 
 // Page Elements
+html
+	position: relative
+	min-height: 100%
+
 html, body
 	margin: 0
 	padding: 0
 	border: 0
-	height: 100%
 	font-family: "Courier New", Courier, monospace
 	color: $blue
 	background-color: $darkaqua
 	text-align: center
+
+body
+	padding: 0 0 4em 0
 
 a
 	color: $orange
@@ -39,4 +45,12 @@ content
 		margin: auto
 
 footer
+	position: absolute
+	bottom: 0
+	width: 100%
+	height: 4em
+	line-height: 4em
 	font-weight: 600
+
+	p
+		margin: 0
