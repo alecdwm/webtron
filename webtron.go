@@ -11,7 +11,6 @@ import (
 	"github.com/inconshreveable/log15"
 	"github.com/kardianos/osext"
 	"go.owls.io/webtron/server"
-	"golang.org/x/net/websocket"
 )
 
 func main() {
@@ -36,12 +35,19 @@ func main() {
 	}
 
 	// Setup game server
-	gameServer := server.New(debug, maxClients)
-	defer gameServer.Shutdown()
-	http.Handle("/ws", websocket.Handler(gameServer.SocketConnect))
+	gameServer := server.New(&server.Config{
+		Pattern:        "/ws",
+		Debug:          debug,
+		MaxClients:     maxClients,
+		ChannelBufSize: 100,
+	})
 
 	// Setup client webserver
 	http.Handle("/", http.FileServer(http.Dir(osextDir+"/client")))
+
+	// Start game server
+	go gameServer.Start()
+	defer gameServer.Shutdown()
 
 	if daemon {
 		listenAndServe(bindAddress, listenPort)

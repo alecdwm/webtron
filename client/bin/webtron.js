@@ -7,7 +7,7 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
     "use strict";
     var Webtron;
     (function (Webtron) {
-        var playerName = "", playerColor = "", socket, uiFont = '"Courier New", Courier, monospace', colors = [
+        var playerName = "", playerColor = "", socket, serverMsg = "", uiFont = '"Courier New", Courier, monospace', colors = [
             "orange",
             "blue",
             "green",
@@ -76,6 +76,8 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
                 this.colorNextText.anchor.set(0.5, 0.5);
                 this.enterGameText = this.game.add.text(this.game.width / 2, 510, "ENTER_THE_GRID", null);
                 this.enterGameText.anchor.set(0.5, 0.5);
+                this.serverMsgText = this.game.add.text(this.game.width / 2, this.game.height, serverMsg, null);
+                this.serverMsgText.anchor.set(0.5, 1);
                 this.nameTypeSound = this.game.add.audio("keyboard_key");
                 this.nameTypeSound.allowMultiple = true;
                 this.colorSelectSound = this.game.add.audio("scifi5");
@@ -154,6 +156,10 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
                     "font": "30px " + uiFont,
                     "fill": colorsToHexString[playerColor]
                 });
+                this.serverMsgText.setStyle({
+                    "font": "20px " + uiFont,
+                    "fill": colorsToHexString[playerColor]
+                });
             };
             MainMenu.prototype.enterGame = function () {
                 playerName = (playerName == "") ? "ANON" : playerName;
@@ -183,9 +189,11 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
                 var state = this;
                 socket = new WebSocket(address);
                 socket.onerror = function (event) {
+                    serverMsg = "Connection Error";
                     state.game.state.start("mainmenu");
                 };
                 socket.onclose = function (event) {
+                    serverMsg = "Disconnected";
                     state.game.state.start("mainmenu");
                 };
                 socket.onopen = function (event) {
