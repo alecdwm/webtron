@@ -6,6 +6,7 @@ var (
 	SGameFull       = "GAME_FULL"       // game is full
 	SNewState       = "NEW_STATE"       // new game simulation state data
 	SDisplayMessage = "DISPLAY_MESSAGE" // display message on client
+	SShutdown       = "SERVER_SHUTDOWN" // server shutting down
 
 	// Client -> Server
 	CRequestState = "REQUEST_STATE" // request a state update

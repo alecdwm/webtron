@@ -3,10 +3,10 @@ package server
 import (
 	"net/http"
 
+	"github.com/gorilla/websocket"
 	"github.com/inconshreveable/log15"
 	"go.owls.io/webtron/server/msg"
 	"go.owls.io/webtron/server/simulation"
-	"golang.org/x/net/websocket"
 )
 
 //// Msg ///////////////////////////////////////////////////////////////////////
@@ -48,7 +48,7 @@ func (c *Client) WriteLoop() {
 			return
 
 		case msg := <-c.msgOutCh:
-			err := websocket.Message.Send(c.conn, msg.content)
+			err := c.conn.WriteMessage(websocket.TextMessage, msg.content)
 
 			if err != nil {
 				log15.Error("writing to client socket", "error", err, "id", c.id, "address", c.conn.RemoteAddr())
@@ -70,14 +70,13 @@ func (c *Client) ReadLoop() {
 			return
 
 		default:
-			msg := &Msg{}
-			err := websocket.Message.Receive(c.conn, &msg.content)
+			messageType, message, err := c.conn.ReadMessage()
 			if err != nil {
 				log15.Error("reading from client socket", "error", err, "id", c.id, "address", c.conn.RemoteAddr())
 				c.doneCh <- true
 				return
 			} else {
-				log15.Debug("received message", "id", c.id, "address", c.conn.RemoteAddr())
+				log15.Debug("received message", "type", messageType, "message", string(message), "id", c.id, "address", c.conn.RemoteAddr())
 			}
 		}
 	}
@@ -116,7 +115,8 @@ type Server struct {
 	mkClientCh     chan *websocket.Conn
 	rmClientCh     chan *Client
 
-	Sim *simulation.Simulation
+	wsUpgrader *websocket.Upgrader
+	Sim        *simulation.Simulation
 }
 
 type Config struct {
@@ -139,11 +139,15 @@ func New(c *Config) *Server {
 		mkClientCh:     make(chan *websocket.Conn),
 		rmClientCh:     make(chan *Client),
 
+		wsUpgrader: &websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+		},
 		Sim: simulation.New(560, 560),
 	}
 
 	// Listen for client connections
-	http.Handle(c.Pattern, websocket.Handler(s.NewSocket))
+	http.HandleFunc(c.Pattern, s.NewSocket)
 
 	// Debug flag
 	if c.Debug {
@@ -166,13 +170,13 @@ func (s *Server) Start() {
 
 			} else {
 				log15.Info("Rejecting new client connection: Server is full!")
-				err := websocket.Message.Send(c, msg.SGameFull)
+				err := c.WriteMessage(websocket.TextMessage, []byte(msg.SGameFull))
 				if err != nil {
-					log15.Error("Writing server full message to websocket", "address", c.RemoteAddr(), "error", err)
+					log15.Error("Writing server full message to websocket", "error", err, "address", c.RemoteAddr())
 				}
 				err = c.Close()
 				if err != nil {
-					log15.Error("closing websocket", "address", c.RemoteAddr(), "error", err)
+					log15.Error("closing websocket", "error", err, "address", c.RemoteAddr())
 				}
 			}
 
@@ -187,18 +191,25 @@ func (s *Server) Start() {
 }
 
 // NewSocket handles a new client connecting via websockets
-func (s *Server) NewSocket(ws *websocket.Conn) {
+func (s *Server) NewSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log15.Error("unable to upgrade websocket connection", "address", r.RemoteAddr)
+	}
+
 	// Logging
-	log15.Debug("socket connected", "address", ws.RemoteAddr())
+	log15.Debug("socket connected", "address", conn.RemoteAddr())
 
 	// Add client to server
-	s.mkClientCh <- ws
+	s.mkClientCh <- conn
 }
 
 // Shutdown is called when the server should prepare for program termination
 func (s *Server) Shutdown() {
+	for i := range s.Clients {
+		_ = s.Clients[i].conn.WriteMessage(websocket.TextMessage, []byte(msg.SShutdown))
+	}
 	log15.Info("Server shutting down!")
-	// add shutdown sequence here
 }
 
 // // ConnectPlayer handles connecting a new player to the game
