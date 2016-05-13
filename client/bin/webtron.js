@@ -210,7 +210,7 @@ define("webtron", ["require", "exports", 'jquery'], function (require, exports, 
             }
             GameMenu.prototype.create = function () {
                 socket.onmessage = this.socketmessage;
-                socket.send("HELO " + playerName);
+                socket.send("LIST_GAMES");
             };
             GameMenu.prototype.socketmessage = function (event) {
                 console.log(event);

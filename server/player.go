@@ -14,11 +14,16 @@ import (
 
 // Player stores logic for an individual player
 type Player struct {
-	Slot   int
-	Server *Server
-	Socket *glue.Socket
+	id int
 
+	game *Game
 	Bike *simulation.GridBike
+}
+
+func NewPlayer(id int) *Player {
+	return &Player{
+		id: id,
+	}
 }
 
 // ReadLoop receives data from the player client

@@ -294,10 +294,13 @@ export module Webtron
 
 	export class GameMenu extends Phaser.State
 	{
+		games: number[]
+		gameList: Phaser.Text[]
+
 		create() {
 			// connect to the server
 			socket.onmessage = this.socketmessage
-			socket.send("HELO " + playerName)
+			socket.send("LIST_GAMES")
 		}
 
 		socketmessage(event) {

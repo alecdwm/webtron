@@ -1,40 +1,88 @@
 package server
 
-// import (
-// 	"github.com/inconshreveable/log15"
-// 	"golang.org/x/net/websocket"
-// )
+import (
+	"github.com/gorilla/websocket"
+	"github.com/inconshreveable/log15"
+)
 
-// var nextID int = 0
+//// Msg ///////////////////////////////////////////////////////////////////////
 
-// type Client struct {
-// 	id int
-// 	ws *websocket.Conn
-// }
+type Msg struct {
+	content []byte
+}
 
-// func NewClient(ws *websocket.Conn) *Client {
-// 	client := &Client{
-// 		id: nextID,
-// 		ws: ws,
-// 	}
-// 	nextID++
-// 	return client
-// }
+//// Client ////////////////////////////////////////////////////////////////////
 
-// func (c *Client) Send(msg []byte) {
-// 	_, err := c.ws.Write(msg)
-// 	if err != nil {
-// 		log15.Error("sending message", "error", err)
-// 	}
-// }
+type Client struct {
+	id     int
+	conn   *websocket.Conn
+	server *Server
+	player *Player
 
-// func (c *Client) Listen() {
-// 	var msg []byte
-// 	var err error
-// 	for {
-// 		err = websocket.Message.Receive(c.ws, msg)
-// 		if err != nil {
-// 			log15.Error("receiving message", "error", err)
-// 		}
-// 	}
-// }
+	msgInCh  chan *Msg
+	msgOutCh chan *Msg
+	doneCh   chan bool
+}
+
+func (s *Server) NewClient(id int, conn *websocket.Conn) *Client {
+	return &Client{
+		id:     id,
+		conn:   conn,
+		server: s,
+		player: NewPlayer(id),
+
+		msgInCh:  make(chan *Msg, s.channelBufSize),
+		msgOutCh: make(chan *Msg, s.channelBufSize),
+		doneCh:   make(chan bool),
+	}
+}
+
+func (c *Client) Write(data []byte) {
+	c.msgOutCh <- &Msg{content: data}
+}
+
+func (c *Client) WriteLoop() {
+	log15.Debug("Open write loop for client", "id", c.id, "address", c.conn.RemoteAddr())
+	for {
+		select {
+		case <-c.doneCh:
+			c.server.rmClientCh <- c
+			c.doneCh <- true
+			return
+
+		case msg := <-c.msgOutCh:
+			err := c.conn.WriteMessage(websocket.TextMessage, msg.content)
+
+			if err != nil {
+				log15.Error("writing to client socket", "error", err, "id", c.id, "address", c.conn.RemoteAddr())
+				c.doneCh <- true
+				return
+			} else {
+				log15.Debug("sent message", "id", c.id, "address", c.conn.RemoteAddr())
+			}
+		}
+	}
+}
+
+func (c *Client) ReadLoop() {
+	log15.Debug("Open read loop for client", "id", c.id, "address", c.conn.RemoteAddr())
+	for {
+		select {
+		case <-c.doneCh:
+			c.server.rmClientCh <- c
+			c.doneCh <- true
+			return
+
+		default:
+			messageType, message, err := c.conn.ReadMessage()
+			if err != nil {
+				log15.Error("reading from client socket", "error", err, "id", c.id, "address", c.conn.RemoteAddr())
+				c.doneCh <- true
+				return
+			} else {
+				log15.Debug("received message", "type", messageType, "message", string(message), "id", c.id, "address", c.conn.RemoteAddr())
+				// c.player.
+			}
+		}
+	}
+}

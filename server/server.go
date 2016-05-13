@@ -6,99 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/inconshreveable/log15"
 	"go.owls.io/webtron/server/msg"
-	"go.owls.io/webtron/server/simulation"
 )
-
-//// Msg ///////////////////////////////////////////////////////////////////////
-
-type Msg struct {
-	content []byte
-}
-
-//// Client ////////////////////////////////////////////////////////////////////
-
-type Client struct {
-	id     int
-	conn   *websocket.Conn
-	server *Server
-
-	msgInCh  chan *Msg
-	msgOutCh chan *Msg
-	doneCh   chan bool
-}
-
-func (s *Server) NewClient(id int, conn *websocket.Conn) *Client {
-	return &Client{
-		id:     id,
-		conn:   conn,
-		server: s,
-
-		msgInCh:  make(chan *Msg, s.channelBufSize),
-		msgOutCh: make(chan *Msg, s.channelBufSize),
-		doneCh:   make(chan bool),
-	}
-}
-
-func (c *Client) WriteLoop() {
-	log15.Debug("Open write loop for client", "id", c.id, "address", c.conn.RemoteAddr())
-	for {
-		select {
-		case <-c.doneCh:
-			c.server.rmClientCh <- c
-			return
-
-		case msg := <-c.msgOutCh:
-			err := c.conn.WriteMessage(websocket.TextMessage, msg.content)
-
-			if err != nil {
-				log15.Error("writing to client socket", "error", err, "id", c.id, "address", c.conn.RemoteAddr())
-				c.doneCh <- true
-				return
-			} else {
-				log15.Debug("sent message", "id", c.id, "address", c.conn.RemoteAddr())
-			}
-		}
-	}
-}
-
-func (c *Client) ReadLoop() {
-	log15.Debug("Open read loop for client", "id", c.id, "address", c.conn.RemoteAddr())
-	for {
-		select {
-		case <-c.doneCh:
-			c.server.rmClientCh <- c
-			return
-
-		default:
-			messageType, message, err := c.conn.ReadMessage()
-			if err != nil {
-				log15.Error("reading from client socket", "error", err, "id", c.id, "address", c.conn.RemoteAddr())
-				c.doneCh <- true
-				return
-			} else {
-				log15.Debug("received message", "type", messageType, "message", string(message), "id", c.id, "address", c.conn.RemoteAddr())
-			}
-		}
-	}
-}
-
-// func (c *Client) Send(msg []byte) {
-// 	_, err := c.ws.Write(msg)
-// 	if err != nil {
-// 		log15.Error("sending message", "error", err)
-// 	}
-// }
-
-// func (c *Client) Listen() {
-// 	var msg []byte
-// 	var err error
-// 	for {
-// 		err = websocket.Message.Receive(c.ws, msg)
-// 		if err != nil {
-// 			log15.Error("receiving message", "error", err)
-// 		}
-// 	}
-// }
 
 //// Server ////////////////////////////////////////////////////////////////////
 
@@ -116,7 +24,7 @@ type Server struct {
 	rmClientCh     chan *Client
 
 	wsUpgrader *websocket.Upgrader
-	Sim        *simulation.Simulation
+	games      []*Game
 }
 
 type Config struct {
@@ -143,7 +51,7 @@ func New(c *Config) *Server {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		},
-		Sim: simulation.New(560, 560),
+		games: nil,
 	}
 
 	// Listen for client connections
@@ -160,6 +68,8 @@ func New(c *Config) *Server {
 func (s *Server) Start() {
 	for {
 		select {
+
+		// Listen for creating clients
 		case c := <-s.mkClientCh:
 			if id := s.nextSlot(); id != -1 {
 				log15.Info("Accepting new client connection", "id", id)
@@ -180,6 +90,7 @@ func (s *Server) Start() {
 				}
 			}
 
+		// Listen for removing clients
 		case c := <-s.rmClientCh:
 			if _, exists := s.Clients[c.id]; exists {
 				delete(s.Clients, c.id)
@@ -211,29 +122,6 @@ func (s *Server) Shutdown() {
 	}
 	log15.Info("Server shutting down!")
 }
-
-// // ConnectPlayer handles connecting a new player to the game
-// func (s *Server) ConnectPlayer(socket *glue.Socket) {
-// 	// Logging
-// 	socket.OnClose(func() {
-// 		log15.Debug("socket closed", "address", socket.RemoteAddr())
-// 	})
-// 		s.Clients[slot].Socket.OnClose(func() {
-// 			log15.Debug("socket closed", "address", socket.RemoteAddr())
-// 			s.DisconnectPlayer(slot)
-// 		})
-// 		// s.Clients[slot].Socket.Write(msg.SConnected)
-// 		// s.Clients[slot].Socket.Write(msg.SDisplayMessage + ":Press [SPACEBAR] To Spawn!")
-// 		// go s.Clients[slot].ReadLoop()
-// }
-
-// // DisconnectPlayer handles removing a player from the game
-// func (s *Server) DisconnectPlayer(slot int) {
-// 	log15.Info("Player disconnected", "address", s.Clients[slot].Socket.RemoteAddr(), "slot", slot)
-
-// 	s.NumClients--
-// 	delete(s.Clients, slot)
-// }
 
 //// Functions /////////////////////////////////////////////////////////////////
 
