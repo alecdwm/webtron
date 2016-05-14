@@ -3,12 +3,15 @@ package server
 import "go.owls.io/webtron/server/simulation"
 
 type Game struct {
+	Server *Server
+
 	Players []*Player
 	Sim     *simulation.Simulation
 }
 
-func NewGame(sizex, sizey float64) *Game {
+func (s *Server) NewGame(sizex, sizey float64) *Game {
 	return &Game{
+		Server:  s,
 		Players: nil,
 		Sim:     simulation.New(sizex, sizey),
 	}

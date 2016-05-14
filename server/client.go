@@ -29,12 +29,24 @@ func (s *Server) NewClient(id int, conn *websocket.Conn) *Client {
 		id:     id,
 		conn:   conn,
 		server: s,
-		player: NewPlayer(id),
+		player: NewPlayer(id, s.lobby),
 
 		msgInCh:  make(chan *Msg, s.channelBufSize),
 		msgOutCh: make(chan *Msg, s.channelBufSize),
 		doneCh:   make(chan bool),
 	}
+}
+
+func (c *Client) CanRead() bool {
+	if len(c.msgInCh) > 0 {
+		return true
+	}
+	return false
+}
+
+func (c *Client) Read() []byte {
+	msg := <-c.msgInCh
+	return msg.content
 }
 
 func (c *Client) Write(data []byte) {
@@ -81,7 +93,7 @@ func (c *Client) ReadLoop() {
 				return
 			} else {
 				log15.Debug("received message", "type", messageType, "message", string(message), "id", c.id, "address", c.conn.RemoteAddr())
-				// c.player.
+				c.msgInCh <- &Msg{content: message}
 			}
 		}
 	}

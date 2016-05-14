@@ -24,6 +24,7 @@ type Server struct {
 	rmClientCh     chan *Client
 
 	wsUpgrader *websocket.Upgrader
+	lobby      *Game
 	games      []*Game
 }
 
@@ -51,8 +52,11 @@ func New(c *Config) *Server {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		},
+		lobby: nil,
 		games: nil,
 	}
+	s.lobby = s.NewGame(560, 560)
+	s.lobby.Sim = nil
 
 	// Listen for client connections
 	http.HandleFunc(c.Pattern, s.NewSocket)
