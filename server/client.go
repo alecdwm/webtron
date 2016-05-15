@@ -3,13 +3,8 @@ package server
 import (
 	"github.com/gorilla/websocket"
 	"github.com/inconshreveable/log15"
+	"go.owls.io/webtron/server/msg"
 )
-
-//// Msg ///////////////////////////////////////////////////////////////////////
-
-type Msg struct {
-	content []byte
-}
 
 //// Client ////////////////////////////////////////////////////////////////////
 
@@ -19,8 +14,8 @@ type Client struct {
 	server *Server
 	player *Player
 
-	msgInCh  chan *Msg
-	msgOutCh chan *Msg
+	msgInCh  chan *msg.Msg
+	msgOutCh chan *msg.Msg
 	doneCh   chan bool
 }
 
@@ -31,8 +26,8 @@ func (s *Server) NewClient(id int, conn *websocket.Conn) *Client {
 		server: s,
 		player: nil,
 
-		msgInCh:  make(chan *Msg, s.channelBufSize),
-		msgOutCh: make(chan *Msg, s.channelBufSize),
+		msgInCh:  make(chan *msg.Msg, s.channelBufSize),
+		msgOutCh: make(chan *msg.Msg, s.channelBufSize),
 		doneCh:   make(chan bool),
 	}
 
@@ -48,13 +43,13 @@ func (c *Client) CanRead() bool {
 	return false
 }
 
-func (c *Client) Read() []byte {
+func (c *Client) Read() *msg.Msg {
 	msg := <-c.msgInCh
-	return msg.content
+	return msg
 }
 
-func (c *Client) Write(data []byte) {
-	c.msgOutCh <- &Msg{content: data}
+func (c *Client) Write(msg *msg.Msg) {
+	c.msgOutCh <- msg
 }
 
 func (c *Client) WriteLoop() {
@@ -66,8 +61,20 @@ func (c *Client) WriteLoop() {
 			c.doneCh <- true
 			return
 
+		// TODO:
+		// consider adding an alternative msgOutCh for simple one-word 'text'
+		// messages with no msgpack overhead.
+		// Maybe useful for triggering/pinging/simple shit.
+		// Would send with websocket message type websocket.TextMessage
+		// case msg := <-c.txtMsgOutCh:
+
 		case msg := <-c.msgOutCh:
-			err := c.conn.WriteMessage(websocket.TextMessage, msg.content)
+			packed, err := msg.Pack()
+			if err != nil {
+				log15.Error("packing outgoing message", "error", err, "id", c.id, "address", c.conn.RemoteAddr(), "message", msg.String())
+			}
+
+			err = c.conn.WriteMessage(websocket.BinaryMessage, packed)
 
 			if err != nil {
 				log15.Error("writing to client socket", "error", err, "id", c.id, "address", c.conn.RemoteAddr())
@@ -97,7 +104,16 @@ func (c *Client) ReadLoop() {
 				return
 			} else {
 				log15.Debug("received message", "type", messageType, "message", string(message), "id", c.id, "address", c.conn.RemoteAddr())
-				c.msgInCh <- &Msg{content: message}
+				if messageType != websocket.BinaryMessage {
+					log15.Error("dropping incoming message with unsupported message type", "type", messageType, "supported", "websockets.BinaryMessage")
+				} else {
+					msg, err := msg.Unpack(message)
+					if err != nil {
+						log15.Error("dropping incoming message which couldn't be unpacked", "error", err, "message", message, "message (string)", string(message), "id", c.id, "address", c.conn.RemoteAddr())
+					} else {
+						c.msgInCh <- msg
+					}
+				}
 			}
 		}
 	}

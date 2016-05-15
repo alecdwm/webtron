@@ -99,7 +99,7 @@ func (s *Server) Start() {
 
 			} else {
 				log15.Info("Rejecting new client connection: Server is full!")
-				err := c.WriteMessage(websocket.TextMessage, []byte(msg.SGameFull))
+				err := c.WriteMessage(websocket.BinaryMessage, msg.Disconnect_ServerFull_Packed)
 				if err != nil {
 					log15.Error("Writing server full message to websocket", "error", err, "address", c.RemoteAddr())
 				}
@@ -157,7 +157,7 @@ func (s *Server) NewSocket(w http.ResponseWriter, r *http.Request) {
 // Shutdown is called when the server should prepare for program termination
 func (s *Server) Shutdown() {
 	for i := range s.Clients {
-		_ = s.Clients[i].conn.WriteMessage(websocket.TextMessage, []byte(msg.SShutdown))
+		_ = s.Clients[i].conn.WriteMessage(websocket.BinaryMessage, msg.Disconnect_ServerShutdown_Packed)
 	}
 	log15.Info("Server shutting down!")
 }
