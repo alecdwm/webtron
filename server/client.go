@@ -25,16 +25,20 @@ type Client struct {
 }
 
 func (s *Server) NewClient(id int, conn *websocket.Conn) *Client {
-	return &Client{
+	c := &Client{
 		id:     id,
 		conn:   conn,
 		server: s,
-		player: NewPlayer(id, s.lobby),
+		player: nil,
 
 		msgInCh:  make(chan *Msg, s.channelBufSize),
 		msgOutCh: make(chan *Msg, s.channelBufSize),
 		doneCh:   make(chan bool),
 	}
+
+	c.player = c.NewPlayer(id, s.Lobby)
+
+	return c
 }
 
 func (c *Client) CanRead() bool {

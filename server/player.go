@@ -9,16 +9,18 @@ import (
 
 // Player stores logic for an individual player
 type Player struct {
-	id   int
-	game *Game
+	id     int
+	client *Client
+	game   *Game
 
 	Bike *simulation.GridBike
 }
 
-func NewPlayer(id int, game *Game) *Player {
+func (c *Client) NewPlayer(id int, game *Game) *Player {
 	return &Player{
-		id:   id,
-		game: game,
+		id:     id,
+		client: c,
+		game:   game,
 	}
 }
 

@@ -3,6 +3,7 @@ package server
 import "go.owls.io/webtron/server/simulation"
 
 type Game struct {
+	id     int
 	Server *Server
 
 	Players []*Player
@@ -15,6 +16,12 @@ func (s *Server) NewGame(sizex, sizey float64) *Game {
 		Players: nil,
 		Sim:     simulation.New(sizex, sizey),
 	}
+}
+
+func (g *Game) Start() {
+	// for {
+
+	// }
 }
 
 func (g *Game) AddPlayer(player *Player) {
