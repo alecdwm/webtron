@@ -139,10 +139,10 @@ export module Webtron
 			this.enterGameText.anchor.set(0.5, 0.5)
 			this.serverMsgText = this.game.add.text(
 				this.game.width / 2,
-				this.game.height,
+				130,
 				serverMsg,
 				null)
-			this.serverMsgText.anchor.set(0.5, 1)
+			this.serverMsgText.anchor.set(0.5, 0.5)
 
 			// setup audio
 			this.nameTypeSound = this.game.add.audio("keyboard_key")
@@ -236,7 +236,7 @@ export module Webtron
 				"fill": colorsToHexString[playerColor]
 			})
 			this.serverMsgText.setStyle({
-				"font": "20px " + uiFont,
+				"font": "30px " + uiFont,
 				"fill": colorsToHexString[playerColor]
 			})
 		}
@@ -279,11 +279,11 @@ export module Webtron
 			socket = new WebSocket(address)
 			// TODO: Show connection error / disconnect messages on client
 			socket.onerror = function(event) {
-				serverMsg = "Connection Error"
+				serverMsg = "CONNECTION ERROR"
 				state.game.state.start("mainmenu")
 			}
 			socket.onclose = function(event) {
-				serverMsg = "Disconnected"
+				serverMsg = "DISCONNECTED"
 				state.game.state.start("mainmenu")
 			}
 			socket.onopen = function(event) {
