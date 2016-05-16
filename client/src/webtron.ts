@@ -78,6 +78,7 @@ export module Webtron
 
 		enterGameButton: Phaser.Button
 		enterGameText: Phaser.Text
+		enterGameSound: Phaser.Sound
 
 		preload() {
 			this.game.load.image("button_name", "img/button_name.png")
@@ -85,7 +86,7 @@ export module Webtron
 			this.game.load.image("button_join", "img/button_join.png")
 
 			// TODO: Use an audio sprite
-			this.game.load.audio("scifi5", ["sfx/scifi5.mp3"])
+			this.game.load.audio("television_clicks", ["sfx/television_clicks.mp3"])
 			this.game.load.audio("keyboard_key", ["sfx/keyboard_key.mp3"])
 		}
 
@@ -147,8 +148,10 @@ export module Webtron
 			// setup audio
 			this.nameTypeSound = this.game.add.audio("keyboard_key")
 			this.nameTypeSound.allowMultiple = true
-			this.colorSelectSound = this.game.add.audio("scifi5")
+			this.colorSelectSound = this.game.add.audio("television_clicks")
 			this.colorSelectSound.allowMultiple = true
+			this.enterGameSound = this.game.add.audio("television_clicks")
+			this.enterGameSound.allowMultiple = true
 
 			// set their colors based on the player's color
 			this.updateMenuTextColors()
@@ -156,14 +159,17 @@ export module Webtron
 
 		keyPress(char) {
 			switch (char) {
+				// spaces to underscores
 				case " ":
 					playerName += "_"
 					break;
 
+				// no newlines
 				case "\n":
 				case "\r":
-					break;
+					return;
 
+				// allow other characters
 				default:
 					playerName += char
 					break;
@@ -196,6 +202,7 @@ export module Webtron
 
 				case "Enter":
 				case "Return":
+					this.enterGameSound.play()
 					this.enterGame()
 					break;
 			}
