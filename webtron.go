@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/inconshreveable/log15"
@@ -57,7 +58,7 @@ func main() {
 		go listenAndServe(bindAddress, listenPort)
 
 		// Server command line
-		cli()
+		cli(osextDir)
 	}
 }
 
@@ -70,7 +71,7 @@ func listenAndServe(bindAddress, listenPort string) {
 }
 
 // Server command line interface
-func cli() {
+func cli(osextDir string) {
 	reader := bufio.NewReader(os.Stdin)
 cli_input_loop:
 	for {
@@ -83,7 +84,14 @@ cli_input_loop:
 		case "help":
 			fmt.Println(
 				"Available commands:\n" +
-					"help, exit")
+					"help, gulp, exit")
+
+		case "gulp":
+			cmd := exec.Command("gulp")
+			cmd.Dir = osextDir + "/client"
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Run()
 
 		case "exit", "quit":
 			break cli_input_loop

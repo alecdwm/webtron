@@ -17,7 +17,6 @@ make clean\t- deletes the server executable\n"
 ################################################################################
 build:
 	@echo "Building webtron"
-	@tsc --project client
 	@go build go.owls.io/webtron
 
 run:
@@ -46,10 +45,6 @@ clean:
 	@if [ -f $(WEBTRONPATH)/webtron ]; then \
 	echo "Removing webtron"; \
 	rm -f $(WEBTRONPATH)/webtron; fi
-	@if [ -f $(WEBTRONPATH)/client/bin/webtron.js ]; then \
-	echo "Removing webtron client js"; \
-	rm -f $(WEBTRONPATH)/client/bin/webtron.js; \
-	rm -f $(WEBTRONPATH)/client/bin/webtron.js.map; fi
 
 install:
 	@echo "Installing webtron"

@@ -1,3 +1,3 @@
 webtron
-client/bin/webtron.js
-client/bin/webtron.js.map
+client/bin
+client/node_modules
