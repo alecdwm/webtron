@@ -5,6 +5,29 @@
 * Implement client-side prediction between network updates
 * Add touch/mobile-friendly controls
 
+# Building
+## Dependencies
+* npm
+* go
+
+## Steps
+```bash
+# change to the client dir
+cd client
+
+# install node modules
+npm install
+
+# change to server dir
+cd ..
+
+# compile and run server
+make test
+
+# compile client
+console@webtron:~$ gulp
+```
+
 # License
 Webtron - A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!
 Copyright (C) 2016 alecdwm <owls.io>

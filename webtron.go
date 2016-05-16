@@ -87,7 +87,7 @@ cli_input_loop:
 					"help, gulp, exit")
 
 		case "gulp":
-			cmd := exec.Command("gulp")
+			cmd := exec.Command(osextDir + "/client/node_modules/gulp/bin/gulp.js")
 			cmd.Dir = osextDir + "/client"
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
