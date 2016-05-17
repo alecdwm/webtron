@@ -42,11 +42,17 @@ func (m *Msg) Pack() ([]byte, error) {
 // Return a string representation of this msg object for debugging
 func (m *Msg) String() (out string) {
 	for i := range m.Commands {
-		out += m.Commands[i].Command + "\n"
-		for v := range m.Commands[i].Parameters {
-			out += "\t" + m.Commands[i].Parameters[v].Key + "\t=>\t" + string(m.Commands[i].Parameters[v].Val) + "\n"
-		}
+		out += m.Commands[i].String()
 		out += "\n"
+	}
+	return out
+}
+
+// Return a string representation of this command object for debugging
+func (c *MsgCommand) String() (out string) {
+	out += c.Command + "\n"
+	for v := range c.Parameters {
+		out += "\t" + c.Parameters[v].Key + "\t=>\t" + string(c.Parameters[v].Val) + "\n"
 	}
 	return out
 }
