@@ -24,6 +24,7 @@ namespace Webtron {
 
 			var state = this
 			socket = new WebSocket(address)
+			socket.binaryType = 'arraybuffer'
 			// TODO: Show connection error / disconnect messages on client
 			socket.onerror = function(event) {
 				serverMsg = "CONNECTION ERROR"

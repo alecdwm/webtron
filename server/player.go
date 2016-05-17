@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/inconshreveable/log15"
+	"go.owls.io/webtron/server/msg"
 	"go.owls.io/webtron/server/simulation"
 )
 
@@ -17,10 +18,21 @@ type Player struct {
 }
 
 func (c *Client) NewPlayer(id int, game *Game) *Player {
-	return &Player{
+	p := &Player{
 		id:     id,
 		client: c,
 		game:   game,
+	}
+
+	p.game.AddPlayer(p)
+
+	return p
+}
+
+func (p *Player) ProcessCommand(command msg.MsgCommand) {
+	switch command.Command {
+	case "SupPlayer":
+		log15.Warn("Printing player message", "msg", command.String())
 	}
 }
 

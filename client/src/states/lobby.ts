@@ -1,4 +1,5 @@
 /// <reference path="../webtron.ts" />
+/// <reference path="../modules/msg.ts" />
 
 namespace Webtron {
 	export class Lobby extends Phaser.State {
@@ -18,7 +19,7 @@ namespace Webtron {
 		create() {
 			// connect to the server
 			socket.onmessage = this.socketmessage
-			socket.send("LIST_GAMES")
+			// socket.send("LIST_GAMES")
 
 			this.player = this.game.add.sprite(280, 280, "gridply-" + playerColor)
 			this.player.anchor.set(0.5, 0.5)
@@ -46,7 +47,19 @@ namespace Webtron {
 		}
 
 		socketmessage(event: any) {
-			console.log(event)
+			var msg = Msg.Unpack(event.data)
+			console.log("Incoming message, unpacked: " + msg)
+			console.log("Incoming message, packed:   " + msg.Pack())
+
+			var newMsg = new Msg.Msg()
+			newMsg.Commands[0] = new Msg.MsgCommand()
+			newMsg.Commands[0].Command = "Sup"
+			newMsg.Commands[0].Parameters[0] = new Msg.MsgParameter()
+			newMsg.Commands[0].Parameters[0].Key = "Reason"
+			newMsg.Commands[0].Parameters[0].Val = "TBA"
+
+			console.log("Outgoing messsage, packed: " + newMsg.Pack())
+			socket.send(newMsg.Pack())
 		}
 	}
 }
