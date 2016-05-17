@@ -1,5 +1,4 @@
 // External libraries
-/// <reference path="lib/jquery.d.ts" />
 /// <reference path="lib/phaser.d.ts" />
 
 // Internal libraries

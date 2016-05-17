@@ -162,7 +162,6 @@ namespace Webtron {
 		}
 
 		updateMenuTextColors() {
-			$('#webtron canvas').css('border', '3px solid ' + colorsToHexString[playerColor])
 			this.nameField.setStyle({
 				"font": "30px " + uiFont,
 				"fill": colorsToHexString[playerColor]
