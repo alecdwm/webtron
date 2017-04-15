@@ -117,7 +117,7 @@ func (s *Server) Start() {
 				log15.Info("Removed client", "id", c.id)
 			}
 
-			// Listen for creating games
+		// Listen for creating games
 		case g := <-s.mkGameCh:
 			if id := s.nextGameSlot(); id != -1 {
 				log15.Info("Creating new game", "id", id)
@@ -129,7 +129,7 @@ func (s *Server) Start() {
 				go s.Games[id].Start()
 			}
 
-			// Listen for removing games
+		// Listen for removing games
 		case g := <-s.rmGameCh:
 			if _, exists := s.Games[g.id]; exists {
 				delete(s.Games, g.id)

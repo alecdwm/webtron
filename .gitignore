@@ -1,3 +1,4 @@
 webtron
 client/bin
 client/node_modules
+*.swp
