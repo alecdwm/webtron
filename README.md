@@ -7,25 +7,39 @@
 
 # Building
 ## Dependencies
+* node
 * npm
 * go
 
-## Steps
+## Installation
 ```bash
-# change to the client dir
-cd client
+# get project + build server
+go get go.owls.io/webtron
 
-# install node modules
+# install client dependencies + build client
+cd $GOPATH/src/go.owls.io/webtron
+npm install
+npm build:release
+
+# (optional) install
+go install
+cp -r $GOPATH/src/go.owls.io/webtron/client/bin $GOPATH/bin/webtron-client
+
+# run server
+webtron
+```
+
+## Development
+```bash
+# get project + build server
+go get go.owls.io/webtron
+
+# install client dependencies
+cd $GOPATH/src/go.owls.io/webtron
 npm install
 
-# change to server dir
-cd ..
-
-# compile and run server
-make test
-
-# compile client
-console@webtron:~$ gulp
+# run server in development mode
+npm run dev
 ```
 
 # License
