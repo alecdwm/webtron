@@ -1,10 +1,10 @@
-import * as PIXI from 'pixi.js'
-
-export class MainMenu {
-	preload = [
-		'img/gridBG.png',
-		'img/gridbike-orange.png',
-	]
+class MainMenu {
+	constructor() {
+		this.preload = [
+			'img/gridBG.png',
+			'img/gridbike-orange.png',
+		]
+	}
 
 	onEnter() {
 		const {
@@ -61,3 +61,6 @@ export class MainMenu {
 		}
 	}
 }
+
+window.states = {}
+window.states.MainMenu = MainMenu

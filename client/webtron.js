@@ -1,7 +1,3 @@
-import * as PIXI from 'pixi.js'
-import * as States from 'states'
-import 'styles/index.sass'
-
 window.addEventListener('load', () => {
 	PIXI.utils.skipHello()
 	console.log(`Pixi.js ${PIXI.VERSION} - http://www.pixijs.com/`)
@@ -50,8 +46,8 @@ class Webtron {
 
 	changeState(newState) {
 		if (typeof(newState) === 'string') {
-			if (States[newState]) {
-				newState = States[newState]
+			if (window.states[newState]) {
+				newState = window.states[newState]
 			} else {
 				throw new Error(`No state by name '${newState}' exists!`)
 			}

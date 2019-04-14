@@ -1,0 +1,115 @@
+/* colours */
+:root {
+  --darkaqua: #111b1a;
+  --blue: #00c2cc;
+  --green: #2ee53d;
+  --orange: #f2d91a;
+  --purple: #8a2ee5;
+  --red: #e5482e;
+  --white: #e5feff;
+}
+
+/* page elements */
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background-color: var(--darkaqua);
+  color: var(--blue);
+  font-family: "Courier New", Courier, monospace;
+  text-align: center;
+}
+
+body {
+  padding: 0 0 4em 0;
+}
+
+a {
+  color: var(--orange);
+  text-decoration: none;
+}
+a:hover,
+a:active {
+  color: var(--blue);
+}
+
+header img {
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  margin: 2em 0;
+  touch-action: none;
+}
+
+main canvas {
+  width: 560px;
+  height: 560px;
+  margin: auto;
+  border: 3px solid var(--blue);
+  border-radius: 15px;
+}
+
+footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 4em;
+  font-weight: 600;
+  line-height: 4em;
+}
+footer p {
+  margin: 0;
+}
+
+/* animations */
+html {
+  animation: fadein 1s ease;
+}
+
+a {
+  transition: color 0.5s ease;
+}
+
+canvas {
+  animation: hidden 0.1s ease, canvasgrow 0.3s ease 0.1s;
+}
+
+footer {
+  animation: hidden 2s ease, fadein 1s ease 2s;
+}
+
+@keyframes hidden {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes canvasgrow {
+  from {
+    width: 0px;
+    height: 0px;
+    margin-top: 280px;
+  }
+  to {
+    width: 560px;
+    height: 560px;
+    margin-top: 0px;
+  }
+}
