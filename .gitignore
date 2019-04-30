@@ -1,21 +1,19 @@
 #################
 # Project cruft #
 #################
-webtron
-client/bin
+**/*.rs.bk
+/target
 node_modules
-npm-debug.log*
 
 ######################
 # OS generated files #
 ######################
-*.swo
-*.swp
+*.sw[mnpcod]
+.#*
 .DS_Store
 .DS_Store?
-._*
-.#*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
+._*
 Thumbs.db
+ehthumbs.db

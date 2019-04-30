@@ -1,0 +1,8 @@
+[package]
+name = "webtron"
+description = "A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!"
+version = "2.0.0"
+authors = ["alecdwm <alec@owls.io>"]
+edition = "2018"
+
+[dependencies]
