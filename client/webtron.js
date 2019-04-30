@@ -2,6 +2,25 @@ window.addEventListener('load', () => {
 	PIXI.utils.skipHello()
 	console.log(`Pixi.js ${PIXI.VERSION} - http://www.pixijs.com/`)
 
+	const protocol = window.location.protocol === 'https' ? 'wss' : 'ws'
+	const socket_url = `${protocol}://${window.location.host}/ws`
+	const socket = new WebSocket(socket_url)
+	socket.addEventListener('open', () => {
+		console.log('socket open')
+		socket.send(JSON.stringify("ListGames"))
+		// socket.send(new ArrayBuffer(12))
+	})
+	socket.addEventListener('error', error => {
+		console.log('socket error', error)
+	})
+	socket.addEventListener('message', event => {
+		const message = event.data
+		console.log(`socket message: ${message}`)
+	})
+	socket.addEventListener('close', event => {
+		console.log(`socket closed: ${event.code} ${event.reason}`)
+	})
+
 	new Webtron(document.getElementById('webtron'))
 })
 

@@ -46,6 +46,9 @@ header img {
   touch-action: none;
 }
 
+main {
+  min-height: 560px;
+}
 main canvas {
   width: 560px;
   height: 560px;
