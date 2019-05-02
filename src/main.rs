@@ -1,5 +1,5 @@
 use failure::Error;
-use webtron::{config::Config, server::WebtronServer, web2};
+use webtron::{config::Config, server::WebtronServer, web};
 
 fn main() -> Result<(), Error> {
     pretty_env_logger::init();
@@ -9,7 +9,7 @@ fn main() -> Result<(), Error> {
     let (webtron_server, server_tx) = WebtronServer::new();
     webtron_server.run_in_new_thread();
 
-    web2::run(server_tx, &config);
+    web::run(server_tx, &config)?;
 
     Ok(())
 }

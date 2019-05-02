@@ -46,7 +46,7 @@ impl WebtronServer {
             }
 
             // handle events from clients
-            for (_, client) in self.client_connections.iter() {
+            for client in self.client_connections.values() {
                 for message in client.rx.try_iter() {
                     use IncomingMessage::*;
                     match message {
@@ -58,7 +58,7 @@ impl WebtronServer {
                                 })
                                 .unwrap_or_else(|error| {
                                     error!(
-                                        "Failed to send games list to client {}: {:?}",
+                                        "Failed to send games list to client {}: {}",
                                         client.id, error
                                     );
                                 });
