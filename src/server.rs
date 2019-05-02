@@ -76,8 +76,8 @@ impl WebtronServer {
         }
     }
 
-    pub fn run_in_new_thread(self) {
-        thread::spawn(move || self.run());
+    pub fn run_in_new_thread(self) -> thread::JoinHandle<()> {
+        thread::spawn(move || self.run())
     }
 }
 

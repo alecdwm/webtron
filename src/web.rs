@@ -4,6 +4,7 @@ use actix::{Actor, ActorContext, AsyncContext, Handler, Running, StreamHandler};
 use actix_web::{error, fs, server, ws, App};
 use failure::{Error, ResultExt};
 use log::{error, trace, warn};
+use std::process;
 use std::sync::{mpsc, Arc, Mutex};
 use uuid::Uuid;
 
@@ -42,7 +43,10 @@ pub fn run(server_tx: mpsc::Sender<ServerMessage>, config: &Config) -> Result<()
             .handler(
                 "/",
                 fs::StaticFiles::new("client")
-                    .expect("Failed to serve client from filesystem")
+                    .unwrap_or_else(|error| {
+                        error!("Failed to serve client from filesystem: {}", error);
+                        process::exit(1);
+                    })
                     .index_file("index.html"),
             )
     })
