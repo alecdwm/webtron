@@ -2,9 +2,6 @@ window.addEventListener('load', () => new Webtron(document.getElementById('webtr
 
 class Webtron {
 	constructor(domElement = document.body) {
-		// connect to server
-		this.createWebsocketConnection()
-
 		// Skip PIXI.js hello message,
 		// but still print an unobtrusive version when not in development.
 		PIXI.utils.skipHello()
@@ -90,24 +87,40 @@ class Webtron {
 		const protocol = window.location.protocol === 'https' ? 'wss' : 'ws'
 		const socket_url = `${protocol}://${window.location.host}/ws`
 		const socket = new WebSocket(socket_url)
-		socket.addEventListener('open', () => {
-			console.log('socket open')
-			socket.send(JSON.stringify('ListGames'))
+
+		socket.addEventListener('open', event => {
+			this.setGlobalState({ statusText: '' })
+
+			if (!this.state || !this.state.onSocketOpen) return
+			this.state.onSocketOpen.call(this.state, event)
 		})
-		socket.addEventListener('error', error => {
-			console.error('socket error', error)
-		})
+
 		socket.addEventListener('message', event => {
 			if (typeof event.data !== 'string') {
-				console.warn('Received non-text websocket message', event)
+				console.warn('ignoring binary websocket message', event)
 				return
 			}
 
 			const message = JSON.parse(event.data)
 			console.log(`socket message`, message)
+
+			this.state && this.state.onSocketMessage && this.state.onSocketMessage.call(this.state, message)
 		})
+
+		socket.addEventListener('error', event => {
+			console.error('socket error', event)
+
+			this.state && this.state.onSocketError && this.state.onSocketError.call(this.state, error)
+
+			this.setGlobalState({ statusText: 'CONNECTION ERROR' })
+			this.changeState('MainMenu')
+		})
+
 		socket.addEventListener('close', event => {
-			console.log(`socket closed: ${event.code} ${event.reason}`)
+			this.state && this.state.onSocketClose && this.state.onSocketClose.call(this.state, event)
+
+			this.setGlobalState({ statusText: this.globalstate.statusText || 'CONNECTION CLOSED' })
+			this.changeState('MainMenu')
 		})
 	}
 
@@ -124,7 +137,7 @@ class Webtron {
 		}
 
 		// reset scene
-		// this.scene = new PIXI.Container()
+		this.scene = new PIXI.Container()
 
 		// switch states
 		this.state = new nextState()
