@@ -24,10 +24,15 @@ class MainMenu {
 		this.nameLabel.position.set(240, 210)
 		scene.addChild(this.nameLabel)
 
-		this.playerNamePreview = new PIXI.Text(`${this.playerName}_`, uiBoldTextProperties)
+		this.playerNamePreview = new PIXI.Text(this.playerName, uiBoldTextProperties)
 		this.playerNamePreview.anchor.set(0.0, 0.5)
 		this.playerNamePreview.position.set(280, 210)
 		scene.addChild(this.playerNamePreview)
+
+		this.playerNamePreviewUnderscore = new PIXI.Text(`${this.playerName.replace(/./g, ' ')}_`, uiBoldTextProperties)
+		this.playerNamePreviewUnderscore.anchor.set(0.0, 0.5)
+		this.playerNamePreviewUnderscore.position.set(280, 210)
+		scene.addChild(this.playerNamePreviewUnderscore)
 
 		this.colorLabel = new PIXI.Text('COLOR:', uiTextProperties)
 		this.colorLabel.anchor.set(1.0, 0.5)
@@ -72,12 +77,21 @@ class MainMenu {
 		this.statusText.position.set(280, 105)
 		scene.addChild(this.statusText)
 
+		this.elapsed = 0
 		this.ready = true
 	}
 
 	//
 	// event callbacks
 	//
+
+	onUpdate(dt) {
+		this.elapsed += dt
+		if (this.elapsed < 0.6) return
+
+		this.elapsed -= 0.6
+		this.playerNamePreviewUnderscore.visible = !this.playerNamePreviewUnderscore.visible
+	}
 
 	onKeyDown(key) {
 		switch (key) {
@@ -87,6 +101,7 @@ class MainMenu {
 				break
 
 			case 'Backspace':
+				this.resetCursorBlink()
 				this.removeKeyFromPlayerName()
 				break
 
@@ -107,10 +122,12 @@ class MainMenu {
 				break
 
 			case ' ':
+				this.resetCursorBlink()
 				this.addKeyToPlayerName('_')
 				break
 
 			default:
+				this.resetCursorBlink()
 				this.addKeyToPlayerName(key.toLowerCase())
 				break
 		}
@@ -122,11 +139,13 @@ class MainMenu {
 
 	addKeyToPlayerName(key) {
 		this.playerName = (this.playerName + key).slice(0, Webtron.maxPlayerNameLength)
-		this.playerNamePreview.text = `${this.playerName}_`
+		this.playerNamePreview.text = this.playerName
+		this.playerNamePreviewUnderscore.text = `${this.playerName.replace(/./g, ' ')}_`
 	}
 	removeKeyFromPlayerName() {
 		this.playerName = this.playerName.slice(0, -1)
-		this.playerNamePreview.text = `${this.playerName}_`
+		this.playerNamePreview.text = this.playerName
+		this.playerNamePreviewUnderscore.text = `${this.playerName.replace(/./g, ' ')}_`
 	}
 
 	setNextPlayerColor() {
@@ -139,6 +158,11 @@ class MainMenu {
 		const currentIndex = Webtron.colors.indexOf(this.playerColor)
 		this.playerColor = Webtron.colors[(currentIndex > 0 ? currentIndex : Webtron.colors.length) - 1]
 		this.playerColorPreview.texture = loader.resources[`img/gridbike-${this.playerColor}.png`].texture
+	}
+
+	resetCursorBlink() {
+		this.elapsed = 0
+		this.playerNamePreviewUnderscore.visible = true
 	}
 
 	connect() {
