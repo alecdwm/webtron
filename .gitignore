@@ -2,6 +2,7 @@
 # Project cruft #
 #################
 **/*.rs.bk
+/client/vendor/*
 /target
 node_modules
 
