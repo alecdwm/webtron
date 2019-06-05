@@ -126,6 +126,7 @@ pub struct Player {
     color: PlayerColor,
 }
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PlayerColor {
     Blue,
     Green,

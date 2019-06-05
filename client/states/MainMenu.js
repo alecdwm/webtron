@@ -166,7 +166,7 @@ class MainMenu {
 	}
 
 	connect() {
-		this.game.setGlobalState({ playerName: this.playerName || 'ANON', playerColor: this.playerColor })
+		this.game.setGlobalState({ playerName: this.playerName || 'anon', playerColor: this.playerColor })
 		this.game.changeState('Connect')
 	}
 }

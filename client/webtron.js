@@ -86,16 +86,17 @@ class Webtron {
 	createWebsocketConnection() {
 		const protocol = window.location.protocol === 'https' ? 'wss' : 'ws'
 		const socket_url = `${protocol}://${window.location.host}/ws`
-		const socket = new WebSocket(socket_url)
 
-		socket.addEventListener('open', event => {
+		this.setGlobalState({ socket: new WebSocket(socket_url) })
+
+		this.globalstate.socket.addEventListener('open', event => {
 			this.setGlobalState({ statusText: '' })
 
 			if (!this.state || !this.state.onSocketOpen) return
 			this.state.onSocketOpen.call(this.state, event)
 		})
 
-		socket.addEventListener('message', event => {
+		this.globalstate.socket.addEventListener('message', event => {
 			if (typeof event.data !== 'string') {
 				console.warn('ignoring binary websocket message', event)
 				return
@@ -107,7 +108,7 @@ class Webtron {
 			this.state && this.state.onSocketMessage && this.state.onSocketMessage.call(this.state, message)
 		})
 
-		socket.addEventListener('error', event => {
+		this.globalstate.socket.addEventListener('error', event => {
 			console.error('socket error', event)
 
 			this.state && this.state.onSocketError && this.state.onSocketError.call(this.state, error)
@@ -116,10 +117,11 @@ class Webtron {
 			this.changeState('MainMenu')
 		})
 
-		socket.addEventListener('close', event => {
+		this.globalstate.socket.addEventListener('close', event => {
 			this.state && this.state.onSocketClose && this.state.onSocketClose.call(this.state, event)
 
-			this.setGlobalState({ statusText: this.globalstate.statusText || 'CONNECTION CLOSED' })
+			if (this.globalstate.statusText === 'CONNECTION ERROR') return
+			this.setGlobalState({ statusText: 'CONNECTION CLOSED' })
 			this.changeState('MainMenu')
 		})
 	}
@@ -136,12 +138,12 @@ class Webtron {
 			this.loader.reset()
 		}
 
-		// reset scene
-		this.scene = new PIXI.Container()
-
 		// switch states
 		this.state = new nextState()
 		this.state.game = this
+
+		// reset scene
+		this.scene = new PIXI.Container()
 
 		// handle new state entry (if no asset preloading required)
 		if (!this.state.preload || !Array.isArray(this.state.preload)) {

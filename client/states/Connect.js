@@ -20,6 +20,10 @@ class Connect {
 	}
 
 	onSocketOpen() {
+		const { socket, playerName, playerColor } = this.game.globalstate
+
+		socket.send(JSON.stringify({ ConfigurePlayer: { name: playerName, color: playerColor } }))
+
 		this.game.changeState('Lobby')
 	}
 }
