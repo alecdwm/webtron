@@ -1,23 +1,24 @@
 use crate::config::Config;
 use crate::server::{ClientConnection, IncomingMessage, OutgoingMessage, ServerMessage};
 use actix::{Actor, ActorContext, AsyncContext, Handler, Running, StreamHandler};
-use actix_web::{error, fs, server, ws, App};
+use actix_files::Files;
+use actix_web::{error, web, App, HttpServer};
+use actix_web_actors::ws;
 use failure::{Error, ResultExt};
 use log::{error, trace, warn};
-use std::process;
 use std::sync::{mpsc, Arc, Mutex};
 use uuid::Uuid;
 
 pub fn run(server_tx: mpsc::Sender<ServerMessage>, config: &Config) -> Result<(), Error> {
-    server::new(move || {
+    HttpServer::new(move || {
         let server_tx = Arc::new(Mutex::new(server_tx.clone()));
 
         App::new()
             //
             // websocket handler
             //
-            .resource("/ws", |resource| {
-                resource.f(move |request| {
+            .service(web::resource("/ws").route(web::get().to(
+                move |request, stream: web::Payload| {
                     let id = Uuid::new_v4();
                     let server_tx = server_tx
                         .lock()
@@ -28,31 +29,25 @@ pub fn run(server_tx: mpsc::Sender<ServerMessage>, config: &Config) -> Result<()
                         .clone();
 
                     ws::start(
-                        &request,
                         WsClient {
                             id,
                             c2s_tx: None,
                             server_tx,
                         },
+                        &request,
+                        stream,
                     )
-                })
-            })
+                },
+            )))
             //
             // fs handler
             //
-            .handler(
-                "/",
-                fs::StaticFiles::new("client")
-                    .unwrap_or_else(|error| {
-                        error!("Failed to serve client from filesystem: {}", error);
-                        process::exit(1);
-                    })
-                    .index_file("index.html"),
-            )
+            .service(Files::new("/", "client").index_file("index.html"))
     })
     .bind(config.bind_addr)
     .context("Failed to bind to socket")?
-    .run();
+    .run()
+    .context("Failed to start HttpServer")?;
 
     Ok(())
 }
@@ -136,6 +131,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsClient {
                 trace!("Close received: {:?}", message);
                 ctx.stop()
             }
+            ws::Message::Nop => (),
         }
     }
 }

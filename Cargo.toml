@@ -6,8 +6,10 @@ authors = ["alecdwm <alec@owls.io>"]
 edition = "2018"
 
 [dependencies]
-actix = "0.7.9"
-actix-web = "0.7.19"
+actix = "0.8.3"
+actix-files = "0.1.1"
+actix-web = "1.0.0"
+actix-web-actors = "1.0.0"
 debug_stub_derive = "0.3.0"
 failure = "0.1.5"
 futures = "0.1.26"
