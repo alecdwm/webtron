@@ -103,9 +103,10 @@ class Webtron {
 			}
 
 			const message = JSON.parse(event.data)
-			console.log(`socket message`, message)
+			const type = Object.keys(message).pop()
+			const data = message[type]
 
-			this.state && this.state.onSocketMessage && this.state.onSocketMessage.call(this.state, message)
+			this.state && this.state.onSocketMessage && this.state.onSocketMessage.call(this.state, type, data)
 		})
 
 		this.globalstate.socket.addEventListener('error', event => {

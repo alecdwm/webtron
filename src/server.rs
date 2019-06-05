@@ -1,4 +1,8 @@
+mod game;
+mod lobby;
+
 use debug_stub_derive::DebugStub;
+use failure::{format_err, Error};
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -7,21 +11,29 @@ use std::thread;
 use std::time;
 use uuid::Uuid;
 
-pub struct WebtronServer {
-    _games: Vec<Game>,
+use game::Game;
+use lobby::Lobby;
+
+#[derive(Debug)]
+pub struct Server {
+    lobby: Lobby,
 
     client_connections: HashMap<Uuid, ClientConnection>,
+    players: HashMap<Uuid, Player>,
+
     server_rx: mpsc::Receiver<ServerMessage>,
 }
 
-impl WebtronServer {
-    pub fn new() -> (WebtronServer, mpsc::Sender<ServerMessage>) {
+impl Server {
+    pub fn new() -> (Server, mpsc::Sender<ServerMessage>) {
         let (server_tx, server_rx) = mpsc::channel();
 
-        let server = WebtronServer {
-            _games: Vec::new(),
+        let server = Server {
+            lobby: Lobby::new(),
 
             client_connections: HashMap::new(),
+            players: HashMap::new(),
+
             server_rx,
         };
 
@@ -36,11 +48,15 @@ impl WebtronServer {
                 match message {
                     ClientConnected(client) => {
                         info!("New client connected: {}", client.id);
-                        self.client_connections.insert(client.id, client);
+                        let id = client.id;
+                        self.client_connections.insert(id, client);
+                        self.players.insert(id, Player::default());
+                        self.lobby.players_mut().insert(id);
                     }
                     ClientDisconnected(id) => {
                         info!("Client disconnected: {}", id);
                         self.client_connections.remove(&id);
+                        self.players.remove(&id);
                     }
                 }
             }
@@ -54,7 +70,7 @@ impl WebtronServer {
                             client
                                 .tx
                                 .try_send(OutgoingMessage::GamesList {
-                                    games: vec!["One".to_owned(), "Two".to_owned()],
+                                    games: self.lobby.games().values().cloned().collect(),
                                 })
                                 .unwrap_or_else(|error| {
                                     error!(
@@ -63,9 +79,19 @@ impl WebtronServer {
                                     );
                                 });
                         }
-                        JoinGame(_game) => unimplemented!(),
+                        NewGame(name) => {
+                            self.lobby.new_game(&name);
+                        }
 
-                        ConfigurePlayer(_player) => unimplemented!(),
+                        JoinGame(game_uuid) => {
+                            self.lobby.move_player_to_game(game_uuid, client.id);
+                            dbg!(&self);
+                        }
+
+                        ConfigurePlayer(player) => {
+                            self.players.insert(client.id, player);
+                        }
+
                         Spawn => unimplemented!(),
                         Turn(_direction) => unimplemented!(),
                     }
@@ -97,7 +123,7 @@ pub struct ClientConnection {
 
 #[derive(Debug, Serialize, actix::Message)]
 pub enum OutgoingMessage {
-    GamesList { games: Vec<String> },
+    GamesList { games: Vec<Game> },
     PlayersList { players: Vec<Player> },
 
     PlayerSpawned { player: Player, x: f64, y: f64 },
@@ -108,19 +134,15 @@ pub enum OutgoingMessage {
 #[derive(Debug, Deserialize)]
 pub enum IncomingMessage {
     ListGames,
-    JoinGame(String),
+    NewGame(String),
+    JoinGame(Uuid),
 
     ConfigurePlayer(Player),
     Spawn,
     Turn(TurnDirection),
 }
 
-#[derive(Debug)]
-struct Game {
-    players: Vec<Player>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Player {
     name: String,
     color: PlayerColor,
@@ -134,6 +156,12 @@ pub enum PlayerColor {
     Purple,
     Red,
     White,
+}
+
+impl Default for PlayerColor {
+    fn default() -> Self {
+        PlayerColor::Orange
+    }
 }
 
 #[derive(Debug, Deserialize)]

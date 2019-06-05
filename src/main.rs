@@ -1,7 +1,7 @@
 use failure::Error;
 use log::error;
 use std::{process, thread};
-use webtron::{config::Config, server::WebtronServer, web};
+use webtron::{config::Config, server::Server as WebtronServer, web};
 
 fn main() -> Result<(), Error> {
     pretty_env_logger::init();

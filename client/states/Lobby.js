@@ -1,6 +1,28 @@
 class Lobby {
 	onEnter() {
-		this.game.globalstate.socket.send(JSON.stringify('ListGames'))
+		const { socket } = this.game.globalstate
+		socket.send(JSON.stringify('ListGames'))
+	}
+
+	onSocketMessage(type, data) {
+		switch (type) {
+			case 'GamesList':
+				const { socket } = this.game.globalstate
+				const { games } = data
+				if (games.length < 1) {
+					socket.send(JSON.stringify({ NewGame: 'Test Game' }))
+					socket.send(JSON.stringify('ListGames'))
+					return
+				}
+
+				socket.send(JSON.stringify({ JoinGame: data.games[0].id }))
+				break
+		}
+	}
+
+	onGameClick() {
+		const { socket } = this.game.globalstate
+		socket.send(JSON.stringify({ JoinGame: 'game-id' }))
 	}
 
 	// player: Phaser.Sprite
