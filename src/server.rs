@@ -1,171 +1,132 @@
-mod game;
-mod lobby;
+mod client;
+mod messages;
 
-use debug_stub_derive::DebugStub;
-use failure::{format_err, Error};
-use log::{error, info};
-use serde_derive::{Deserialize, Serialize};
+pub use messages::{MessageIn, MessageOut};
+
+use self::client::Client;
+use self::messages::MessageInData;
+use crate::game::{Game, Lobby, PlayerJoinable};
+use actix::{Actor, Context, Handler};
+use log::{error, info, warn};
 use std::collections::HashMap;
-use std::sync::mpsc;
-use std::thread;
-use std::time;
 use uuid::Uuid;
 
-use game::Game;
-use lobby::Lobby;
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Server {
     lobby: Lobby,
-
-    client_connections: HashMap<Uuid, ClientConnection>,
-    players: HashMap<Uuid, Player>,
-
-    server_rx: mpsc::Receiver<ServerMessage>,
+    games: HashMap<Uuid, Game>,
+    clients: HashMap<Uuid, Client>,
 }
 
 impl Server {
-    pub fn new() -> (Server, mpsc::Sender<ServerMessage>) {
-        let (server_tx, server_rx) = mpsc::channel();
-
-        let server = Server {
-            lobby: Lobby::new(),
-
-            client_connections: HashMap::new(),
-            players: HashMap::new(),
-
-            server_rx,
-        };
-
-        (server, server_tx)
+    pub fn new() -> Self {
+        Default::default()
     }
 
-    pub fn run(mut self) {
-        loop {
-            // handle (dis)connects
-            for message in self.server_rx.try_iter() {
-                use ServerMessage::*;
-                match message {
-                    ClientConnected(client) => {
-                        info!("New client connected: {}", client.id);
-                        let id = client.id;
-                        self.client_connections.insert(id, client);
-                        self.players.insert(id, Player::default());
-                        self.lobby.players_mut().insert(id);
-                    }
-                    ClientDisconnected(id) => {
-                        info!("Client disconnected: {}", id);
-                        self.client_connections.remove(&id);
-                        self.players.remove(&id);
-                    }
-                }
+    fn create_game(&mut self, name: &str) {
+        let game = Game::new(name);
+        info!("Game created {:?}", game);
+        self.games.insert(game.id, game);
+    }
+}
+
+impl Actor for Server {
+    type Context = Context<Self>;
+}
+
+impl Handler<MessageIn> for Server {
+    type Result = ();
+
+    fn handle(&mut self, message: MessageIn, _ctx: &mut Context<Self>) {
+        use MessageInData::*;
+
+        let client_id = message.client_id;
+        match message.data {
+            //
+            // Handle client (dis)connections
+            //
+            Connect(addr) => {
+                info!("Client connected: {}", client_id);
+                let client = Client::new(client_id, addr);
+                self.clients.insert(client_id, client);
+                self.lobby.add_player(&client_id);
+            }
+            Disconnect => {
+                info!("Client disconnected: {}", client_id);
+                self.games
+                    .values_mut()
+                    .for_each(|game| game.remove_player(&client_id));
+                self.lobby.remove_player(&client_id);
+                self.clients.remove(&client_id);
             }
 
-            // handle events from clients
-            for client in self.client_connections.values() {
-                for message in client.rx.try_iter() {
-                    use IncomingMessage::*;
-                    match message {
-                        ListGames => {
-                            client
-                                .tx
-                                .try_send(OutgoingMessage::GamesList {
-                                    games: self.lobby.games().values().cloned().collect(),
-                                })
-                                .unwrap_or_else(|error| {
-                                    error!(
-                                        "Failed to send games list to client {}: {}",
-                                        client.id, error
-                                    );
-                                });
-                        }
-                        NewGame(name) => {
-                            self.lobby.new_game(&name);
-                        }
-
-                        JoinGame(game_uuid) => {
-                            self.lobby.move_player_to_game(game_uuid, client.id);
-                            dbg!(&self);
-                        }
-
-                        ConfigurePlayer(player) => {
-                            self.players.insert(client.id, player);
-                        }
-
-                        Spawn => unimplemented!(),
-                        Turn(_direction) => unimplemented!(),
-                    }
-                }
+            //
+            // Handle client messages
+            //
+            ConfigurePlayer(player) => {
+                let client = handle_none!(self.clients.get_mut(&client_id), {
+                    error!("ConfigurePlayer: Client {} not found!", client_id);
+                });
+                info!("Client {} configured player {:?}", client_id, player);
+                client.configure_player(player);
             }
 
-            thread::sleep(time::Duration::from_millis(300));
+            ListGames => {
+                let client = handle_none!(self.clients.get_mut(&client_id), {
+                    error!("ListGames: Client {} not found!", client_id);
+                });
+
+                handle_err!(
+                    client.addr().try_send(MessageOut::GamesList {
+                        games: self.games.values().cloned().collect(),
+                    }),
+                    error,
+                    error!(
+                        "Failed to send games list to client {}: {}",
+                        client.id(),
+                        error
+                    )
+                );
+            }
+            CreateGame(name) => self.create_game(&name),
+            JoinGame(game_id) => {
+                let game = handle_none!(self.games.get_mut(&game_id), {
+                    error!(
+                        "Player {} can't join game {}: game not found!",
+                        client_id, game_id
+                    );
+                });
+
+                if !self.lobby.players().contains(&client_id) {
+                    warn!(
+                        "Player {} can't join game {}: player not in lobby!",
+                        client_id, game_id
+                    );
+                    return;
+                }
+
+                self.lobby.remove_player(&client_id);
+                game.add_player(&client_id);
+                info!("Player {} joined game {:?}", client_id, game);
+            }
+            LeaveGame => {
+                let game = handle_none!(
+                    self.games
+                        .values_mut()
+                        .find(|game| game.players().contains(&client_id)),
+                    warn!(
+                        "Player {} can't leave game: player not in any game!",
+                        client_id
+                    )
+                );
+
+                game.remove_player(&client_id);
+                self.lobby.add_player(&client_id);
+                info!("Player {} left game {:?}", client_id, game);
+            }
+
+            Spawn => unimplemented!(),
+            Turn(_direction) => unimplemented!(),
         }
     }
-
-    pub fn run_in_new_thread(self) -> thread::JoinHandle<()> {
-        thread::spawn(move || self.run())
-    }
-}
-
-#[derive(Debug)]
-pub enum ServerMessage {
-    ClientConnected(ClientConnection),
-    ClientDisconnected(Uuid),
-}
-
-#[derive(DebugStub)]
-pub struct ClientConnection {
-    pub id: Uuid,
-    #[debug_stub = "Recipient"]
-    pub tx: actix::Recipient<OutgoingMessage>,
-    pub rx: mpsc::Receiver<IncomingMessage>,
-}
-
-#[derive(Debug, Serialize, actix::Message)]
-pub enum OutgoingMessage {
-    GamesList { games: Vec<Game> },
-    PlayersList { players: Vec<Player> },
-
-    PlayerSpawned { player: Player, x: f64, y: f64 },
-    // GameState(GameState),
-    PlayerDeath(Player),
-}
-
-#[derive(Debug, Deserialize)]
-pub enum IncomingMessage {
-    ListGames,
-    NewGame(String),
-    JoinGame(Uuid),
-
-    ConfigurePlayer(Player),
-    Spawn,
-    Turn(TurnDirection),
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Player {
-    name: String,
-    color: PlayerColor,
-}
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PlayerColor {
-    Blue,
-    Green,
-    Orange,
-    Purple,
-    Red,
-    White,
-}
-
-impl Default for PlayerColor {
-    fn default() -> Self {
-        PlayerColor::Orange
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub enum TurnDirection {
-    Left,
-    Right,
 }

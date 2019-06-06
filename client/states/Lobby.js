@@ -10,7 +10,7 @@ class Lobby {
 				const { socket } = this.game.globalstate
 				const { games } = data
 				if (games.length < 1) {
-					socket.send(JSON.stringify({ NewGame: 'Test Game' }))
+					socket.send(JSON.stringify({ CreateGame: 'Test Game' }))
 					socket.send(JSON.stringify('ListGames'))
 					return
 				}

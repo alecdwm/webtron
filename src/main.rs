@@ -1,23 +1,24 @@
 use failure::Error;
 use log::error;
-use std::{process, thread};
-use webtron::{config::Config, server::Server as WebtronServer, web};
+use std::{env, process};
 
-fn main() -> Result<(), Error> {
-    pretty_env_logger::init();
+fn main() {
+    webtron::start().unwrap_or_else(|error| {
+        print_error_chain(error);
+        process::exit(1);
+    })
+}
 
-    let config = Config::new();
+fn print_error_chain(error: Error) {
+    let chain = error
+        .iter_chain()
+        .map(|f| format!("{}", f))
+        .collect::<Vec<_>>()
+        .join(": ");
 
-    let (webtron_server, server_tx) = WebtronServer::new();
-
-    thread::spawn(move || {
-        web::run(server_tx, &config).unwrap_or_else(|error| {
-            error!("Failed to run webserver: {}", error);
-            process::exit(1);
-        })
-    });
-
-    webtron_server.run();
-
-    Ok(())
+    if env::var("RUST_BACKTRACE").is_ok() {
+        error!("{}\n\n{}", error.backtrace(), chain);
+    } else {
+        error!("{}", chain);
+    }
 }
