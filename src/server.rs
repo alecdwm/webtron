@@ -64,7 +64,7 @@ impl Handler<MessageIn> for Server {
             // Handle client messages
             //
             ConfigurePlayer(player) => {
-                let client = handle_none!(self.clients.get_mut(&client_id), {
+                let client = handle_none!(self.clients.get_mut(&client_id), || {
                     error!("ConfigurePlayer: Client {} not found!", client_id);
                 });
                 info!("Client {} configured player {:?}", client_id, player);
@@ -72,7 +72,7 @@ impl Handler<MessageIn> for Server {
             }
 
             ListGames => {
-                let client = handle_none!(self.clients.get_mut(&client_id), {
+                let client = handle_none!(self.clients.get_mut(&client_id), || {
                     error!("ListGames: Client {} not found!", client_id);
                 });
 
@@ -80,8 +80,7 @@ impl Handler<MessageIn> for Server {
                     client.addr().try_send(MessageOut::GamesList {
                         games: self.games.values().cloned().collect(),
                     }),
-                    error,
-                    error!(
+                    |error| error!(
                         "Failed to send games list to client {}: {}",
                         client.id(),
                         error
@@ -90,12 +89,10 @@ impl Handler<MessageIn> for Server {
             }
             CreateGame(name) => self.create_game(&name),
             JoinGame(game_id) => {
-                let game = handle_none!(self.games.get_mut(&game_id), {
-                    error!(
-                        "Player {} can't join game {}: game not found!",
-                        client_id, game_id
-                    );
-                });
+                let game = handle_none!(self.games.get_mut(&game_id), || error!(
+                    "Player {} can't join game {}: game not found!",
+                    client_id, game_id
+                ));
 
                 if !self.lobby.players().contains(&client_id) {
                     warn!(
@@ -114,7 +111,7 @@ impl Handler<MessageIn> for Server {
                     self.games
                         .values_mut()
                         .find(|game| game.players().contains(&client_id)),
-                    warn!(
+                    || warn!(
                         "Player {} can't leave game: player not in any game!",
                         client_id
                     )

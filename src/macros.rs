@@ -13,12 +13,11 @@
 /// Helps to prevent unnecessary code indentation.
 ///
 #[macro_export]
-macro_rules! handle_pat {
-    // handle any pattern $p
-    ( $e:expr, $p:pat, $if_err:expr ) => {{
-        let result = $e;
-        if let $p = result {
-            return $if_err;
+macro_rules! handle_pattern {
+    ( $expression:expr, $pattern:pat, $on_match:expr ) => {{
+        let result = $expression;
+        if let $pattern = result {
+            return $on_match;
         }
         result.unwrap()
     }};
@@ -29,24 +28,20 @@ macro_rules! handle_pat {
 /// deal with a `Result::Err`, but cannot use `try!` because your
 /// function does not return the `Result` type.
 ///
-/// Also helps to prevent unnecessary code indentation.
+/// The expression provided as the first parameter with be matched
+/// against the pattern `Err(error)`.
+/// If the pattern matches, the closure provided as the second
+/// parameter will be called with the expression result.
+/// The closure result will then be returned from the calling function.
+///
+/// Helps to prevent unnecessary code indentation.
 ///
 #[macro_export]
 macro_rules! handle_err {
-    // handle Result::Err
-    ( $e:expr, $if_err:expr ) => {{
-        let result = $e;
-        if let Err(_) = result {
-            return $if_err;
-        }
-        result.unwrap()
-    }};
-
-    // handle Result::Err($error) and provide $error to $if_err
-    ( $e:expr, $error:ident, $if_err:expr ) => {{
-        let result = $e;
-        if let Err($error) = result {
-            return $if_err;
+    ( $expression:expr, $on_error:expr ) => {{
+        let result = $expression;
+        if let Err(error) = result {
+            return $on_error(error);
         }
         result.unwrap()
     }};
@@ -57,15 +52,20 @@ macro_rules! handle_err {
 /// deal with an `Option::None`, but cannot use `try!` because
 /// your function does not return the `Option` type.
 ///
-/// Also helps to prevent unnecessary code indentation.
+/// The expression provided as the first parameter with be matched
+/// against the pattern `None`.
+/// If the pattern matches, the closure provided as the second
+/// parameter will be called with the expression result.
+/// The closure result will then be returned from the calling function.
+///
+/// Helps to prevent unnecessary code indentation.
 ///
 #[macro_export]
 macro_rules! handle_none {
-    // handle Option::None
-    ( $e:expr, $if_none:expr ) => {{
-        let option = $e;
+    ( $expression:expr, $on_none:expr ) => {{
+        let option = $expression;
         if let None = option {
-            return $if_none;
+            return $on_none();
         }
         option.unwrap()
     }};

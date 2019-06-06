@@ -44,11 +44,10 @@ impl StreamHandler<websocket::Message, websocket::ProtocolError> for WebsocketCl
             websocket::Message::Text(text) => {
                 trace!("Text message received: {}", text);
 
-                let message = handle_err!(
-                    MessageIn::from_json(self.id, &text),
-                    error,
-                    warn!("Failed to parse incoming message ({}): {}", text, error)
-                );
+                let message = handle_err!(MessageIn::from_json(self.id, &text), |error| warn!(
+                    "Failed to parse incoming message ({}): {}",
+                    text, error
+                ));
 
                 // TODO: send instead of try_send?
                 self.server_addr.try_send(message).unwrap_or_else(|error| {
@@ -74,14 +73,10 @@ impl Handler<MessageOut> for WebsocketClient {
     type Result = ();
 
     fn handle(&mut self, message: MessageOut, ctx: &mut Self::Context) {
-        let text = handle_err!(
-            message.to_json(),
-            error,
-            error!(
-                "Failed to serialize outgoing message ({:?}): {}",
-                message, error
-            )
-        );
+        let text = handle_err!(message.to_json(), |error| error!(
+            "Failed to serialize outgoing message ({:?}): {}",
+            message, error
+        ));
         ctx.text(text);
     }
 }
