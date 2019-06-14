@@ -2,9 +2,11 @@
 # Project cruft #
 #################
 **/*.rs.bk
-/client/vendor/*
+/client/dist
+/client/node_modules
+/client/yarn-debug.log*
+/client/yarn-error.log*
 /target
-node_modules
 
 ######################
 # OS generated files #

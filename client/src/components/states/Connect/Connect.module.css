@@ -1,0 +1,9 @@
+.connectingText {
+  position: absolute;
+  top: 280px;
+  left: 280px;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 32px;
+  font-weight: bold;
+}

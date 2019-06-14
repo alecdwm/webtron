@@ -1,0 +1,98 @@
+/* common attributes */
+.statusText,
+.nameLabel,
+.namePreview,
+.namePreview:after,
+.colorLabel,
+.colorButtonLeft,
+.colorPreview,
+.colorButtonRight,
+.connectButton {
+  position: absolute;
+  color: white;
+  font-size: 32px;
+}
+.colorButtonLeft,
+.colorButtonRight,
+.connectButton {
+  cursor: pointer;
+}
+.statusText,
+.namePreview,
+.colorButtonLeft,
+.colorButtonRight,
+.connectButton {
+  font-weight: bold;
+}
+
+/* specific attributes */
+.statusText {
+  top: 105px;
+  left: 280px;
+  width: 100%;
+  transform: translate(-50%, -50%);
+  color: var(--orange);
+}
+.nameLabel {
+  top: 210px;
+  left: 240px;
+  transform: translate(-100%, -50%);
+}
+.namePreview {
+  top: 210px;
+  left: 280px;
+  transform: translate(0, -50%);
+}
+.colorLabel {
+  top: 270px;
+  left: 240px;
+  transform: translate(-100%, -50%);
+}
+.colorButtonLeft {
+  top: 270px;
+  left: 280px;
+  transform: translate(0, -50%);
+}
+.colorPreview {
+  top: 270px;
+  left: 340px;
+  transform: translate(-50%, -50%) rotate(270deg);
+}
+.colorButtonRight {
+  top: 270px;
+  left: 400px;
+  transform: translate(-100%, -50%);
+}
+.connectButton {
+  top: 350px;
+  left: 280px;
+  transform: translate(-50%, -50%);
+}
+
+/* text cursor */
+.namePreview:after {
+  display: block;
+  top: 0;
+  right: 0;
+  transform: translate(100%, 0);
+  font-weight: normal;
+  content: '_';
+}
+.namePreview.noName:after {
+  transform: translate(100%, -50%);
+}
+.namePreview.cursorBlink:after {
+  animation: cursorBlink 1.2s linear infinite;
+}
+
+@keyframes cursorBlink {
+  0% {
+    visibility: hidden;
+  }
+  50% {
+    visibility: hidden;
+  }
+  100% {
+    visibility: visible;
+  }
+}
