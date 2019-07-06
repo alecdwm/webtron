@@ -7,7 +7,7 @@ import { setPlayerName, setPlayerColor } from 'actions'
 import webtronColors from 'utils/colors'
 import styles from './MainMenu.module.css'
 
-const MAX_PLAYER_NAME_LENGTH = 12
+export const MAX_PLAYER_NAME_LENGTH = 12
 
 export default function MainMenu({ store: { playerName, playerColor, statusText }, connect }) {
   const [cursorBlink, resetCursorBlink] = useCursorBlink()
@@ -75,18 +75,19 @@ export default function MainMenu({ store: { playerName, playerColor, statusText 
   )
 
   const onKeyPress = useCallback(
-    ({ key }) => {
-      switch (key) {
+    event => {
+      switch (event.key) {
         case 'Enter':
         case 'Return':
           break
 
         case ' ':
+          event.preventDefault()
           addKeyToPlayerName('_')
           break
 
         default:
-          addKeyToPlayerName(key.toLowerCase())
+          addKeyToPlayerName(event.key.toLowerCase())
           break
       }
     },

@@ -33,10 +33,16 @@ body {
 a {
   color: var(--orange);
   text-decoration: none;
+  transition: color 300ms ease;
 }
-a:hover,
-a:active {
+a:focus,
+a:hover {
+  outline: none;
   color: var(--blue);
+}
+a:active {
+  color: var(--white);
+  transition: none;
 }
 
 header img {
@@ -72,10 +78,6 @@ footer p {
 /* animations */
 html {
   animation: fadein 1s ease;
-}
-
-a {
-  transition: color 0.5s ease;
 }
 
 main {

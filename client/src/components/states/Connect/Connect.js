@@ -10,7 +10,7 @@ export default function Connect({ store: { playerName, playerColor, socketState 
   useEffect(() => {
     if (socketState !== SocketStates.OPEN) return
 
-    send({ ConfigurePlayer: { name: playerName, color: playerColor } })
+    send({ Lobby: { ConfigurePlayer: { name: playerName, color: playerColor } } })
     dispatch(setGameState('Lobby'))
   }, [socketState, playerName, playerColor, send, dispatch])
 

@@ -56,6 +56,11 @@ export default function useSocket() {
     })
   }, [dispatch, socketRef, forceUpdate])
 
+  const disconnect = useCallback(() => {
+    if (!socketRef.current) return console.warn('cannot close socket: socket does not exist')
+    socketRef.current.close()
+  }, [socketRef])
+
   const send = useCallback(
     message => {
       if (!socketRef.current) return console.warn('cannot send socket message: socket not found')
@@ -64,5 +69,5 @@ export default function useSocket() {
     [socketRef],
   )
 
-  return [connect, send]
+  return [connect, disconnect, send]
 }

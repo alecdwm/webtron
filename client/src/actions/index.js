@@ -1,48 +1,27 @@
 import { SocketStates } from 'hooks/useSocket'
+import createSimpleAction from 'utils/createSimpleAction'
 
+export const SET_GAME_OPTIONS = 'SET_GAME_OPTIONS'
 export const SET_GAME_STATE = 'SET_GAME_STATE'
 export const PRELOAD_IMAGES = 'PRELOAD_IMAGES'
+
+export const setGameOptions = createSimpleAction(SET_GAME_OPTIONS, 'gameOptions')
+export const setGameState = createSimpleAction(SET_GAME_STATE, 'state')
+export const preloadImages = createSimpleAction(PRELOAD_IMAGES, 'urls')
 
 export const SET_PLAYER_NAME = 'SET_PLAYER_NAME'
 export const SET_PLAYER_COLOR = 'SET_PLAYER_COLOR'
 
+export const setPlayerName = createSimpleAction(SET_PLAYER_NAME, 'name')
+export const setPlayerColor = createSimpleAction(SET_PLAYER_COLOR, 'color')
+
 export const SET_STATUS_TEXT = 'SET_STATUS_TEXT'
 export const SET_SOCKET_STATE = 'SET_SOCKET_STATE'
 export const RECEIVE_SOCKET_MESSAGE = 'RECEIVE_SOCKET_MESSAGE'
-export const RECEIVE_GAMES_LIST = 'RECEIVE_GAMES_LIST'
+export const RECEIVE_PLAYER_ID = 'RECEIVE_PLAYER_ID'
+export const RECEIVE_LOBBY_DATA = 'RECEIVE_LOBBY_DATA'
 
-export function setGameState(state) {
-  return {
-    type: SET_GAME_STATE,
-    state,
-  }
-}
-export function preloadImages(urls) {
-  return {
-    type: PRELOAD_IMAGES,
-    urls: urls,
-  }
-}
-
-export function setPlayerName(name) {
-  return {
-    type: SET_PLAYER_NAME,
-    name,
-  }
-}
-export function setPlayerColor(color) {
-  return {
-    type: SET_PLAYER_COLOR,
-    color,
-  }
-}
-
-export function setStatusText(text) {
-  return {
-    type: SET_STATUS_TEXT,
-    text,
-  }
-}
+export const setStatusText = createSimpleAction(SET_STATUS_TEXT, 'text')
 export function setSocketState(socketState) {
   return (dispatch, getState) => {
     if (socketState === SocketStates.CONNECTING) {
@@ -55,17 +34,16 @@ export function setSocketState(socketState) {
 export function receiveSocketMessage(messageType, messageData) {
   return dispatch => {
     switch (messageType) {
-      case 'GamesList':
-        return dispatch(receiveGamesList(messageData.games))
+      case 'PlayerId':
+        return dispatch(receivePlayerId(messageData))
+
+      case 'LobbyData':
+        return dispatch(receiveLobbyData(messageData.games, messageData.players))
 
       default:
         console.warn('Unhandled message received', messageType, messageData)
     }
   }
 }
-export function receiveGamesList(games) {
-  return {
-    type: RECEIVE_GAMES_LIST,
-    games,
-  }
-}
+export const receivePlayerId = createSimpleAction(RECEIVE_PLAYER_ID, 'playerId')
+export const receiveLobbyData = createSimpleAction(RECEIVE_LOBBY_DATA, 'games', 'players')

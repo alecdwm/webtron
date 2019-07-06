@@ -13,6 +13,7 @@ pub struct Game {
     pub id: Uuid,
     pub name: String,
     pub players: HashSet<Uuid>,
+    pub max_players: usize,
 }
 
 impl Game {
@@ -20,6 +21,7 @@ impl Game {
         Self {
             id: Uuid::new_v4(),
             name: name.to_owned(),
+            max_players: 8,
             ..Default::default()
         }
     }
@@ -34,7 +36,7 @@ impl PlayerJoinable for Game {
         self.players.insert(uuid.clone());
     }
 
-    fn remove_player(&mut self, uuid: &Uuid) {
-        self.players.remove(uuid);
+    fn remove_player(&mut self, uuid: &Uuid) -> bool {
+        self.players.remove(uuid)
     }
 }

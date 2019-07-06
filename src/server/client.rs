@@ -1,4 +1,3 @@
-use crate::game::Player;
 use crate::server::MessageOut;
 use actix::Recipient;
 use debug_stub_derive::DebugStub;
@@ -7,17 +6,17 @@ use uuid::Uuid;
 #[derive(DebugStub)]
 pub struct Client {
     id: Uuid,
+    ip_address: Option<String>,
     #[debug_stub = "Recipient<MessageOut>"]
     addr: Recipient<MessageOut>,
-    player: Option<Player>,
 }
 
 impl Client {
-    pub fn new(id: Uuid, addr: Recipient<MessageOut>) -> Self {
+    pub fn new(id: Uuid, ip_address: Option<String>, addr: Recipient<MessageOut>) -> Self {
         Self {
             id,
+            ip_address,
             addr,
-            player: None,
         }
     }
 
@@ -25,11 +24,11 @@ impl Client {
         &self.id
     }
 
-    pub fn addr(&self) -> &Recipient<MessageOut> {
-        &self.addr
+    pub fn ip_address(&self) -> &Option<String> {
+        &self.ip_address
     }
 
-    pub fn configure_player(&mut self, player: Player) {
-        self.player = Some(player);
+    pub fn addr(&self) -> &Recipient<MessageOut> {
+        &self.addr
     }
 }

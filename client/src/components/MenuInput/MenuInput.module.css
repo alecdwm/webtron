@@ -1,0 +1,54 @@
+.inputWrapper {
+  display: inline;
+  position: relative;
+}
+.inputWrapper:after {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(100%, 0);
+  color: inherit;
+  font-weight: normal;
+  content: '_';
+}
+.inputWrapper.focused:after {
+  display: block;
+}
+.inputWrapper.noName:after {
+  transform: none;
+}
+.inputWrapper.cursorBlink:after {
+  animation: cursorBlink 1.2s linear infinite;
+}
+@keyframes cursorBlink {
+  0% {
+    visibility: hidden;
+  }
+  50% {
+    visibility: hidden;
+  }
+  100% {
+    visibility: visible;
+  }
+}
+
+.invisibleText {
+  color: transparent;
+}
+
+.input {
+  all: unset;
+}
+.input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  caret-color: transparent;
+}
+.input::selection {
+  background: none;
+}

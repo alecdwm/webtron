@@ -1,5 +1,6 @@
 {
   "env": { "es6": true, "browser": true },
+  "globals": { "global": "readonly", "process": "readonly" },
   "extends": ["eslint:recommended", "plugin:react/recommended", "prettier"],
   "rules": {
     "eqeqeq": [2, "allow-null"],

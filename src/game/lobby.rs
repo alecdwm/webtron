@@ -16,7 +16,7 @@ impl PlayerJoinable for Lobby {
         self.players.insert(uuid.clone());
     }
 
-    fn remove_player(&mut self, uuid: &Uuid) {
-        self.players.remove(uuid);
+    fn remove_player(&mut self, uuid: &Uuid) -> bool {
+        self.players.remove(uuid)
     }
 }

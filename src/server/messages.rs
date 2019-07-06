@@ -8,10 +8,18 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Message)]
 pub enum MessageOut {
-    GamesList { games: Vec<Game> },
-    PlayersList { players: Vec<Player> },
-
-    PlayerSpawned { player: Player, x: f64, y: f64 },
+    PlayerId(Uuid),
+    LobbyData {
+        games: Vec<Game>,
+        players: Vec<Player>,
+    },
+    // GamesList { games: Vec<Game> },
+    // PlayersList { players: Vec<Player> },
+    PlayerSpawned {
+        player: Player,
+        x: f64,
+        y: f64,
+    },
     // GameState(GameState),
     PlayerDeath(Player),
 }
@@ -28,20 +36,36 @@ pub struct MessageIn {
     pub(super) data: MessageInData,
 }
 
-#[derive(DebugStub, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub(super) enum MessageInData {
     #[serde(skip)]
-    Connect(#[debug_stub = "Recipient<MessageOut>"] Recipient<MessageOut>),
-    #[serde(skip)]
-    Disconnect,
+    Client(ClientMessageIn),
 
+    Lobby(LobbyMessageIn),
+    InGame(InGameMessageIn),
+}
+
+#[derive(DebugStub)]
+pub(super) enum ClientMessageIn {
+    Connect(
+        Option<String>,
+        #[debug_stub = "Recipient<MessageOut>"] Recipient<MessageOut>,
+    ),
+    Disconnect,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) enum LobbyMessageIn {
     ConfigurePlayer(Player),
 
-    ListGames,
+    FetchLobbyData,
     CreateGame(String),
     JoinGame(Uuid),
     LeaveGame,
+}
 
+#[derive(Debug, Deserialize)]
+pub(super) enum InGameMessageIn {
     Spawn,
     Turn(TurnDirection),
 }
@@ -53,17 +77,21 @@ pub(super) enum TurnDirection {
 }
 
 impl MessageIn {
-    pub fn connect(client_id: Uuid, addr: Recipient<MessageOut>) -> Self {
+    pub fn connect(
+        client_id: Uuid,
+        ip_address: Option<String>,
+        addr: Recipient<MessageOut>,
+    ) -> Self {
         Self {
             client_id,
-            data: MessageInData::Connect(addr),
+            data: MessageInData::Client(ClientMessageIn::Connect(ip_address, addr)),
         }
     }
 
     pub fn disconnect(client_id: Uuid) -> Self {
         Self {
             client_id,
-            data: MessageInData::Disconnect,
+            data: MessageInData::Client(ClientMessageIn::Disconnect),
         }
     }
 

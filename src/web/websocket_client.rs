@@ -7,14 +7,19 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct WebsocketClient {
     id: Uuid,
+    ip_address: Option<String>,
     server_addr: Addr<WebtronServer>,
 }
 
 impl WebsocketClient {
-    pub fn new(server_addr: Addr<WebtronServer>) -> Self {
+    pub fn new(ip_address: Option<String>, server_addr: Addr<WebtronServer>) -> Self {
         let id = Uuid::new_v4();
 
-        WebsocketClient { id, server_addr }
+        WebsocketClient {
+            id,
+            ip_address,
+            server_addr,
+        }
     }
 }
 
@@ -23,7 +28,11 @@ impl Actor for WebsocketClient {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.server_addr
-            .try_send(MessageIn::connect(self.id, ctx.address().recipient())) // TODO: send instead of try_send?
+            .try_send(MessageIn::connect(
+                self.id,
+                self.ip_address.clone(),
+                ctx.address().recipient(),
+            )) // TODO: send instead of try_send?
             .unwrap_or_else(|error| error!("Failed to send connect to webtron server: {}", error));
     }
 

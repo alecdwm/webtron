@@ -1,69 +1,72 @@
-.gameList {
+.mainLobby,
+.gameLobby,
+.createGameMenu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  height: 100%;
+}
+.space {
+  flex-basis: 2;
+  flex-grow: 1;
+}
+
+.mainLobbyGameList {
   overflow-x: hidden;
   overflow-y: auto;
 }
 
-.gameItem {
+.mainLobbyGameItem {
   display: flex;
   flex-direction: row;
   justify-content: space-around;
   margin: 0 auto;
   padding: 0.4rem;
 }
-.gameItemName {
+.mainLobbyGameItemName {
   display: inline-block;
+  color: #ffffff;
   font-size: 2em;
+  font-weight: bold;
 }
-.gameItemPlayers {
+.mainLobbyGameItemPlayers {
   display: inline-block;
   flex-grow: 2;
   padding: 0 1rem;
   line-height: 2em;
   text-align: right;
 }
-.joinButton {
-  padding: 0.2em 0.4em;
-  border: 3px solid var(--orange);
-  border-radius: 5px;
-  color: var(--orange);
-  font-weight: bold;
-  cursor: pointer;
-  transition: color 300ms ease, border 300ms ease;
-}
-.joinButton:hover,
-.joinButton:focus {
-  border: 3px solid var(--blue);
-  color: var(--blue);
-}
-.joinButton:active {
-  border: 3px solid var(--white);
-  color: var(--white);
-  transition: none;
+
+.title {
+  color: #ffffff;
+  font-size: 32px;
 }
 
-.createGame {
-  padding: 0 2rem;
+.gameName {
+  display: table;
+  width: 100%;
 }
-.createGameInput {
-  display: inline-block;
+.gameNameLabel {
+  display: table-cell;
+  width: 50%;
+  padding-right: 1em;
+  color: #ffffff;
+  font-size: 32px;
+  text-align: right;
 }
-.createButton {
-  display: inline-block;
-  padding: 0.2em 0.4em;
-  border: 3px solid var(--orange);
-  border-radius: 5px;
-  color: var(--orange);
+.gameNameInput {
+  display: table-cell;
+  width: 50%;
+  color: #ffffff;
+  font-size: 32px;
   font-weight: bold;
-  cursor: pointer;
-  transition: color 300ms ease, border 300ms ease;
+  text-align: left;
 }
-.createButton:hover,
-.createButton:focus {
-  border: 3px solid var(--blue);
-  color: var(--blue);
-}
-.createButton:active {
-  border: 3px solid var(--white);
-  color: var(--white);
-  transition: none;
+
+.createButton,
+.backButton,
+.disconnectButton,
+.leaveButton {
+  font-size: 32px;
 }

@@ -107,7 +107,7 @@ export default function useClassName(staticClassName, WrappedComponent = 'div') 
 //     errorUI && 'error-ui'
 //   ]) -> 'item-wrapper error-ui'
 //
-function resolveClassName(className) {
+export function resolveClassName(className) {
   if (!Array.isArray(className)) return className
   return className.filter(Boolean).join(' ')
 }

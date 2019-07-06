@@ -7,7 +7,7 @@ import Lobby from 'components/states/Lobby'
 const gameStates = { MainMenu, Connect, Lobby }
 
 export default function Webtron({ store }) {
-  const [connect, send] = useSocket()
+  const [connect, disconnect, send] = useSocket()
 
   const GameState = gameStates[store.gameState] || null
   if (GameState === null) {
@@ -18,7 +18,7 @@ export default function Webtron({ store }) {
 
   return (
     <>
-      <GameState store={store} connect={connect} send={send} />
+      <GameState store={store} connect={connect} disconnect={disconnect} send={send} />
     </>
   )
 }
