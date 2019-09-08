@@ -1,6 +1,5 @@
 mod websocket_client;
 
-use self::websocket_client::WebsocketClient;
 use crate::config::Config;
 use crate::server::Server as WebtronServer;
 use actix::Addr;
@@ -9,6 +8,7 @@ use actix_server::Server as ActixServer;
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_actors::ws as websocket;
 use failure::{Error, ResultExt};
+use websocket_client::WebsocketClient;
 
 pub fn start(server_addr: Addr<WebtronServer>, config: &Config) -> Result<ActixServer, Error> {
     Ok(HttpServer::new(move || {

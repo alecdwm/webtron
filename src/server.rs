@@ -3,18 +3,18 @@ mod messages;
 
 pub use messages::{MessageIn, MessageOut};
 
-use self::client::Client;
-use self::messages::{ClientMessageIn, InGameMessageIn, LobbyMessageIn, MessageInData};
-use crate::game::{Game, Lobby, Player, PlayerJoinable};
+use crate::game::{Game, Player, PlayerJoinable};
 use actix::{Actor, Context, Handler};
+use client::Client;
 use failure::{format_err, Error, ResultExt};
 use log::{error, info};
+use messages::incoming::{ConnectionMessage, GameInputMessage, MatchmakingMessage};
+use messages::MessageInHandler;
 use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Default)]
 pub struct Server {
-    lobby: Lobby,
     games: HashMap<Uuid, Game>,
     clients: HashMap<Uuid, Client>,
     players: HashMap<Uuid, Player>,
@@ -25,15 +25,15 @@ impl Server {
         Default::default()
     }
 
-    fn create_game(&mut self, name: &str) -> Uuid {
-        let game = Game::new(name);
-        let game_id = game.id.clone();
+    fn create_game(&mut self) -> Uuid {
+        let game = Game::new();
+        let game_id = game.id;
         info!("Game created {:?}", game);
         self.games.insert(game.id, game);
-        return game_id;
+        game_id
     }
 
-    fn move_player_to_game(&mut self, client_id: Uuid, game_id: Uuid) -> Result<(), Error> {
+    fn join_player_to_game(&mut self, client_id: Uuid, game_id: Uuid) -> Result<(), Error> {
         let game = self.games.get_mut(&game_id).ok_or_else(|| {
             format_err!(
                 "Player {} can't join game {}: game not found!",
@@ -42,7 +42,7 @@ impl Server {
             )
         })?;
 
-        if game.max_players <= game.players.len() {
+        if game.is_full() {
             return Err(format_err!(
                 "Player {} can't join game {}: game is full!",
                 client_id,
@@ -50,79 +50,94 @@ impl Server {
             ));
         }
 
-        if !self.lobby.remove_player(&client_id) {
-            return Err(format_err!(
-                "Player {} can't join game {}: player not in lobby!",
+        let player = self.players.remove(&client_id).ok_or_else(|| {
+            format_err!(
+                "Player {} can't join game {}: player not found!",
                 client_id,
                 game_id
-            ));
-        }
+            )
+        })?;
 
-        game.add_player(&client_id);
+        game.join_player(player);
         info!("Player {} joined game {:?}", client_id, game);
+
+        self.clients
+            .get(&client_id)
+            .ok_or_else(|| {
+                format_err!(
+                    "Failed to send game id to client {}: client not found",
+                    client_id
+                )
+            })?
+            .addr()
+            .try_send(MessageOut::JoinedGame(game_id))
+            .with_context(|error| {
+                format_err!("Failed to send game id to client {}: {}", client_id, error)
+            })?;
 
         Ok(())
     }
 
-    fn move_player_to_lobby(&mut self, client_id: Uuid) -> Result<(), Error> {
-        let game = self
-            .games
-            .values_mut()
-            .find(|game| game.players().contains(&client_id))
-            .ok_or_else(|| {
-                format_err!(
-                    "Player {} can't leave game: player not in any game!",
-                    client_id
-                )
-            })?;
+    fn part_player_from_games(&mut self, client_id: Uuid) {
+        let players =
+            self.games
+                .values_mut()
+                .filter_map(|game| match game.part_player(&client_id) {
+                    Some(player) => {
+                        info!("Player {} left game {:?}", client_id, game);
+                        Some(player)
+                    }
+                    None => None,
+                });
 
-        game.remove_player(&client_id);
-        self.lobby.add_player(&client_id);
-        info!("Player {} left game {:?}", client_id, game);
-
-        Ok(())
+        for player in players {
+            self.players.insert(client_id, player);
+        }
     }
 
     fn remove_empty_games(&mut self) {
         self.games.retain(|_, game| !game.players.is_empty());
     }
+}
 
-    fn handle_client_message(&mut self, client_id: Uuid, message: ClientMessageIn) {
-        use ClientMessageIn::*;
+impl MessageInHandler for Server {
+    ///
+    /// Handle client (dis)connections
+    ///
+    fn handle_connection_message(
+        &mut self,
+        client_id: Uuid,
+        message: ConnectionMessage,
+    ) -> Result<(), Error> {
         match message {
-            //
-            // Handle client (dis)connections
-            //
-            Connect(ip_address, addr) => {
+            ConnectionMessage::Connect(ip_address, addr) => {
                 info!("Client connected: {}", client_id);
                 let client = Client::new(client_id, ip_address, addr);
                 self.clients.insert(client_id, client);
-                self.lobby.add_player(&client_id);
             }
-            Disconnect => {
+            ConnectionMessage::Disconnect => {
                 info!("Client disconnected: {}", client_id);
-                self.games.values_mut().for_each(|game| {
-                    game.remove_player(&client_id);
-                });
+                self.part_player_from_games(client_id);
                 self.remove_empty_games();
-                self.lobby.remove_player(&client_id);
                 self.players.remove(&client_id);
                 self.clients.remove(&client_id);
             }
         }
+        Ok(())
     }
 
-    fn handle_lobby_message(
+    ///
+    /// Handle matchmaking messages from clients
+    ///
+    fn handle_matchmaking_message(
         &mut self,
         client_id: Uuid,
-        message: LobbyMessageIn,
+        message: MatchmakingMessage,
     ) -> Result<(), Error> {
-        use LobbyMessageIn::*;
         match message {
-            //
-            // Handle lobby messages from clients
-            //
-            ConfigurePlayer(mut player) => {
+            MatchmakingMessage::ConfigurePlayer(mut player) => {
+                self.part_player_from_games(client_id);
+
                 let client = self.clients.get_mut(&client_id).ok_or_else(|| {
                     format_err!("ConfigurePlayer: Client {} not found!", client_id)
                 })?;
@@ -143,58 +158,46 @@ impl Server {
                     })?;
             }
 
-            FetchLobbyData => {
-                let client = self.clients.get_mut(&client_id).ok_or_else(|| {
-                    format_err!("FetchLobbyData: Client {} not found!", client_id)
-                })?;
+            MatchmakingMessage::JoinGame(Some(game_id)) => {
+                self.part_player_from_games(client_id);
 
-                client
-                    .addr()
-                    .try_send(MessageOut::LobbyData {
-                        games: self.games.values().cloned().collect(),
-                        players: self.players.values().cloned().collect(),
-                    })
-                    .with_context(|error| {
-                        format_err!(
-                            "Failed to send games list to client {}: {}",
-                            client_id,
-                            error
-                        )
-                    })?;
-            }
+                let game_id = if !self.games.contains_key(&game_id) {
+                    self.create_game()
+                } else {
+                    game_id
+                };
 
-            CreateGame(name) => {
-                if !self.lobby.players().contains(&client_id) {
-                    return Err(format_err!(
-                        "Player {} can't create game {}: player not in lobby!",
-                        client_id,
-                        name
-                    ));
-                }
-                let game_id = self.create_game(&name);
-                self.move_player_to_game(client_id, game_id)?;
+                self.join_player_to_game(client_id, game_id)?;
                 self.remove_empty_games();
             }
-            JoinGame(game_id) => {
-                self.move_player_to_game(client_id, game_id)?;
+            MatchmakingMessage::JoinGame(None) => {
+                self.part_player_from_games(client_id);
+
+                let game_id = self.create_game();
+
+                self.join_player_to_game(client_id, game_id)?;
                 self.remove_empty_games();
             }
-            LeaveGame => {
-                self.move_player_to_lobby(client_id)?;
+
+            MatchmakingMessage::PartGame => {
+                self.part_player_from_games(client_id);
                 self.remove_empty_games();
             }
         }
         Ok(())
     }
 
-    fn handle_ingame_message(&mut self, _client_id: Uuid, message: InGameMessageIn) {
-        use InGameMessageIn::*;
+    ///
+    /// Handle game input messages from clients
+    ///
+    fn handle_game_input_message(
+        &mut self,
+        _client_id: Uuid,
+        message: GameInputMessage,
+    ) -> Result<(), Error> {
         match message {
-            //
-            // Handle ingame messages from clients
-            //
-            Spawn => unimplemented!(),
-            Turn(_direction) => unimplemented!(),
+            GameInputMessage::StartGame => unimplemented!(),
+            GameInputMessage::Turn(_direction) => unimplemented!(),
         }
     }
 }
@@ -207,20 +210,8 @@ impl Handler<MessageIn> for Server {
     type Result = ();
 
     fn handle(&mut self, message: MessageIn, _ctx: &mut Context<Self>) {
-        let client_id = message.client_id;
-
-        use MessageInData::*;
-        match message.data {
-            Client(message) => {
-                self.handle_client_message(client_id, message);
-                Ok(())
-            }
-            Lobby(message) => self.handle_lobby_message(client_id, message),
-            InGame(message) => {
-                self.handle_ingame_message(client_id, message);
-                Ok(())
-            }
-        }
-        .unwrap_or_else(|error| error!("{}", error));
+        message
+            .handle_with(self)
+            .unwrap_or_else(|error| error!("{}", error));
     }
 }

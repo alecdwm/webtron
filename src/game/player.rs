@@ -1,11 +1,11 @@
 use serde_derive::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 pub trait PlayerJoinable {
-    fn players(&self) -> &HashSet<Uuid>;
-    fn add_player(&mut self, uuid: &Uuid);
-    fn remove_player(&mut self, uuid: &Uuid) -> bool;
+    fn players(&self) -> &HashMap<Uuid, Player>;
+    fn join_player(&mut self, player: Player);
+    fn part_player(&mut self, uuid: &Uuid) -> Option<Player>;
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

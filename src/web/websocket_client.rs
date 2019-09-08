@@ -28,17 +28,19 @@ impl Actor for WebsocketClient {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.server_addr
+            // TODO: send instead of try_send?
             .try_send(MessageIn::connect(
                 self.id,
                 self.ip_address.clone(),
                 ctx.address().recipient(),
-            )) // TODO: send instead of try_send?
+            ))
             .unwrap_or_else(|error| error!("Failed to send connect to webtron server: {}", error));
     }
 
     fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
         self.server_addr
-            .try_send(MessageIn::disconnect(self.id)) // TODO: send instead of try_send?
+            // TODO: send instead of try_send?
+            .try_send(MessageIn::disconnect(self.id))
             .unwrap_or_else(|error| {
                 error!("Failed to send disconnect to webtron server: {}", error)
             });
@@ -63,10 +65,12 @@ impl StreamHandler<websocket::Message, websocket::ProtocolError> for WebsocketCl
                     error!("Failed to send message to webtron server: {}", error)
                 });
             }
+
             websocket::Message::Close(message) => {
                 trace!("Close received: {:?}", message);
                 ctx.stop()
             }
+
             websocket::Message::Ping(message) => {
                 trace!("Ping received: {}", message);
                 ctx.pong(&message)

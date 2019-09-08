@@ -18,6 +18,14 @@ pub struct Config {
     pub bind_addr: SocketAddr,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            bind_addr: SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 3000),
+        }
+    }
+}
+
 impl Config {
     pub fn new() -> Self {
         let cli_config = CliConfig::from_args();

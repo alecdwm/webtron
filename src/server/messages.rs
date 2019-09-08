@@ -1,104 +1,169 @@
-use crate::game::Game;
-use crate::game::Player;
-use actix::{Message, Recipient};
-use debug_stub_derive::DebugStub;
-use failure::Error;
-use serde_derive::{Deserialize, Serialize};
-use uuid::Uuid;
+pub use incoming::Message as MessageIn;
+pub use incoming::MessageHandler as MessageInHandler;
+pub use outgoing::Message as MessageOut;
 
-#[derive(Debug, Serialize, Message)]
-pub enum MessageOut {
-    PlayerId(Uuid),
-    LobbyData {
-        games: Vec<Game>,
-        players: Vec<Player>,
-    },
-    // GamesList { games: Vec<Game> },
-    // PlayersList { players: Vec<Player> },
-    PlayerSpawned {
-        player: Player,
-        x: f64,
-        y: f64,
-    },
-    // GameState(GameState),
-    PlayerDeath(Player),
-}
+///
+/// Server to client messages
+///
+pub mod outgoing {
+    use crate::game::GameState;
+    use crate::game::Player;
+    use actix::Message as ActixMessage;
+    use chrono::{DateTime, Utc};
+    use serde_derive::Serialize;
+    use uuid::Uuid;
 
-impl MessageOut {
-    pub fn to_json(&self) -> Result<String, serde_json::error::Error> {
-        serde_json::to_string(self)
+    ///
+    /// Outgoing messages
+    ///
+    #[derive(Debug, Serialize, ActixMessage)]
+    pub enum Message {
+        PlayerId(Uuid),
+        TotalGames(u64),
+
+        JoinedGame(Uuid),
+        PartedGame,
+
+        GamePlayers(Vec<Player>),
+        GameStarting(DateTime<Utc>),
+
+        NewGameState(GameState),
+        PatchGameState(GameState),
+    }
+
+    impl Message {
+        pub fn to_json(&self) -> Result<String, serde_json::error::Error> {
+            serde_json::to_string(self)
+        }
     }
 }
 
-#[derive(Debug, Message)]
-pub struct MessageIn {
-    pub(super) client_id: Uuid,
-    pub(super) data: MessageInData,
-}
+///
+/// Client to server messages
+///
+pub mod incoming {
+    use super::outgoing::Message as MessageOut;
+    use crate::game::Player;
+    use actix::{Message as ActixMessage, Recipient};
+    use debug_stub_derive::DebugStub;
+    use failure::Error;
+    use serde_derive::Deserialize;
+    use uuid::Uuid;
 
-#[derive(Debug, Deserialize)]
-pub(super) enum MessageInData {
-    #[serde(skip)]
-    Client(ClientMessageIn),
+    ///
+    /// Incoming messages
+    ///
+    #[derive(Debug, ActixMessage)]
+    pub struct Message {
+        pub client_id: Uuid,
+        pub payload: MessagePayload,
+    }
 
-    Lobby(LobbyMessageIn),
-    InGame(InGameMessageIn),
-}
+    #[derive(Debug, Deserialize)]
+    pub enum MessagePayload {
+        #[serde(skip)]
+        Connection(ConnectionMessage),
 
-#[derive(DebugStub)]
-pub(super) enum ClientMessageIn {
-    Connect(
-        Option<String>,
-        #[debug_stub = "Recipient<MessageOut>"] Recipient<MessageOut>,
-    ),
-    Disconnect,
-}
+        Matchmaking(MatchmakingMessage),
+        GameInput(GameInputMessage),
+    }
 
-#[derive(Debug, Deserialize)]
-pub(super) enum LobbyMessageIn {
-    ConfigurePlayer(Player),
+    #[derive(DebugStub)]
+    pub enum ConnectionMessage {
+        Connect(
+            Option<String>,
+            #[debug_stub = "Recipient<MessageOut>"] Recipient<MessageOut>,
+        ),
+        Disconnect,
+    }
 
-    FetchLobbyData,
-    CreateGame(String),
-    JoinGame(Uuid),
-    LeaveGame,
-}
+    #[derive(Debug, Deserialize)]
+    pub enum MatchmakingMessage {
+        ConfigurePlayer(Player),
 
-#[derive(Debug, Deserialize)]
-pub(super) enum InGameMessageIn {
-    Spawn,
-    Turn(TurnDirection),
-}
+        JoinGame(Option<Uuid>),
+        PartGame,
+    }
 
-#[derive(Debug, Deserialize)]
-pub(super) enum TurnDirection {
-    Left,
-    Right,
-}
+    #[derive(Debug, Deserialize)]
+    pub enum GameInputMessage {
+        StartGame,
+        Turn(TurnDirection),
+    }
 
-impl MessageIn {
-    pub fn connect(
-        client_id: Uuid,
-        ip_address: Option<String>,
-        addr: Recipient<MessageOut>,
-    ) -> Self {
-        Self {
-            client_id,
-            data: MessageInData::Client(ClientMessageIn::Connect(ip_address, addr)),
+    #[derive(Debug, Deserialize)]
+    pub enum TurnDirection {
+        Up,
+        Left,
+        Right,
+        Down,
+
+        Clockwise,
+        Anticlockwise,
+    }
+
+    impl Message {
+        pub fn connect(
+            client_id: Uuid,
+            ip_address: Option<String>,
+            addr: Recipient<MessageOut>,
+        ) -> Self {
+            Self {
+                client_id,
+                payload: MessagePayload::Connection(ConnectionMessage::Connect(ip_address, addr)),
+            }
+        }
+
+        pub fn disconnect(client_id: Uuid) -> Self {
+            Self {
+                client_id,
+                payload: MessagePayload::Connection(ConnectionMessage::Disconnect),
+            }
+        }
+
+        pub fn from_json(client_id: Uuid, json: &str) -> Result<Self, Error> {
+            Ok(Self {
+                client_id,
+                payload: serde_json::from_str(&json)?,
+            })
         }
     }
 
-    pub fn disconnect(client_id: Uuid) -> Self {
-        Self {
-            client_id,
-            data: MessageInData::Client(ClientMessageIn::Disconnect),
-        }
+    pub trait MessageHandler {
+        fn handle_connection_message(
+            &mut self,
+            client_id: Uuid,
+            payload: ConnectionMessage,
+        ) -> Result<(), Error>;
+
+        fn handle_matchmaking_message(
+            &mut self,
+            client_id: Uuid,
+            payload: MatchmakingMessage,
+        ) -> Result<(), Error>;
+
+        fn handle_game_input_message(
+            &mut self,
+            client_id: Uuid,
+            payload: GameInputMessage,
+        ) -> Result<(), Error>;
     }
 
-    pub fn from_json(client_id: Uuid, json: &str) -> Result<Self, Error> {
-        Ok(Self {
-            client_id,
-            data: serde_json::from_str(&json)?,
-        })
+    impl Message {
+        pub fn handle_with(self, handler: &mut impl MessageHandler) -> Result<(), Error> {
+            let client_id = self.client_id;
+
+            match self.payload {
+                MessagePayload::Connection(message) => {
+                    handler.handle_connection_message(client_id, message)
+                }
+                MessagePayload::Matchmaking(message) => {
+                    handler.handle_matchmaking_message(client_id, message)
+                }
+                MessagePayload::GameInput(message) => {
+                    handler.handle_game_input_message(client_id, message)
+                }
+            }
+        }
     }
 }
