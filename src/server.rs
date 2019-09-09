@@ -96,7 +96,7 @@ impl Server {
     }
 
     fn remove_empty_games(&mut self) {
-        self.games.retain(|_, game| !game.players.is_empty());
+        self.games.retain(|_, game| !game.is_empty());
     }
 }
 

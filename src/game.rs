@@ -11,9 +11,8 @@ const MAX_PLAYERS_PER_GAME: usize = 8;
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct Game {
     pub id: Uuid,
-    pub name: String,
-    pub players: HashMap<Uuid, Player>,
-    pub max_players: usize,
+    players: HashMap<Uuid, Player>,
+    max_players: usize,
 }
 
 impl Game {
@@ -29,6 +28,10 @@ impl Game {
 impl Game {
     pub fn is_full(&self) -> bool {
         self.max_players <= self.players.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.players.is_empty()
     }
 }
 
