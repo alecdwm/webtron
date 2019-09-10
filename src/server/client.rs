@@ -8,15 +8,15 @@ pub struct Client {
     id: Uuid,
     ip_address: Option<String>,
     #[debug_stub = "Recipient<MessageOut>"]
-    addr: Recipient<MessageOut>,
+    address: Recipient<MessageOut>,
 }
 
 impl Client {
-    pub fn new(id: Uuid, ip_address: Option<String>, addr: Recipient<MessageOut>) -> Self {
+    pub fn new(id: Uuid, ip_address: Option<String>, address: Recipient<MessageOut>) -> Self {
         Self {
             id,
             ip_address,
-            addr,
+            address,
         }
     }
 
@@ -28,7 +28,7 @@ impl Client {
         &self.ip_address
     }
 
-    pub fn addr(&self) -> &Recipient<MessageOut> {
-        &self.addr
+    pub fn address(&self) -> &Recipient<MessageOut> {
+        &self.address
     }
 }

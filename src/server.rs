@@ -69,7 +69,7 @@ impl Server {
                     client_id
                 )
             })?
-            .addr()
+            .address()
             .try_send(MessageOut::JoinedGame(game_id))
             .with_context(|error| {
                 format_err!("Failed to send game id to client {}: {}", client_id, error)
@@ -110,9 +110,9 @@ impl MessageInHandler for Server {
         message: ConnectionMessage,
     ) -> Result<(), Error> {
         match message {
-            ConnectionMessage::Connect(ip_address, addr) => {
+            ConnectionMessage::Connect(ip_address, address) => {
                 info!("Client connected: {}", client_id);
-                let client = Client::new(client_id, ip_address, addr);
+                let client = Client::new(client_id, ip_address, address);
                 self.clients.insert(client_id, client);
             }
             ConnectionMessage::Disconnect => {
@@ -147,7 +147,7 @@ impl MessageInHandler for Server {
                 self.players.insert(*player.id(), player);
 
                 client
-                    .addr()
+                    .address()
                     .try_send(MessageOut::PlayerId(*client.id()))
                     .with_context(|error| {
                         format_err!(
@@ -209,7 +209,7 @@ impl Actor for Server {
 impl Handler<MessageIn> for Server {
     type Result = ();
 
-    fn handle(&mut self, message: MessageIn, _ctx: &mut Context<Self>) {
+    fn handle(&mut self, message: MessageIn, _context: &mut Context<Self>) {
         message
             .handle_with(self)
             .unwrap_or_else(|error| error!("{}", error));

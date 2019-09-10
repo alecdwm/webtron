@@ -10,9 +10,9 @@ use actix_web_actors::ws as websocket;
 use failure::{Error, ResultExt};
 use websocket_client::WebsocketClient;
 
-pub fn start(server_addr: Addr<WebtronServer>, config: &Config) -> Result<ActixServer, Error> {
+pub fn start(server_address: Addr<WebtronServer>, config: &Config) -> Result<ActixServer, Error> {
     Ok(HttpServer::new(move || {
-        let server_addr = server_addr.clone();
+        let server_address = server_address.clone();
 
         App::new()
             //
@@ -26,7 +26,7 @@ pub fn start(server_addr: Addr<WebtronServer>, config: &Config) -> Result<ActixS
                         .map(|ip_address| ip_address.to_owned());
 
                     websocket::start(
-                        WebsocketClient::new(ip_address, server_addr.clone()),
+                        WebsocketClient::new(ip_address, server_address.clone()),
                         &request,
                         stream,
                     )
@@ -37,7 +37,7 @@ pub fn start(server_addr: Addr<WebtronServer>, config: &Config) -> Result<ActixS
             //
             .service(Files::new("/", "client").index_file("index.html"))
     })
-    .bind(config.bind_addr)
-    .with_context(|_| format!("Failed to bind to socket {}", config.bind_addr))?
+    .bind(config.bind_address)
+    .with_context(|_| format!("Failed to bind to socket {}", config.bind_address))?
     .start())
 }

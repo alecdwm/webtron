@@ -15,13 +15,13 @@ struct CliConfig {
 
 #[derive(Debug)]
 pub struct Config {
-    pub bind_addr: SocketAddr,
+    pub bind_address: SocketAddr,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            bind_addr: SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 3000),
+            bind_address: SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 3000),
         }
     }
 }
@@ -31,7 +31,7 @@ impl Config {
         let cli_config = CliConfig::from_args();
 
         Self {
-            bind_addr: SocketAddr::new(cli_config.bind_address, cli_config.port),
+            bind_address: SocketAddr::new(cli_config.bind_address, cli_config.port),
         }
     }
 }

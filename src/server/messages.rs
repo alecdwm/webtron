@@ -106,11 +106,13 @@ pub mod incoming {
         pub fn connect(
             client_id: Uuid,
             ip_address: Option<String>,
-            addr: Recipient<MessageOut>,
+            address: Recipient<MessageOut>,
         ) -> Self {
             Self {
                 client_id,
-                payload: MessagePayload::Connection(ConnectionMessage::Connect(ip_address, addr)),
+                payload: MessagePayload::Connection(ConnectionMessage::Connect(
+                    ip_address, address,
+                )),
             }
         }
 

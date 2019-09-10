@@ -36,8 +36,8 @@ pub fn start() -> Result<(), Error> {
     let config = Config::new();
 
     let system = System::new("webtron");
-    let server_addr = WebtronServer::new().start();
-    web::start(server_addr, &config).context("Failed to start HttpServer")?;
+    let server_address = WebtronServer::new().start();
+    web::start(server_address, &config).context("Failed to start HttpServer")?;
 
     system
         .run()
