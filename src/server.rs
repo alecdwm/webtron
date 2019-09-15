@@ -1,17 +1,23 @@
+mod arena;
 mod client;
+mod game;
 mod messages;
+mod player;
 
-pub use messages::{MessageIn, MessageOut};
-
-use crate::game::{Game, Player, PlayerJoinable};
 use actix::{Actor, Context, Handler};
-use client::Client;
 use failure::{format_err, Error, ResultExt};
 use log::{error, info};
-use messages::incoming::{ConnectionMessage, GameInputMessage, MatchmakingMessage};
-use messages::MessageInHandler;
 use std::collections::HashMap;
 use uuid::Uuid;
+
+pub use arena::Direction;
+pub use game::{Game, GameState};
+pub use messages::incoming::{ConnectionMessage, GameInputMessage, MatchmakingMessage};
+pub use messages::{MessageIn, MessageOut};
+pub use player::{Player, PlayerColor, PlayerJoinable};
+
+use client::Client;
+use messages::MessageInHandler;
 
 #[derive(Debug, Default)]
 pub struct Server {

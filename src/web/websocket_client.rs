@@ -1,8 +1,9 @@
-use crate::server::{MessageIn, MessageOut, Server as WebtronServer};
 use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Running, StreamHandler};
 use actix_web_actors::ws::{self as websocket, WebsocketContext};
 use log::{error, trace, warn};
 use uuid::Uuid;
+
+use crate::server::{MessageIn, MessageOut, Server as WebtronServer};
 
 #[derive(Debug)]
 pub struct WebsocketClient {

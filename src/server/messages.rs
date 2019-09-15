@@ -6,12 +6,12 @@ pub use outgoing::Message as MessageOut;
 /// Server to client messages
 ///
 pub mod outgoing {
-    use crate::game::GameState;
-    use crate::game::Player;
     use actix::Message as ActixMessage;
     use chrono::{DateTime, Utc};
     use serde_derive::Serialize;
     use uuid::Uuid;
+
+    use crate::server::{GameState, Player};
 
     ///
     /// Outgoing messages
@@ -42,13 +42,13 @@ pub mod outgoing {
 /// Client to server messages
 ///
 pub mod incoming {
-    use super::outgoing::Message as MessageOut;
-    use crate::game::Player;
     use actix::{Message as ActixMessage, Recipient};
     use debug_stub_derive::DebugStub;
     use failure::Error;
     use serde_derive::Deserialize;
     use uuid::Uuid;
+
+    use crate::server::{Direction, MessageOut, Player};
 
     ///
     /// Incoming messages
@@ -88,18 +88,7 @@ pub mod incoming {
     #[derive(Debug, Deserialize)]
     pub enum GameInputMessage {
         StartGame,
-        Turn(TurnDirection),
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub enum TurnDirection {
-        Up,
-        Left,
-        Right,
-        Down,
-
-        Clockwise,
-        Anticlockwise,
+        Turn(Direction),
     }
 
     impl Message {

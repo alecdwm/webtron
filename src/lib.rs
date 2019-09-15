@@ -9,11 +9,6 @@ pub mod config;
 ///
 /// Handles serverside game logic.
 ///
-pub mod game;
-
-///
-/// Handles serverside logic unrelated to the game or message transport method.
-///
 pub mod server;
 
 ///
@@ -21,10 +16,11 @@ pub mod server;
 ///
 pub mod web;
 
-use crate::config::Config;
-use crate::server::Server as WebtronServer;
 use actix::{Actor, System};
 use failure::{Error, ResultExt};
+
+use config::Config;
+use server::Server as WebtronServer;
 
 ///
 /// Sets up environment, creates event loop,

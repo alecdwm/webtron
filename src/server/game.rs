@@ -1,10 +1,8 @@
-mod player;
-
-pub use player::{Player, PlayerJoinable};
-
 use serde_derive::Serialize;
 use std::collections::HashMap;
 use uuid::Uuid;
+
+use super::{Player, PlayerJoinable};
 
 const MAX_PLAYERS_PER_GAME: usize = 8;
 

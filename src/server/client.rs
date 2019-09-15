@@ -1,7 +1,8 @@
-use crate::server::MessageOut;
 use actix::Recipient;
 use debug_stub_derive::DebugStub;
 use uuid::Uuid;
+
+use super::MessageOut;
 
 #[derive(DebugStub)]
 pub struct Client {
