@@ -1,5 +1,8 @@
+///
+/// Useful macros (for internal use).
+///
 #[macro_use]
-mod macros;
+pub mod macros;
 
 ///
 /// Handles server configuration.

@@ -1,7 +1,7 @@
 ///
-/// A macro to handle those cases where you want to gracefully
-/// deal with a `Result::Err`, but cannot use `try!` because your
-/// function does not return the `Result` or `Option` type.
+/// A macro to handle those cases where you want to gracefully log
+/// or otherwise deal with a `Result::Err`, but cannot use `try!`
+/// because your function does not return the `Result` type.
 ///
 /// The expression provided as the first parameter with be matched
 /// against the pattern `Err(error)`.  
@@ -11,28 +11,46 @@
 ///
 /// Helps to prevent unnecessary code indentation by replacing:
 ///
-/// ```ignore
-/// let value = match $expression {
+/// ```
+/// # use log::error;
+/// # use webtron::unwrap_or_return;
+/// # fn main() {
+/// # let result: Result<&str, ()> = Ok("ok!");
+/// let value = match result {
 ///     Err(error) => {
-///         return log!(error);
+///         return error!("{:?}", error);
 ///     }
 ///     Ok(value) => value,
 /// };
+/// # assert_eq!(value, "ok!");
+/// # }
 /// ```
 ///
 /// with:
 ///
-/// ```ignore
-/// let value = unwrap_or_return!($expression, |error| log!(error));
+/// ```
+/// # use webtron::unwrap_or_return;
+/// # use log::error;
+/// # fn main() {
+/// # let result: Result<&str, ()> = Ok("ok!");
+/// let value = unwrap_or_return!(result, |error| error!("{:?}", error));
+/// # assert_eq!(value, "ok!");
+/// # }
 /// ```
 ///
 #[macro_export]
 macro_rules! unwrap_or_return {
-    ( $expression:expr, $on_error:expr ) => {{
-        let result = $expression;
-        if let Err(error) = result {
-            return $on_error(error);
+    ( $expression:expr ) => {{
+        match $expression {
+            Err(_) => return,
+            Ok(value) => value,
         }
-        result.unwrap()
+    }};
+
+    ( $expression:expr, $on_error:expr ) => {{
+        match $expression {
+            Err(error) => return $on_error(error),
+            Ok(value) => value,
+        }
     }};
 }
