@@ -32,7 +32,7 @@ impl Server {
     }
 
     fn create_game(&mut self) -> Uuid {
-        let game = Game::new();
+        let game = Game::default();
         let game_id = game.id;
         info!("Game created {:?}", game);
         self.games.insert(game.id, game);
@@ -75,7 +75,7 @@ impl Server {
                     client_id
                 )
             })?
-            .address()
+            .address
             .try_send(MessageOut::JoinedGame(game_id))
             .with_context(|error| {
                 format_err!("Failed to send game id to client {}: {}", client_id, error)
@@ -147,14 +147,14 @@ impl MessageInHandler for Server {
                 let client = self.clients.get_mut(&client_id).ok_or_else(|| {
                     format_err!("ConfigurePlayer: Client {} not found!", client_id)
                 })?;
-                player.set_id(*client.id());
+                player.id = client.id;
 
                 info!("Client {} configured player {:?}", client_id, player);
-                self.players.insert(*player.id(), player);
+                self.players.insert(player.id, player);
 
                 client
-                    .address()
-                    .try_send(MessageOut::PlayerId(*client.id()))
+                    .address
+                    .try_send(MessageOut::PlayerId(client.id))
                     .with_context(|error| {
                         format_err!(
                             "Failed to send player id to client {}: {}",

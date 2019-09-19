@@ -11,27 +11,9 @@ pub trait PlayerJoinable {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Player {
     #[serde(skip_deserializing)]
-    id: Uuid,
-    name: String,
-    color: PlayerColor,
-}
-
-impl Player {
-    pub fn id(&self) -> &Uuid {
-        &self.id
-    }
-
-    pub fn set_id(&mut self, id: Uuid) {
-        self.id = id
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn color(&self) -> &PlayerColor {
-        &self.color
-    }
+    pub id: Uuid,
+    pub name: String,
+    pub color: PlayerColor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

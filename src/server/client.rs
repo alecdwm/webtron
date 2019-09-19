@@ -6,10 +6,10 @@ use super::MessageOut;
 
 #[derive(DebugStub)]
 pub struct Client {
-    id: Uuid,
-    ip_address: Option<String>,
+    pub id: Uuid,
+    pub ip_address: Option<String>,
     #[debug_stub = "Recipient<MessageOut>"]
-    address: Recipient<MessageOut>,
+    pub address: Recipient<MessageOut>,
 }
 
 impl Client {
@@ -19,17 +19,5 @@ impl Client {
             ip_address,
             address,
         }
-    }
-
-    pub fn id(&self) -> &Uuid {
-        &self.id
-    }
-
-    pub fn ip_address(&self) -> &Option<String> {
-        &self.ip_address
-    }
-
-    pub fn address(&self) -> &Recipient<MessageOut> {
-        &self.address
     }
 }

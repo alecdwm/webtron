@@ -6,19 +6,19 @@ use super::{Player, PlayerJoinable};
 
 const MAX_PLAYERS_PER_GAME: usize = 8;
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Game {
     pub id: Uuid,
     players: HashMap<Uuid, Player>,
     max_players: usize,
 }
 
-impl Game {
-    pub fn new() -> Self {
+impl Default for Game {
+    fn default() -> Self {
         Self {
             id: Uuid::new_v4(),
+            players: Default::default(),
             max_players: MAX_PLAYERS_PER_GAME,
-            ..Default::default()
         }
     }
 }
@@ -39,7 +39,7 @@ impl PlayerJoinable for Game {
     }
 
     fn join_player(&mut self, player: Player) {
-        self.players.insert(player.id().clone(), player);
+        self.players.insert(player.id.clone(), player);
     }
 
     fn part_player(&mut self, uuid: &Uuid) -> Option<Player> {
