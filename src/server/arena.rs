@@ -163,7 +163,7 @@ impl Arena {
                     let start = line[0];
                     let end = line[1];
 
-                    if is_point_on_line_2d(lightcycle.position, (start, end)) {
+                    if is_point_on_line_2d(lightcycle.position, Line(start, end)) {
                         lightcycle.dead = true;
                         continue 'next_lightcycle;
                     }
@@ -175,8 +175,11 @@ impl Arena {
     }
 }
 
-fn is_point_on_line_2d(point: Point2<isize>, line: (Point2<isize>, Point2<isize>)) -> bool {
-    let (start, end) = line;
+struct Line(Point2<isize>, Point2<isize>);
+
+fn is_point_on_line_2d(point: Point2<isize>, line: Line) -> bool {
+    let start = line.0;
+    let end = line.1;
 
     if start.x == end.x {
         if point.x != start.x {
