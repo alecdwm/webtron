@@ -153,9 +153,9 @@ impl Arena {
     }
 
     fn calculate_lightcycle_collisions(&mut self) -> &mut Self {
-        for lightcycle in self.lightcycles.values_mut() {
+        'next_lightcycle: for lightcycle in self.lightcycles.values_mut() {
             if lightcycle.dead {
-                continue;
+                continue 'next_lightcycle;
             };
 
             for trail in self.trails.values() {
@@ -165,7 +165,7 @@ impl Arena {
 
                     if is_point_on_line_2d(lightcycle.position, (start, end)) {
                         lightcycle.dead = true;
-                        continue;
+                        continue 'next_lightcycle;
                     }
                 }
             }
