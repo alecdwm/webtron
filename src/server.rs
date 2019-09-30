@@ -127,6 +127,22 @@ impl Server {
         Ok(player_id)
     }
 
+    pub fn new_game(&mut self) -> GameId {
+        let game_id = GameId::new_v4();
+
+        self.games.insert(
+            game_id,
+            Game {
+                max_players: MAX_PLAYERS_PER_GAME,
+
+                id: game_id,
+                players: HashSet::new(),
+            },
+        );
+
+        game_id
+    }
+
     pub fn remove_client(&mut self, id: ClientId) -> Result<(), Error> {
         let client = self
             .clients
@@ -243,61 +259,112 @@ impl Game {
     }
 }
 
-//impl Server {
-//    fn create_game(&mut self) -> Uuid {
-//        let game = Game::default();
-//        let game_id = game.id;
-//        info!("Game created {:?}", game);
-//        self.games.insert(game.id, game);
-//        game_id
-//    }
+impl Server {
+    pub fn message_client(
+        &mut self,
+        client_id: &ClientId,
+        message: MessageOut,
+    ) -> Result<(), Error> {
+        self.clients
+            .get_mut(client_id)
+            .ok_or_else(|| format_err!("Client not found: {}", client_id))?
+            .address
+            .try_send(message)
+            .with_context(|_| format_err!("Failed to message client {}", client_id))?;
 
-//    fn join_player_to_game(&mut self, client_id: Uuid, game_id: Uuid) -> Result<(), Error> {
-//        let game = self.games.get_mut(&game_id).ok_or_else(|| {
-//            format_err!(
-//                "Player {} can't join game {}: game not found!",
-//                client_id,
-//                game_id
-//            )
-//        })?;
+        Ok(())
+    }
 
-//        if game.is_full() {
-//            return Err(format_err!(
-//                "Player {} can't join game {}: game is full!",
-//                client_id,
-//                game_id
-//            ));
-//        }
+    pub fn client_join_game(
+        &mut self,
+        client_id: &ClientId,
+        game_id: Option<GameId>,
+    ) -> Result<GameId, Error> {
+        let player_id = self
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .player
+            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
 
-//        let player = self.players.remove(&client_id).ok_or_else(|| {
-//            format_err!(
-//                "Player {} can't join game {}: player not found!",
-//                client_id,
-//                game_id
-//            )
-//        })?;
+        self.player_join_game(&player_id, game_id)
+    }
 
-//        game.join_player(player);
-//        info!("Player {} joined game {:?}", client_id, game);
+    pub fn player_join_game(
+        &mut self,
+        player_id: &PlayerId,
+        game_id: Option<GameId>,
+    ) -> Result<GameId, Error> {
+        self.player_part_game(player_id)
+            .context("Failed to part current game")?;
 
-//        self.clients
-//            .get(&client_id)
-//            .ok_or_else(|| {
-//                format_err!(
-//                    "Failed to send game id to client {}: client not found",
-//                    client_id
-//                )
-//            })?
-//            .address
-//            .try_send(MessageOut::JoinedGame(game_id))
-//            .with_context(|_| {
-//                format_err!("Failed to send game id to client {}", client_id)
-//            })?;
+        let game_id = match game_id {
+            Some(game_id) => match self.games.contains_key(&game_id) {
+                true => game_id,
+                false => self.new_game(),
+            },
+            None => self.new_game(),
+        };
 
-//        Ok(())
-//    }
+        let game = self
+            .games
+            .get_mut(&game_id)
+            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
 
-//}
+        if game.is_full() {
+            return Err(format_err!("Game {} is full", game_id));
+        }
+
+        let player = self
+            .players
+            .get_mut(&player_id)
+            .ok_or_else(|| format_err!("Player {} not found", player_id))?;
+
+        player.game = Some(game_id);
+        game.players.insert(player_id.clone());
+
+        Ok(game_id)
+    }
+
+    pub fn client_part_game(&mut self, client_id: &ClientId) -> Result<bool, Error> {
+        let player_id = self
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .player
+            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+
+        self.player_part_game(&player_id)
+    }
+
+    pub fn player_part_game(&mut self, player_id: &PlayerId) -> Result<bool, Error> {
+        let player = self
+            .players
+            .get_mut(player_id)
+            .ok_or_else(|| format_err!("Player {} not found", player_id))?;
+
+        let current_game_id = match player.game {
+            Some(game_id) => game_id,
+            None => return Ok(false),
+        };
+
+        let current_game = self
+            .games
+            .get_mut(&current_game_id)
+            .ok_or_else(|| format_err!("Game {} not found", current_game_id))?;
+
+        player.game = None;
+        current_game.players.remove(&player_id);
+
+        // when player is removed, also remove their game (if it is now empty)
+        if current_game.is_empty() {
+            self.remove_game(current_game_id)
+                .context("Failed to remove empty game")?;
+        }
+
+        Ok(true)
+    }
+}
 
 impl Server {
     pub fn handle_message(
@@ -324,64 +391,31 @@ impl Server {
                         .context("Failed to configure player")?;
 
                     info!("Client {} configured player {}", client_id, player_id);
-
-                    self.clients
-                        .get_mut(&client_id)
-                        .ok_or_else(|| format_err!("Client not found: {}", client_id))?
-                        .address
-                        .try_send(MessageOut::PlayerId(player_id))
-                        .with_context(|_| {
-                            format_err!("Failed to send player id to client {}", client_id)
-                        })?;
+                    self.message_client(&client_id, MessageOut::PlayerId(player_id))
+                        .context("Failed to send player id")?;
                 }
 
-                MatchmakingMessage::JoinGame(Some(game_id)) => {
-                    let client = self.clients.get_mut(&client_id).ok_or_else(|| {
-                        format_err!("Failed to join game: Client {} not found", client_id)
-                    })?;
+                MatchmakingMessage::JoinGame(game_id) => {
+                    let game_id = self
+                        .client_join_game(&client_id, game_id)
+                        .context("Failed to join game")?;
 
-                    let player = match client.player {
-                        Some(player_id) => {
-                            Ok(self.players.get_mut(&player_id).ok_or_else(|| {
-                                format_err!("Failed to join game: Player {} not found", player_id)
-                            })?)
-                        }
-                        None => Err(format_err!(
-                            "Failed to join game: Client {} has no player",
-                            client_id
-                        )),
-                    }?;
-
-                    // let player = client.player
-
-                    // let player =
-                    // if let Some(game_id) =
-                    unimplemented!();
-                    // self.part_player_from_games(client_id);
-
-                    // let game_id = if !self.games.contains_key(&game_id) {
-                    //     self.create_game()
-                    // } else {
-                    //     game_id
-                    // };
-
-                    // self.join_player_to_game(client_id, game_id)?;
-                    // self.remove_empty_games();
-                }
-                MatchmakingMessage::JoinGame(None) => {
-                    unimplemented!();
-                    // self.part_player_from_games(client_id);
-
-                    // let game_id = self.create_game();
-
-                    // self.join_player_to_game(client_id, game_id)?;
-                    // self.remove_empty_games();
+                    info!("Client {} joined game {}", client_id, game_id);
+                    self.message_client(&client_id, MessageOut::JoinedGame(game_id))
+                        .context("Failed to send game id")?;
                 }
 
                 MatchmakingMessage::PartGame => {
-                    unimplemented!();
-                    // self.part_player_from_games(client_id);
-                    // self.remove_empty_games();
+                    let parted = self
+                        .client_part_game(&client_id)
+                        .context("Failed to part game")?;
+                    if !parted {
+                        return Err(format_err!("Client {} not in a game", client_id));
+                    }
+
+                    info!("Client {} parted game", client_id);
+                    self.message_client(&client_id, MessageOut::PartedGame)
+                        .context("Failed to send PartedGame message")?;
                 }
             },
             MessageInPayload::GameInput(message) => match message {
