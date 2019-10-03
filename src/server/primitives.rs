@@ -1,3 +1,4 @@
+use crate::server::Player;
 use nalgebra::Vector2;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -6,7 +7,7 @@ pub type ClientId = Uuid;
 pub type PlayerId = Uuid;
 pub type GameId = Uuid;
 
-#[derive(Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PlayerColor {
     Blue,
@@ -23,7 +24,7 @@ impl Default for PlayerColor {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
     Up,
@@ -43,20 +44,20 @@ impl Direction {
     }
 }
 
-// #[derive(Debug, Default, Clone, Hash, PartialEq, Serialize, Deserialize)]
-// pub struct MessagePlayer {
-//     #[serde(skip_deserializing)]
-//     pub id: PlayerId,
-//     pub name: String,
-//     pub color: PlayerColor,
-// }
+#[derive(Debug, Default, Clone, Hash, PartialEq, Serialize, Deserialize)]
+pub struct NetworkPlayer {
+    #[serde(skip_deserializing)]
+    pub id: PlayerId,
+    pub name: String,
+    pub color: PlayerColor,
+}
 
-// impl From<super::Player> for NetworkPlayer {
-//     fn from(player: super::Player) -> Self {
-//         Self {
-//             id: player.id,
-//             name: player.name,
-//             color: player.color,
-//         }
-//     }
-// }
+impl From<&Player> for NetworkPlayer {
+    fn from(player: &Player) -> Self {
+        Self {
+            id: player.id,
+            name: player.name.clone(),
+            color: player.color,
+        }
+    }
+}

@@ -18,7 +18,7 @@ use arena::Arena;
 use messages::MessageInPayload;
 
 const MAX_PLAYERS_PER_GAME: usize = 8;
-const SECONDS_BEFORE_GAME_STARTS: i64 = 5;
+const GAME_START_TIMER_SECONDS: i64 = 5;
 const UPDATE_RATE_MILLISECONDS: u64 = 25; // 1000 / 25 = 40 updates per second
 
 //
@@ -272,22 +272,31 @@ impl Server {
     pub fn message_client(
         &mut self,
         client_id: &ClientId,
-        message: MessageOut,
+        message: &MessageOut,
     ) -> Result<(), Error> {
         self.clients
             .get_mut(client_id)
             .ok_or_else(|| format_err!("Client not found: {}", client_id))?
             .address
-            .try_send(message)
+            .try_send(message.clone())
             .with_context(|_| format_err!("Failed to message client {}", client_id))?;
 
         Ok(())
     }
 
+    pub fn message_all_clients(&mut self, message: &MessageOut) {
+        self.clients.values().for_each(|client| {
+            client
+                .address
+                .try_send(message.clone())
+                .unwrap_or_else(|error| error!("Failed to message client {}: {}", client.id, error))
+        });
+    }
+
     pub fn message_clients_in_game_from_client(
         &mut self,
         client_id: &ClientId,
-        message: MessageOut,
+        message: &MessageOut,
     ) -> Result<(), Error> {
         let player_id = self
             .clients
@@ -302,7 +311,7 @@ impl Server {
     pub fn message_clients_in_game_from_player(
         &mut self,
         player_id: &PlayerId,
-        message: MessageOut,
+        message: &MessageOut,
     ) -> Result<(), Error> {
         let game_id = self
             .players
@@ -317,7 +326,7 @@ impl Server {
     pub fn message_clients_in_game(
         &mut self,
         game_id: &GameId,
-        message: MessageOut,
+        message: &MessageOut,
     ) -> Result<(), Error> {
         let game = self
             .games
@@ -331,7 +340,7 @@ impl Server {
             .collect::<Vec<ClientId>>()
             .iter()
             .for_each(|client_id| {
-                self.message_client(&client_id, message)
+                self.message_client(&client_id, &message)
                     .context("Failed to send GameStarting message")
                     .unwrap_or_else(|error| error!("{}", error))
             });
@@ -387,6 +396,21 @@ impl Server {
         player.game = Some(game_id);
         game.players.insert(player_id.clone());
 
+        self.message_clients_in_game(
+            &game_id,
+            &MessageOut::GamePlayers(
+                self.games
+                    .get(&game_id)
+                    .ok_or_else(|| format_err!("Game {} not found", game_id))?
+                    .players
+                    .iter()
+                    .filter_map(|player_id| self.players.get(player_id))
+                    .map(|player| NetworkPlayer::from(player))
+                    .collect(),
+            ),
+        )
+        .unwrap_or_else(|error| error!("Failed to send GamePlayers message: {}", error));
+
         Ok(game_id)
     }
 
@@ -414,7 +438,7 @@ impl Server {
             .get_mut(&game_id)
             .ok_or_else(|| format_err!("Game {} not found", game_id))?;
 
-        let start_at = Utc::now() + OldDuration::seconds(SECONDS_BEFORE_GAME_STARTS);
+        let start_at = Utc::now() + OldDuration::seconds(GAME_START_TIMER_SECONDS);
         game.started = Some(start_at);
 
         Ok(start_at)
@@ -454,6 +478,21 @@ impl Server {
         if current_game.is_empty() {
             self.remove_game(current_game_id)
                 .context("Failed to remove empty game")?;
+        } else {
+            self.message_clients_in_game(
+                &current_game_id,
+                &MessageOut::GamePlayers(
+                    self.games
+                        .get(&current_game_id)
+                        .ok_or_else(|| format_err!("Game {} not found", current_game_id))?
+                        .players
+                        .iter()
+                        .filter_map(|player_id| self.players.get(player_id))
+                        .map(|player| NetworkPlayer::from(player))
+                        .collect(),
+                ),
+            )
+            .unwrap_or_else(|error| error!("Failed to send GamePlayers message: {}", error));
         }
 
         Ok(true)
@@ -471,6 +510,8 @@ impl Server {
                 ConnectionMessage::Connect(ip_address, address) => {
                     info!("Client connected: {}", client_id);
                     self.new_client(client_id, ip_address, address);
+                    self.message_client(&client_id, &MessageOut::TotalGames(self.games.len()))
+                        .context("Failed to send TotalGames")?;
                 }
                 ConnectionMessage::Disconnect => {
                     info!("Client disconnected: {}", client_id);
@@ -485,7 +526,7 @@ impl Server {
                         .context("Failed to configure player")?;
 
                     info!("Client {} configured player {}", client_id, player_id);
-                    self.message_client(&client_id, MessageOut::PlayerId(player_id))
+                    self.message_client(&client_id, &MessageOut::PlayerId(player_id))
                         .context("Failed to send player id")?;
                 }
 
@@ -495,7 +536,8 @@ impl Server {
                         .context("Failed to join game")?;
 
                     info!("Client {} joined game {}", client_id, game_id);
-                    self.message_client(&client_id, MessageOut::JoinedGame(game_id))
+                    self.message_all_clients(&MessageOut::TotalGames(self.games.len()));
+                    self.message_client(&client_id, &MessageOut::JoinedGame(game_id))
                         .context("Failed to send game id")?;
                 }
 
@@ -508,7 +550,8 @@ impl Server {
                     }
 
                     info!("Client {} parted game", client_id);
-                    self.message_client(&client_id, MessageOut::PartedGame)
+                    self.message_all_clients(&MessageOut::TotalGames(self.games.len()));
+                    self.message_client(&client_id, &MessageOut::PartedGame)
                         .context("Failed to send PartedGame message")?;
                 }
             },
@@ -522,7 +565,7 @@ impl Server {
 
                     self.message_clients_in_game_from_client(
                         &client_id,
-                        MessageOut::GameStarting(start_at),
+                        &MessageOut::GameStarting(start_at),
                     )
                     .context("Failed to send GameStarting message(s)")?;
                 }

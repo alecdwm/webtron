@@ -10,22 +10,20 @@ pub mod outgoing {
     use chrono::{DateTime, Utc};
     use serde_derive::Serialize;
 
-    // use crate::server::{GameId, GameState, Player, PlayerId};
-    use crate::server::{GameId, Player, PlayerId};
+    use crate::server::{GameId, NetworkPlayer, PlayerId};
 
     ///
     /// Outgoing messages
     ///
-    #[derive(Debug, Copy, Clone, Serialize, ActixMessage)]
+    #[derive(Debug, Clone, Serialize, ActixMessage)]
     pub enum Message {
         PlayerId(PlayerId),
-        TotalGames(u64),
+        TotalGames(usize),
 
         JoinedGame(GameId),
         PartedGame,
 
-        // TODO: make networked player type which implements From<Player>
-        // GamePlayers(Vec<Player>),
+        GamePlayers(Vec<NetworkPlayer>),
         GameStarting(DateTime<Utc>),
         // TODO: make networked gamestate type which implements Serialize and From<Game> or From<Arena>
         // NewGameState(GameState),
