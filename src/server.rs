@@ -1,20 +1,25 @@
-// mod arena;
+mod arena;
 mod messages;
 mod primitives;
 
-use actix::{Actor, Context, Handler, Recipient};
+use actix::{Actor, AsyncContext, Context, Handler, Recipient};
+use chrono::{DateTime, Duration as OldDuration, Utc};
 use debug_stub_derive::DebugStub;
 use failure::{format_err, Error, ResultExt};
 use log::{error, info};
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
 pub use messages::incoming::{ConnectionMessage, GameInputMessage, MatchmakingMessage};
 pub use messages::{MessageIn, MessageOut};
 pub use primitives::*;
 
+use arena::Arena;
 use messages::MessageInPayload;
 
 const MAX_PLAYERS_PER_GAME: usize = 8;
+const SECONDS_BEFORE_GAME_STARTS: i64 = 5;
+const UPDATE_RATE_MILLISECONDS: u64 = 25; // 1000 / 25 = 40 updates per second
 
 //
 // Datastructure
@@ -22,6 +27,7 @@ const MAX_PLAYERS_PER_GAME: usize = 8;
 
 #[derive(Debug, Default)]
 pub struct Server {
+    message_queue: Vec<MessageIn>,
     clients: HashMap<ClientId, Client>,
     players: HashMap<PlayerId, Player>,
     games: HashMap<GameId, Game>,
@@ -55,6 +61,8 @@ pub struct Player {
 pub struct Game {
     // data
     pub max_players: usize,
+    pub arena: Arena,
+    pub started: Option<DateTime<Utc>>,
 
     // id + relations
     pub id: GameId,
@@ -130,15 +138,7 @@ impl Server {
     pub fn new_game(&mut self) -> GameId {
         let game_id = GameId::new_v4();
 
-        self.games.insert(
-            game_id,
-            Game {
-                max_players: MAX_PLAYERS_PER_GAME,
-
-                id: game_id,
-                players: HashSet::new(),
-            },
-        );
+        self.games.insert(game_id, Game::with_id(game_id));
 
         game_id
     }
@@ -242,6 +242,8 @@ impl Default for Game {
     fn default() -> Self {
         Self {
             max_players: MAX_PLAYERS_PER_GAME,
+            arena: Default::default(),
+            started: None,
 
             id: GameId::new_v4(),
             players: Default::default(),
@@ -250,6 +252,13 @@ impl Default for Game {
 }
 
 impl Game {
+    pub fn with_id(id: GameId) -> Self {
+        Self {
+            id,
+            ..Default::default()
+        }
+    }
+
     pub fn is_full(&self) -> bool {
         self.max_players <= self.players.len()
     }
@@ -271,6 +280,61 @@ impl Server {
             .address
             .try_send(message)
             .with_context(|_| format_err!("Failed to message client {}", client_id))?;
+
+        Ok(())
+    }
+
+    pub fn message_clients_game_clients(
+        &mut self,
+        client_id: &ClientId,
+        message: MessageOut,
+    ) -> Result<(), Error> {
+        let player_id = self
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .player
+            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+
+        self.message_players_game_clients(&player_id, message)
+    }
+
+    pub fn message_players_game_clients(
+        &mut self,
+        player_id: &PlayerId,
+        message: MessageOut,
+    ) -> Result<(), Error> {
+        let game_id = self
+            .players
+            .get(&player_id)
+            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .game
+            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+
+        self.message_game_clients(&game_id, message)
+    }
+
+    pub fn message_game_clients(
+        &mut self,
+        game_id: &GameId,
+        message: MessageOut,
+    ) -> Result<(), Error> {
+        let game = self
+            .games
+            .get(&game_id)
+            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+
+        game.players
+            .iter()
+            .filter_map(|player_id| self.players.get(player_id))
+            .filter_map(|player| player.client)
+            .collect::<Vec<ClientId>>()
+            .iter()
+            .for_each(|client_id| {
+                self.message_client(&client_id, message)
+                    .context("Failed to send GameStarting message")
+                    .unwrap_or_else(|error| error!("{}", error))
+            });
 
         Ok(())
     }
@@ -324,6 +388,36 @@ impl Server {
         game.players.insert(player_id.clone());
 
         Ok(game_id)
+    }
+
+    pub fn client_start_game(&mut self, client_id: &ClientId) -> Result<DateTime<Utc>, Error> {
+        let player_id = self
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .player
+            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+
+        self.player_start_game(&player_id)
+    }
+
+    pub fn player_start_game(&mut self, player_id: &PlayerId) -> Result<DateTime<Utc>, Error> {
+        let game_id = self
+            .players
+            .get(&player_id)
+            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .game
+            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+
+        let game = self
+            .games
+            .get_mut(&game_id)
+            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+
+        let start_at = Utc::now() + OldDuration::seconds(SECONDS_BEFORE_GAME_STARTS);
+        game.started = Some(start_at);
+
+        Ok(start_at)
     }
 
     pub fn client_part_game(&mut self, client_id: &ClientId) -> Result<bool, Error> {
@@ -419,7 +513,19 @@ impl Server {
                 }
             },
             MessageInPayload::GameInput(message) => match message {
-                GameInputMessage::StartGame => unimplemented!(),
+                GameInputMessage::StartGame => {
+                    let start_at = self
+                        .client_start_game(&client_id)
+                        .context("Failed to start game")?;
+
+                    info!("Client {} started game", client_id);
+
+                    self.message_clients_game_clients(
+                        &client_id,
+                        MessageOut::GameStarting(start_at),
+                    )
+                    .context("Failed to send GameStarting message(s)")?;
+                }
                 GameInputMessage::Turn(_direction) => unimplemented!(),
             },
         }
@@ -427,15 +533,46 @@ impl Server {
     }
 }
 
+impl Server {
+    pub fn process_messages(&mut self) {
+        // take ownership of queued messages
+        let mut process_messages_queue = Vec::with_capacity(self.message_queue.len());
+        process_messages_queue.append(&mut self.message_queue);
+
+        // process each message
+        process_messages_queue.drain(..).for_each(|message| {
+            self.handle_message(message.client_id, message.payload)
+                .unwrap_or_else(|error| error!("Failed processing MessageIn: {}", error));
+        });
+    }
+
+    pub fn update(&mut self) {
+        let now = Utc::now();
+        self.games
+            .values_mut()
+            .filter(|game| game.started.map_or(false, |started| now < started))
+            .for_each(|game| game.arena.update());
+    }
+}
+
 impl Actor for Server {
     type Context = Context<Self>;
+
+    fn started(&mut self, context: &mut Context<Self>) {
+        context.run_interval(
+            Duration::from_millis(UPDATE_RATE_MILLISECONDS),
+            |server, _context| {
+                server.process_messages();
+                server.update();
+            },
+        );
+    }
 }
 
 impl Handler<MessageIn> for Server {
     type Result = ();
 
     fn handle(&mut self, message: MessageIn, _context: &mut Context<Self>) {
-        self.handle_message(message.client_id, message.payload)
-            .unwrap_or_else(|error| error!("Failed processing MessageIn: {}", error));
+        self.message_queue.push(message);
     }
 }

@@ -1,17 +1,17 @@
 use failure::{format_err, Error};
 use log::error;
-use nalgebra::{Point2, Vector2};
-use serde_derive::{Deserialize, Serialize};
+use nalgebra::Point2;
+use serde_derive::Serialize;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::{GameInputMessage, PlayerColor};
+use super::{Direction, GameInputMessage, PlayerColor};
 
 const ARENA_WIDTH: usize = 800;
 const ARENA_HEIGHT: usize = 800;
 const LIGHTCYCLE_SPEED: isize = 120;
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Arena {
     width: usize,
     height: usize,
@@ -20,7 +20,18 @@ pub struct Arena {
     trails: HashMap<Uuid, Trail>,
 }
 
-#[derive(Debug, Serialize)]
+impl Default for Arena {
+    fn default() -> Self {
+        Self {
+            width: ARENA_WIDTH,
+            height: ARENA_HEIGHT,
+            lightcycles: Default::default(),
+            trails: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Lightcycle {
     position: Point2<isize>,
     rotation: Direction,
@@ -41,40 +52,13 @@ impl Default for Lightcycle {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Direction {
-    Up,
-    Left,
-    Right,
-    Down,
-}
-
-impl Direction {
-    pub fn as_velocity(&self) -> Vector2<isize> {
-        match self {
-            Direction::Up => Vector2::new(0, 1),
-            Direction::Down => Vector2::new(0, -1),
-            Direction::Left => Vector2::new(-1, 0),
-            Direction::Right => Vector2::new(1, 0),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Trail {
     points: Vec<Point2<isize>>,
     color: PlayerColor,
 }
 
 impl Arena {
-    pub fn new() -> Self {
-        Self {
-            width: ARENA_WIDTH,
-            height: ARENA_HEIGHT,
-            ..Default::default()
-        }
-    }
-
     pub fn process_input(&mut self, input_events: Vec<(Uuid, GameInputMessage)>) {
         for (client_id, input_event) in input_events {
             match input_event {

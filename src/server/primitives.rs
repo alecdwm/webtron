@@ -2,9 +2,9 @@ use nalgebra::Vector2;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub type GameId = Uuid;
 pub type ClientId = Uuid;
 pub type PlayerId = Uuid;
+pub type GameId = Uuid;
 
 #[derive(Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

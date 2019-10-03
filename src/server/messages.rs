@@ -16,7 +16,7 @@ pub mod outgoing {
     ///
     /// Outgoing messages
     ///
-    #[derive(Debug, Serialize, ActixMessage)]
+    #[derive(Debug, Copy, Clone, Serialize, ActixMessage)]
     pub enum Message {
         PlayerId(PlayerId),
         TotalGames(u64),
