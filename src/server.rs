@@ -284,7 +284,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn message_clients_game_clients(
+    pub fn message_clients_in_game_from_client(
         &mut self,
         client_id: &ClientId,
         message: MessageOut,
@@ -296,10 +296,10 @@ impl Server {
             .player
             .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
 
-        self.message_players_game_clients(&player_id, message)
+        self.message_clients_in_game_from_player(&player_id, message)
     }
 
-    pub fn message_players_game_clients(
+    pub fn message_clients_in_game_from_player(
         &mut self,
         player_id: &PlayerId,
         message: MessageOut,
@@ -311,10 +311,10 @@ impl Server {
             .game
             .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
 
-        self.message_game_clients(&game_id, message)
+        self.message_clients_in_game(&game_id, message)
     }
 
-    pub fn message_game_clients(
+    pub fn message_clients_in_game(
         &mut self,
         game_id: &GameId,
         message: MessageOut,
@@ -520,7 +520,7 @@ impl Server {
 
                     info!("Client {} started game", client_id);
 
-                    self.message_clients_game_clients(
+                    self.message_clients_in_game_from_client(
                         &client_id,
                         MessageOut::GameStarting(start_at),
                     )
