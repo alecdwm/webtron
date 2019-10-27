@@ -44,3 +44,17 @@ pub fn start() -> Result<(), Error> {
 
     Ok(())
 }
+
+///
+/// Returns a string representing the source hierarchy of an error.
+/// Format:
+///
+///   `"$error: $source: $source_2: $source_3: etc"`
+///
+pub fn get_error_chain(error: Error) -> String {
+    error
+        .iter_chain()
+        .map(|f| format!("{}", f))
+        .collect::<Vec<_>>()
+        .join(": ")
+}

@@ -10,7 +10,7 @@ pub mod outgoing {
     use chrono::{DateTime, Utc};
     use serde_derive::Serialize;
 
-    use crate::server::{GameId, NetworkPlayer, PlayerId};
+    use crate::server::{Arena, ArenaUpdates, GameId, NetworkPlayer, PlayerId};
 
     ///
     /// Outgoing messages
@@ -25,9 +25,9 @@ pub mod outgoing {
 
         GamePlayers(Vec<NetworkPlayer>),
         GameStarting(DateTime<Utc>),
-        // TODO: make networked gamestate type which implements Serialize and From<Game> or From<Arena>
-        // NewGameState(GameState),
-        // PatchGameState(GameState),
+
+        NewGameState(Arena),
+        PatchGameState(ArenaUpdates),
     }
 
     impl Message {

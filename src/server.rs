@@ -10,11 +10,12 @@ use log::{error, info};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
+pub use arena::{Arena, ArenaUpdates};
 pub use messages::incoming::{ConnectionMessage, GameInputMessage, MatchmakingMessage};
 pub use messages::{MessageIn, MessageOut};
 pub use primitives::*;
 
-use arena::Arena;
+use crate::get_error_chain;
 use messages::MessageInPayload;
 
 const MAX_PLAYERS_PER_GAME: usize = 8;
@@ -341,8 +342,12 @@ impl Server {
             .iter()
             .for_each(|client_id| {
                 self.message_client(&client_id, &message)
-                    .context("Failed to send GameStarting message")
-                    .unwrap_or_else(|error| error!("{}", error))
+                    .unwrap_or_else(|error| {
+                        error!(
+                            "Failed to send GameStarting message: {}",
+                            get_error_chain(error)
+                        )
+                    })
             });
 
         Ok(())
@@ -409,7 +414,12 @@ impl Server {
                     .collect(),
             ),
         )
-        .unwrap_or_else(|error| error!("Failed to send GamePlayers message: {}", error));
+        .unwrap_or_else(|error| {
+            error!(
+                "Failed to send GamePlayers message: {}",
+                get_error_chain(error)
+            )
+        });
 
         Ok(game_id)
     }
@@ -492,7 +502,12 @@ impl Server {
                         .collect(),
                 ),
             )
-            .unwrap_or_else(|error| error!("Failed to send GamePlayers message: {}", error));
+            .unwrap_or_else(|error| {
+                error!(
+                    "Failed to send GamePlayers message: {}",
+                    get_error_chain(error)
+                )
+            });
         }
 
         Ok(true)
@@ -585,16 +600,32 @@ impl Server {
         // process each message
         process_messages_queue.drain(..).for_each(|message| {
             self.handle_message(message.client_id, message.payload)
-                .unwrap_or_else(|error| error!("Failed processing MessageIn: {}", error));
+                .unwrap_or_else(|error| {
+                    error!("Failed processing MessageIn: {}", get_error_chain(error))
+                });
         });
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self) -> Vec<(GameId, ArenaUpdates)> {
         let now = Utc::now();
+
         self.games
-            .values_mut()
-            .filter(|game| game.started.map_or(false, |started| now < started))
-            .for_each(|game| game.arena.update());
+            .iter_mut()
+            .filter(|(_, game)| game.started.map_or(false, |started| now >= started))
+            .map(|(game_id, game)| (game_id.clone(), game.arena.update()))
+            .collect()
+    }
+
+    pub fn send_updates(&mut self, updates: Vec<(GameId, ArenaUpdates)>) {
+        for (game_id, game_updates) in updates {
+            self.message_clients_in_game(&game_id, &MessageOut::PatchGameState(game_updates))
+                .unwrap_or_else(|error| {
+                    error!(
+                        "Failed to send PatchGameState message: {}",
+                        get_error_chain(error)
+                    )
+                });
+        }
     }
 }
 
@@ -606,7 +637,8 @@ impl Actor for Server {
             Duration::from_millis(UPDATE_RATE_MILLISECONDS),
             |server, _context| {
                 server.process_messages();
-                server.update();
+                let updates = server.update();
+                server.send_updates(updates);
             },
         );
     }
