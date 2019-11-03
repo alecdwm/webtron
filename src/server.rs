@@ -10,7 +10,7 @@ use log::{error, info};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-pub use arena::{Arena, ArenaUpdates};
+pub use arena::{Arena, ArenaInput, ArenaUpdates};
 pub use messages::incoming::{ConnectionMessage, GameInputMessage, MatchmakingMessage};
 pub use messages::{MessageIn, MessageOut};
 pub use primitives::*;
@@ -63,6 +63,7 @@ pub struct Game {
     // data
     pub max_players: usize,
     pub arena: Arena,
+    pub updates: ArenaUpdates,
     pub started: Option<DateTime<Utc>>,
 
     // id + relations
@@ -245,6 +246,7 @@ impl Default for Game {
             max_players: MAX_PLAYERS_PER_GAME,
             arena: Default::default(),
             started: None,
+            updates: ArenaUpdates::default(),
 
             id: GameId::new_v4(),
             players: Default::default(),
@@ -454,6 +456,79 @@ impl Server {
         Ok(start_at)
     }
 
+    pub fn client_game_input(
+        &mut self,
+        client_id: &ClientId,
+        input: ArenaInput,
+    ) -> Result<(), Error> {
+        let player_id = self
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .player
+            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+
+        self.player_game_input(&player_id, input)
+    }
+
+    pub fn player_game_input(
+        &mut self,
+        player_id: &PlayerId,
+        input: ArenaInput,
+    ) -> Result<(), Error> {
+        let game_id = self
+            .players
+            .get(&player_id)
+            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .game
+            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+
+        let game = self
+            .games
+            .get_mut(&game_id)
+            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+
+        game.arena
+            .process_input(&mut game.updates, (*player_id, input));
+
+        Ok(())
+    }
+
+    pub fn client_spawn_game_players(&mut self, client_id: &ClientId) -> Result<(), Error> {
+        let player_id = self
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .player
+            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+
+        self.player_spawn_game_players(&player_id)
+    }
+
+    pub fn player_spawn_game_players(&mut self, player_id: &PlayerId) -> Result<(), Error> {
+        let game_id = self
+            .players
+            .get(&player_id)
+            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .game
+            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+
+        let game = self
+            .games
+            .get_mut(&game_id)
+            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+
+        game.arena.process_input(
+            &mut game.updates,
+            (
+                *player_id,
+                ArenaInput::SpawnPlayers(game.players.clone().into_iter().collect()),
+            ),
+        );
+
+        Ok(())
+    }
+
     pub fn client_part_game(&mut self, client_id: &ClientId) -> Result<bool, Error> {
         let player_id = self
             .clients
@@ -572,6 +647,9 @@ impl Server {
             },
             MessageInPayload::GameInput(message) => match message {
                 GameInputMessage::StartGame => {
+                    self.client_spawn_game_players(&client_id)
+                        .context("Failed to spawn game players")?;
+
                     let start_at = self
                         .client_start_game(&client_id)
                         .context("Failed to start game")?;
@@ -584,7 +662,10 @@ impl Server {
                     )
                     .context("Failed to send GameStarting message(s)")?;
                 }
-                GameInputMessage::Turn(_direction) => unimplemented!(),
+                GameInputMessage::Turn(direction) => {
+                    self.client_game_input(&client_id, ArenaInput::Turn(direction))
+                        .context("Failed to process turn input")?;
+                }
             },
         }
         Ok(())
@@ -595,6 +676,8 @@ impl Server {
     pub fn process_messages(&mut self) {
         // take ownership of queued messages
         let mut process_messages_queue = Vec::with_capacity(self.message_queue.len());
+
+        // move all message_queue messages into process_messages_queue
         process_messages_queue.append(&mut self.message_queue);
 
         // process each message
@@ -606,19 +689,31 @@ impl Server {
         });
     }
 
-    pub fn update(&mut self) -> Vec<(GameId, ArenaUpdates)> {
+    pub fn update(&mut self) {
         let now = Utc::now();
 
         self.games
-            .iter_mut()
-            .filter(|(_, game)| game.started.map_or(false, |started| now >= started))
-            .map(|(game_id, game)| (game_id.clone(), game.arena.update()))
-            .collect()
+            .values_mut()
+            .filter(|game| game.started.map_or(false, |started| now >= started))
+            .for_each(|game| game.arena.update(&mut game.updates));
     }
 
-    pub fn send_updates(&mut self, updates: Vec<(GameId, ArenaUpdates)>) {
-        for (game_id, game_updates) in updates {
-            self.message_clients_in_game(&game_id, &MessageOut::PatchGameState(game_updates))
+    pub fn send_updates(&mut self) {
+        let now = Utc::now();
+
+        let mut updates_to_send: Vec<_> = self
+            .games
+            .iter_mut()
+            .filter(|(_, game)| game.started.map_or(false, |started| now >= started))
+            .map(|(game_id, game)| {
+                let updates_to_send = (game_id.clone(), game.updates.clone());
+                game.updates.clear();
+                updates_to_send
+            })
+            .collect();
+
+        for (game_id, updates) in updates_to_send.drain(..) {
+            self.message_clients_in_game(&game_id, &MessageOut::PatchGameState(updates))
                 .unwrap_or_else(|error| {
                     error!(
                         "Failed to send PatchGameState message: {}",
@@ -637,8 +732,8 @@ impl Actor for Server {
             Duration::from_millis(UPDATE_RATE_MILLISECONDS),
             |server, _context| {
                 server.process_messages();
-                let updates = server.update();
-                server.send_updates(updates);
+                server.update();
+                server.send_updates();
             },
         );
     }
