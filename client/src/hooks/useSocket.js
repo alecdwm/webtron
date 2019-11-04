@@ -23,6 +23,7 @@ export default function useSocket() {
     const socket_url = `${protocol}://${window.location.host}/ws`
 
     socketRef.current = new WebSocket(socket_url)
+    dispatch(setStatusText('Connecting...'))
     dispatch(setSocketState(SocketStates.CONNECTING))
 
     socketRef.current.addEventListener('open', () => {
@@ -52,7 +53,7 @@ export default function useSocket() {
       dispatch(setSocketState(SocketStates.CLOSED))
       socketRef.current = null
       forceUpdate()
-      dispatch(setGameState('MainMenu'))
+      // dispatch(setGameState('MainMenu'))
     })
   }, [dispatch, socketRef, forceUpdate])
 

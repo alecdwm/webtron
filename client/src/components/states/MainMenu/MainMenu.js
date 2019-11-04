@@ -3,6 +3,7 @@ import useClassName from 'hooks/useClassName'
 import useCursorBlink from 'hooks/useCursorBlink'
 import usePreloadImages from 'hooks/usePreloadImages'
 import useStoreDispatch from 'hooks/useStoreDispatch'
+import MenuInput from 'components/MenuInput'
 import { setPlayerName, setPlayerColor } from 'actions'
 import webtronColors from 'utils/colors'
 import styles from './MainMenu.module.css'
@@ -104,6 +105,7 @@ export default function MainMenu({ store: { playerName, playerColor, statusText 
     }
   }, [onKeyDown, onKeyPress])
 
+  const MainMenu = useClassName(styles.mainMenu)
   const StatusText = useClassName(styles.statusText)
   const NameLabel = useClassName(styles.nameLabel)
   const NamePreview = useClassName([styles.namePreview, cursorBlink && styles.cursorBlink])
@@ -114,8 +116,10 @@ export default function MainMenu({ store: { playerName, playerColor, statusText 
   const ConnectButton = useClassName([styles.connectButton])
 
   return (
-    <>
+    <MainMenu>
       <StatusText>{statusText}</StatusText>
+
+      <MenuInput />
 
       <NameLabel>NAME:</NameLabel>
       <NamePreview className={playerName === '' && styles.noName}>{playerName}</NamePreview>
@@ -126,6 +130,6 @@ export default function MainMenu({ store: { playerName, playerColor, statusText 
       <ColorButtonRight onClick={setNextPlayerColor}>{'>'}</ColorButtonRight>
 
       <ConnectButton onClick={connect}>CONNECT</ConnectButton>
-    </>
+    </MainMenu>
   )
 }

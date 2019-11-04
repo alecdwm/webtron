@@ -8,7 +8,6 @@ import playerColor from './playerColor'
 import statusText from './statusText'
 import socketState from './socketState'
 import playerId from './playerId'
-import games from './games'
 import players from './players'
 
 export default combineReducers({
@@ -22,6 +21,5 @@ export default combineReducers({
   statusText,
   socketState,
   playerId,
-  games,
   players,
 })

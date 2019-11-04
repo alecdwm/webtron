@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import useSocket from 'hooks/useSocket'
 
 import MainMenu from 'components/states/MainMenu'
@@ -8,6 +8,10 @@ const gameStates = { MainMenu, Connect, Lobby }
 
 export default function Webtron({ store }) {
   const [connect, disconnect, send] = useSocket()
+
+  useEffect(() => {
+    connect()
+  }, [])
 
   const GameState = gameStates[store.gameState] || null
   if (GameState === null) {
@@ -22,3 +26,16 @@ export default function Webtron({ store }) {
     </>
   )
 }
+
+//	update() {
+//		this.updateNow = Date.now()
+//		const dt = (this.updateNow - this.updateThen) / 1000.0
+//		this.updateThen = this.updateNow
+
+//		if (this.state && this.state.onUpdate && this.state.ready) {
+//			this.state.onUpdate.call(this.state, dt)
+//		}
+//		this.renderer.render(this.scene)
+
+//		window.requestAnimationFrame(this.update.bind(this))
+//	}

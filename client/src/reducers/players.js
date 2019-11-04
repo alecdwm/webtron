@@ -1,13 +1,13 @@
-import { RECEIVE_LOBBY_DATA } from 'actions'
+import { RECEIVE_GAME_PLAYERS } from 'actions'
 import createReducer from 'utils/createReducer'
 
 const initialState = { byId: {}, allIds: [] }
 
 export default createReducer(initialState, {
-  [RECEIVE_LOBBY_DATA]: (store, action) => {
+  [RECEIVE_GAME_PLAYERS]: (store, action) => {
     const byId = {}
     const allIds = []
-    for (const player of action.players) {
+    for (const player of action.gamePlayers) {
       byId[player.id] = player
       allIds.push(player.id)
     }

@@ -8,7 +8,7 @@
 .colorPreview,
 .colorButtonRight,
 .connectButton {
-  position: absolute;
+  /* position: absolute; */
   color: white;
   font-size: 32px;
 }
@@ -26,6 +26,14 @@
 }
 
 /* specific attributes */
+.mainMenu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  height: 100%;
+}
+
 .statusText {
   top: 105px;
   left: 280px;

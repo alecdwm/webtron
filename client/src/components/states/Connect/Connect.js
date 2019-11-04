@@ -10,8 +10,11 @@ export default function Connect({ store: { playerName, playerColor, socketState 
   useEffect(() => {
     if (socketState !== SocketStates.OPEN) return
 
-    send({ Lobby: { ConfigurePlayer: { name: playerName, color: playerColor } } })
-    dispatch(setGameState('Lobby'))
+    const joinGameId = window.location.hash.slice(1)
+
+    send({ Matchmaking: { ConfigurePlayer: { name: playerName, color: playerColor } } })
+    send({ Matchmaking: { JoinGame: joinGameId || null } })
+    // dispatch(setGameState('Lobby'))
   }, [socketState, playerName, playerColor, send, dispatch])
 
   const ConnectingText = useClassName(styles.connectingText)
