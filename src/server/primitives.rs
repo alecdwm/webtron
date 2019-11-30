@@ -1,11 +1,15 @@
 use crate::server::Player;
-use nalgebra::Vector2;
+use euclid::{Point2D, Vector2D};
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub type ClientId = Uuid;
 pub type PlayerId = Uuid;
 pub type GameId = Uuid;
+
+pub struct ArenaSpace;
+pub type ArenaVector = Vector2D<isize, ArenaSpace>;
+pub type ArenaPoint = Point2D<isize, ArenaSpace>;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -34,12 +38,12 @@ pub enum Direction {
 }
 
 impl Direction {
-    pub fn as_velocity(&self) -> Vector2<isize> {
+    pub fn as_velocity(&self) -> ArenaVector {
         match self {
-            Direction::Up => Vector2::new(0, 1),
-            Direction::Down => Vector2::new(0, -1),
-            Direction::Left => Vector2::new(-1, 0),
-            Direction::Right => Vector2::new(1, 0),
+            Direction::Up => ArenaVector::new(0, 1),
+            Direction::Down => ArenaVector::new(0, -1),
+            Direction::Left => ArenaVector::new(-1, 0),
+            Direction::Right => ArenaVector::new(1, 0),
         }
     }
 }

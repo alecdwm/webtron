@@ -1,10 +1,9 @@
 use log::error;
-use nalgebra::Point2;
 use rand_core::{OsRng, RngCore};
 use serde_derive::Serialize;
 use std::collections::HashMap;
 
-use crate::server::{Direction, PlayerId, MAX_PLAYERS_PER_GAME};
+use crate::server::{ArenaPoint, Direction, PlayerId, MAX_PLAYERS_PER_GAME};
 
 const ARENA_WIDTH: usize = 800;
 const ARENA_HEIGHT: usize = 800;
@@ -36,7 +35,7 @@ impl Default for Arena {
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize)]
 pub struct Lightcycle {
-    position: Point2<isize>,
+    position: ArenaPoint,
     rotation: Direction,
     speed: isize,
     dead: bool,
@@ -45,7 +44,7 @@ pub struct Lightcycle {
 impl Default for Lightcycle {
     fn default() -> Self {
         Self {
-            position: Point2::origin(),
+            position: ArenaPoint::origin(),
             rotation: Direction::Up,
             speed: LIGHTCYCLE_SPEED,
             dead: Default::default(),
@@ -55,7 +54,7 @@ impl Default for Lightcycle {
 
 #[derive(Debug, Default, Clone, Hash, PartialEq, Serialize)]
 pub struct Trail {
-    points: Vec<Point2<isize>>,
+    points: Vec<ArenaPoint>,
 }
 
 //
@@ -104,8 +103,8 @@ pub enum ArenaUpdate {
     UpdateLightcycleApplyDeath(PlayerId),
 
     // UpdateTrail(PlayerId, Trail),
-    UpdateTrailAppendPoint(PlayerId, Point2<isize>),
-    UpdateTrailReplaceLatestPoint(PlayerId, Point2<isize>),
+    UpdateTrailAppendPoint(PlayerId, ArenaPoint),
+    UpdateTrailReplaceLatestPoint(PlayerId, ArenaPoint),
 
     RemoveLightcycle(PlayerId),
     RemoveTrail(PlayerId),
@@ -391,8 +390,8 @@ const SPAWNPOINTS: [(isize, isize, Direction); MAX_PLAYERS_PER_GAME] = [
     ),
 ];
 
-fn calculate_spawnpoints(player_ids: Vec<PlayerId>) -> Vec<(PlayerId, Point2<isize>, Direction)> {
-    let mut spawnpoints: Vec<(PlayerId, Point2<isize>, Direction)> = Vec::new();
+fn calculate_spawnpoints(player_ids: Vec<PlayerId>) -> Vec<(PlayerId, ArenaPoint, Direction)> {
+    let mut spawnpoints: Vec<(PlayerId, ArenaPoint, Direction)> = Vec::new();
     let mut spawnpoints_used: Vec<usize> = Vec::new();
 
     for player_id in player_ids {
@@ -416,7 +415,7 @@ fn calculate_spawnpoints(player_ids: Vec<PlayerId>) -> Vec<(PlayerId, Point2<isi
         let selected_spawnpoint = SPAWNPOINTS[selected_spawnpoint];
         spawnpoints.push((
             player_id,
-            Point2::new(selected_spawnpoint.0, selected_spawnpoint.1),
+            ArenaPoint::new(selected_spawnpoint.0, selected_spawnpoint.1),
             selected_spawnpoint.2,
         ));
     }
@@ -424,9 +423,9 @@ fn calculate_spawnpoints(player_ids: Vec<PlayerId>) -> Vec<(PlayerId, Point2<isi
     spawnpoints
 }
 
-struct Line(Point2<isize>, Point2<isize>);
+struct Line(ArenaPoint, ArenaPoint);
 
-fn is_point_on_line_2d(point: Point2<isize>, line: Line) -> bool {
+fn is_point_on_line_2d(point: ArenaPoint, line: Line) -> bool {
     let start = line.0;
     let end = line.1;
 
