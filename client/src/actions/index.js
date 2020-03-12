@@ -1,5 +1,5 @@
-import { SocketStates } from 'hooks/useSocket'
-import createSimpleAction from 'utils/createSimpleAction'
+import { SocketStates } from '/hooks/useSocket'
+import createSimpleAction from '/utils/createSimpleAction'
 
 export const SET_GAME_OPTIONS = 'SET_GAME_OPTIONS'
 export const SET_GAME_STATE = 'SET_GAME_STATE'

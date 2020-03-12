@@ -8,7 +8,7 @@
 .colorPreview,
 .colorButtonRight,
 .connectButton {
-  /* position: absolute; */
+  position: absolute;
   color: white;
   font-size: 32px;
 }
@@ -27,18 +27,20 @@
 
 /* specific attributes */
 .mainMenu {
+  position: absolute;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  flex-direction: column;
   justify-content: space-evenly;
+  width: 100%;
   height: 100%;
 }
 
 .statusText {
   top: 105px;
   left: 280px;
-  width: 100%;
   transform: translate(-50%, -50%);
+  text-align: center;
   color: var(--orange);
 }
 .nameLabel {
@@ -79,12 +81,12 @@
 
 /* text cursor */
 .namePreview:after {
-  display: block;
   top: 0;
   right: 0;
+  display: block;
+  content: '_';
   transform: translate(100%, 0);
   font-weight: normal;
-  content: '_';
 }
 .namePreview.noName:after {
   transform: translate(100%, -50%);

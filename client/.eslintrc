@@ -1,19 +1,18 @@
 {
-  "env": { "es6": true, "browser": true },
-  "globals": { "global": "readonly", "process": "readonly" },
-  "extends": ["eslint:recommended", "plugin:react/recommended", "prettier"],
+  "env": { "browser": true, "es6": true },
+  "extends": ["eslint:recommended", "plugin:react/recommended", "prettier", "prettier/react"],
   "rules": {
     "eqeqeq": [2, "allow-null"],
-    "no-console": [1, { "allow": ["log", "info", "warn", "error"] }],
+    "no-case-declarations": 0,
     "no-debugger": 1,
     "no-unreachable": 1,
     "no-unused-vars": 1,
-    "react-hooks/exhaustive-deps": "warn",
-    "react-hooks/rules-of-hooks": "error",
-    "react/prop-types": 0
+    "react-hooks/exhaustive-deps": 1,
+    "react-hooks/rules-of-hooks": 1,
+    "react/display-name": 1,
+    "react/prop-types": 1
   },
   "parser": "babel-eslint",
-  "parserOptions": { "sourceType": "module" },
   "plugins": ["react", "react-hooks"],
-  "settings": { "react": { "version": "16.8.6" } }
+  "settings": { "react": { "version": "detect" } }
 }

@@ -1,7 +1,7 @@
-import { useRef, useCallback } from 'react'
-import { receiveSocketMessage, setGameState, setSocketState, setStatusText } from 'actions'
-import useForceUpdate from 'hooks/useForceUpdate'
-import useStoreDispatch from 'hooks/useStoreDispatch'
+import { receiveSocketMessage, setGameState, setSocketState, setStatusText } from '/actions'
+import useForceUpdate from '/hooks/useForceUpdate'
+import useStoreDispatch from '/hooks/useStoreDispatch'
+import { useCallback, useRef } from 'react'
 
 export const SocketStates = {
   NOT_CONNECTED: 'NOT_CONNECTED',

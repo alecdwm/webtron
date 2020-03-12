@@ -1,8 +1,9 @@
+import { setGameState } from '/actions'
+import useClassName from '/hooks/useClassName'
+import { SocketStates } from '/hooks/useSocket'
+import useStoreDispatch from '/hooks/useStoreDispatch'
 import React, { useEffect } from 'react'
-import { setGameState } from 'actions'
-import useClassName from 'hooks/useClassName'
-import { SocketStates } from 'hooks/useSocket'
-import useStoreDispatch from 'hooks/useStoreDispatch'
+
 import styles from './Connect.module.css'
 
 export default function Connect({ store: { playerName, playerColor, socketState }, send }) {

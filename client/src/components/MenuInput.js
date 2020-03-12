@@ -1,7 +1,9 @@
-import React, { useRef, useState, useCallback, useLayoutEffect } from 'react'
-import useClassName, { resolveClassName } from 'hooks/useClassName'
-import useCursorBlink from 'hooks/useCursorBlink'
-import useUniqueId from 'hooks/useUniqueId'
+import useClassName, { resolveClassName } from '/hooks/useClassName'
+import useCursorBlink from '/hooks/useCursorBlink'
+import useUniqueId from '/hooks/useUniqueId'
+import PropTypes from 'prop-types'
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
+
 import styles from './MenuInput.module.css'
 
 export default function MenuInput({ value, onChange, onSubmit, focusOnMount, className, ...passProps }) {
@@ -75,4 +77,11 @@ export default function MenuInput({ value, onChange, onSubmit, focusOnMount, cla
       </InputWrapper>
     </MenuInput>
   )
+}
+MenuInput.propTypes = {
+  value: PropTypes.string,
+  onChange: PropTypes.func.isRequired,
+  onSubmit: PropTypes.func.isRequired,
+  focusOnMount: PropTypes.bool,
+  className: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
 }

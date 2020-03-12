@@ -1,5 +1,6 @@
+import useClassName from '/hooks/useClassName'
 import React from 'react'
-import useClassName from 'hooks/useClassName'
+
 import styles from './MenuButton.module.css'
 
 export default function MenuButton({ ...passProps }) {

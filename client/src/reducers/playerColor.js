@@ -1,6 +1,6 @@
-import { SET_PLAYER_COLOR } from 'actions'
-import createReducer from 'utils/createReducer'
-import { randomColor } from 'utils/colors'
+import { SET_PLAYER_COLOR } from '/actions'
+import { randomColor } from '/utils/colors'
+import createReducer from '/utils/createReducer'
 
 const initialState = randomColor()
 

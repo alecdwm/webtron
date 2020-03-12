@@ -1,20 +1,22 @@
+import Webtron from '/components/Webtron'
+import usePreventWebtronContextMenu from '/hooks/usePreventWebtronContextMenu'
+import { StoreContext } from '/hooks/useStore'
+import { StoreDispatchContext } from '/hooks/useStoreDispatch'
+import useThunkReducer from '/hooks/useThunkReducer'
+import reducers from '/reducers'
 import React from 'react'
-import { hot } from 'react-hot-loader/root'
-import usePreventWebtronContextMenu from 'hooks/usePreventWebtronContextMenu'
-import useThunkReducer from 'hooks/useThunkReducer'
-import { StoreDispatch } from 'hooks/useStoreDispatch'
-import reducers from 'reducers'
-import Webtron from 'components/Webtron'
 
 const initialStore = reducers(undefined, { type: 'INIT_STORE' })
 
-export default hot(function Main() {
+export default function Main() {
   const [store, dispatch] = useThunkReducer(reducers, initialStore)
   usePreventWebtronContextMenu()
 
   return (
-    <StoreDispatch.Provider value={dispatch}>
-      <Webtron store={store} />
-    </StoreDispatch.Provider>
+    <StoreContext.Provider value={store}>
+      <StoreDispatchContext.Provider value={dispatch}>
+        <Webtron />
+      </StoreDispatchContext.Provider>
+    </StoreContext.Provider>
   )
-})
+}

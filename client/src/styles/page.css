@@ -1,0 +1,42 @@
+header img {
+  max-width: calc(100% - 4rem);
+  margin: 2rem auto;
+  user-select: none;
+}
+
+main {
+  position: relative;
+  overflow: hidden;
+  width: calc(100% - 4rem);
+  max-width: 560px;
+  margin: 0 auto;
+  user-select: none;
+  border: 3px solid var(--blue);
+  border-radius: 15px;
+}
+main::before {
+  float: left;
+  width: 1px;
+  margin-left: -1px;
+  padding-top: 100%;
+  content: '';
+}
+main::after {
+  display: table;
+  clear: both;
+  content: '';
+}
+
+footer {
+  position: absolute;
+  bottom: 0;
+  overflow-x: hidden;
+  width: 100%;
+  height: var(--footer-height);
+  text-align: center;
+  font-weight: bold;
+  line-height: var(--footer-height);
+}
+footer p {
+  margin: 0;
+}

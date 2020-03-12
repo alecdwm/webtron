@@ -1,5 +1,5 @@
-import { SET_STATUS_TEXT } from 'actions'
-import createReducer from 'utils/createReducer'
+import { SET_STATUS_TEXT } from '/actions'
+import createReducer from '/utils/createReducer'
 
 const initialState = ''
 

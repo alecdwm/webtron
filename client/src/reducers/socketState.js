@@ -1,6 +1,6 @@
-import { SET_SOCKET_STATE } from 'actions'
-import { SocketStates } from 'hooks/useSocket'
-import createReducer from 'utils/createReducer'
+import { SET_SOCKET_STATE } from '/actions'
+import { SocketStates } from '/hooks/useSocket'
+import createReducer from '/utils/createReducer'
 
 const initialState = SocketStates.NOT_CONNECTED
 

@@ -2,7 +2,7 @@ export const colors = ['blue', 'green', 'orange', 'purple', 'red', 'white']
 export default colors
 
 export function randomColor() {
-  return colors[parseInt(Math.random() * colors.length)]
+  return colors[Math.floor(Math.random() * colors.length)]
 }
 
 export function colorToHex(color) {

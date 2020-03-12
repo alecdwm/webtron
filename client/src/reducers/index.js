@@ -1,14 +1,14 @@
-import combineReducers from 'utils/combineReducers'
+import combineReducers from '/utils/combineReducers'
 
 import gameOptions from './gameOptions'
 import gameState from './gameState'
-import preloadedImages from './preloadedImages'
-import playerName from './playerName'
 import playerColor from './playerColor'
-import statusText from './statusText'
-import socketState from './socketState'
 import playerId from './playerId'
+import playerName from './playerName'
 import players from './players'
+import preloadedImages from './preloadedImages'
+import socketState from './socketState'
+import statusText from './statusText'
 
 export default combineReducers({
   gameOptions,

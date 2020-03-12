@@ -1,4 +1,4 @@
-import { useReducer, useRef, useCallback } from 'react'
+import { useCallback, useReducer, useRef } from 'react'
 
 export default function useThunkReducer(reducer, initialState) {
   const [state, dispatch] = useReducer(reducer, initialState)

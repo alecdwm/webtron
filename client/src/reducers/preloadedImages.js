@@ -1,5 +1,5 @@
-import { PRELOAD_IMAGES } from 'actions'
-import createReducer from 'utils/createReducer'
+import { PRELOAD_IMAGES } from '/actions'
+import createReducer from '/utils/createReducer'
 
 const initialState = []
 

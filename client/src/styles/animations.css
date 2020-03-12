@@ -1,0 +1,42 @@
+html {
+  animation: fadein 1s ease;
+}
+
+main {
+  display: none;
+}
+main.loaded {
+  display: block;
+  animation: hidden 0.1s ease, canvasgrow 0.3s ease 0.1s;
+}
+
+footer {
+  animation: hidden 2s ease, fadein 1s ease 2s;
+}
+
+@keyframes hidden {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes canvasgrow {
+  from {
+    transform: scale(0, 0);
+  }
+  to {
+    transform: scale(1, 1);
+  }
+}

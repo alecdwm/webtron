@@ -1,8 +1,8 @@
-import { SET_GAME_OPTIONS } from 'actions'
-import createReducer from 'utils/createReducer'
+import { SET_GAME_OPTIONS } from '/actions'
+import createReducer from '/utils/createReducer'
 
 const initialState = {
-  debugReducers: global.devMode,
+  debugReducers: true, //global.devMode,
 }
 
 export default createReducer(initialState, {

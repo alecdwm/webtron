@@ -2,8 +2,8 @@
 .gameLobby,
 .createGameMenu {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  flex-direction: column;
   justify-content: space-evenly;
   height: 100%;
 }
@@ -34,8 +34,8 @@
   display: inline-block;
   flex-grow: 2;
   padding: 0 1rem;
-  line-height: 2em;
   text-align: right;
+  line-height: 2em;
 }
 
 .title {
@@ -51,17 +51,17 @@
   display: table-cell;
   width: 50%;
   padding-right: 1em;
+  text-align: right;
   color: #ffffff;
   font-size: 32px;
-  text-align: right;
 }
 .gameNameInput {
   display: table-cell;
   width: 50%;
+  text-align: left;
   color: #ffffff;
   font-size: 32px;
   font-weight: bold;
-  text-align: left;
 }
 
 .createButton,

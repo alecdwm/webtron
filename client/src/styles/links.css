@@ -1,0 +1,14 @@
+a {
+  transition: color 300ms ease;
+  text-decoration: none;
+  color: var(--orange);
+}
+a:focus,
+a:hover {
+  color: var(--blue);
+  outline: none;
+}
+a:active {
+  transition: none;
+  color: var(--white);
+}

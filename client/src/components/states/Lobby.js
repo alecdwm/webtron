@@ -1,24 +1,33 @@
-import React, { useState, useCallback } from 'react'
-import useBooleanState from 'hooks/useBooleanState'
-import useClassName from 'hooks/useClassName'
-import usePreloadImages from 'hooks/usePreloadImages'
-import useLobbyDataPolling from 'hooks/useLobbyDataPolling'
-import { MAX_PLAYER_NAME_LENGTH } from 'components/states/MainMenu'
-import MenuButton from 'components/MenuButton'
-import MenuInput from 'components/MenuInput'
+import MenuButton from '/components/MenuButton'
+import MenuInput from '/components/MenuInput'
+import { MAX_PLAYER_NAME_LENGTH } from '/components/states/MainMenu'
+import useBooleanState from '/hooks/useBooleanState'
+import useClassName from '/hooks/useClassName'
+import useLobbyDataPolling from '/hooks/useLobbyDataPolling'
+import usePreloadImages from '/hooks/usePreloadImages'
+import gridbikeBlue from '/img/gridbike-blue.png'
+import gridbikeGreen from '/img/gridbike-green.png'
+import gridbikeOrange from '/img/gridbike-orange.png'
+import gridbikePurple from '/img/gridbike-purple.png'
+import gridbikeRed from '/img/gridbike-red.png'
+import gridbikeWhite from '/img/gridbike-white.png'
+import React, { useCallback, useState } from 'react'
+
 import styles from './Lobby.module.css'
+
+const gridbikeImages = {
+  blue: gridbikeBlue,
+  green: gridbikeGreen,
+  orange: gridbikeOrange,
+  purple: gridbikePurple,
+  red: gridbikeRed,
+  white: gridbikeWhite,
+}
 
 const MAX_GAME_NAME_LENGTH = MAX_PLAYER_NAME_LENGTH
 
 export default function Lobby({ store: { playerId, games, players }, disconnect, send }) {
-  usePreloadImages([
-    'img/gridbike-blue.png',
-    'img/gridbike-green.png',
-    'img/gridbike-orange.png',
-    'img/gridbike-purple.png',
-    'img/gridbike-red.png',
-    'img/gridbike-white.png',
-  ])
+  usePreloadImages([gridbikeBlue, gridbikeGreen, gridbikeOrange, gridbikePurple, gridbikeRed, gridbikeWhite])
 
   useLobbyDataPolling(send)
 
@@ -103,7 +112,7 @@ function MainLobby({ games, players, joinGame, openCreateGameMenu, disconnect })
                 <img
                   style={{ transform: 'rotate(270deg)' }}
                   key={playerId}
-                  src={`img/gridbike-${players.byId[playerId].color}.png`}
+                  src={gridbikeImages[players.byId[playerId].color]}
                 />
               ))}
             </GameItemPlayers>

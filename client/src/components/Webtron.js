@@ -1,30 +1,28 @@
-import React, { useEffect } from 'react'
-import useSocket from 'hooks/useSocket'
+import Connect from '/components/states/Connect'
+import Lobby from '/components/states/Lobby'
+import MainMenu from '/components/states/MainMenu'
+import useSocket from '/hooks/useSocket'
+import useStore from '/hooks/useStore'
+import React from 'react'
 
-import MainMenu from 'components/states/MainMenu'
-import Connect from 'components/states/Connect'
-import Lobby from 'components/states/Lobby'
 const gameStates = { MainMenu, Connect, Lobby }
 
-export default function Webtron({ store }) {
+export default function Webtron() {
+  const { gameState } = useStore()
   const [connect, disconnect, send] = useSocket()
 
-  useEffect(() => {
-    connect()
-  }, [])
+  // useEffect(() => {
+  //   connect()
+  // }, [connect])
 
-  const GameState = gameStates[store.gameState] || null
+  const GameState = gameStates[gameState] || null
   if (GameState === null) {
     const validStates = Object.keys(gameStates).join(', ')
-    console.error(`No state by name '${store.gameState}' exists! Valid states: ${validStates}`)
+    console.error(`No state by name '${gameState}' exists! Valid states: ${validStates}`)
     return null
   }
 
-  return (
-    <>
-      <GameState store={store} connect={connect} disconnect={disconnect} send={send} />
-    </>
-  )
+  return <GameState connect={connect} disconnect={disconnect} send={send} />
 }
 
 //	update() {

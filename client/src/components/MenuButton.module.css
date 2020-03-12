@@ -6,18 +6,18 @@
 }
 .menuButton {
   display: inline-block;
-  outline: none;
-  color: var(--orange);
-  font-weight: bold;
   cursor: pointer;
   transition: color 300ms ease, border 300ms ease;
+  color: var(--orange);
+  outline: none;
+  font-weight: bold;
 }
 .menuButton:focus,
 .menuButton:hover {
   color: var(--blue);
 }
 .menuButton:active {
-  color: var(--white);
   transition: none;
+  color: var(--white);
   outline: none;
 }
