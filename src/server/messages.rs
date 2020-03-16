@@ -16,6 +16,7 @@ pub mod outgoing {
     /// Outgoing messages
     ///
     #[derive(Debug, Clone, Serialize, ActixMessage)]
+    #[rtype(result = "()")]
     pub enum Message {
         PlayerId(PlayerId),
         TotalGames(usize),
@@ -52,6 +53,7 @@ pub mod incoming {
     /// Incoming messages
     ///
     #[derive(Debug, ActixMessage)]
+    #[rtype(result = "()")]
     pub struct Message {
         pub client_id: ClientId,
         pub payload: MessagePayload,

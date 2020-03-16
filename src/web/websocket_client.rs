@@ -50,37 +50,53 @@ impl Actor for WebsocketClient {
     }
 }
 
-impl StreamHandler<websocket::Message, websocket::ProtocolError> for WebsocketClient {
-    fn handle(&mut self, message: websocket::Message, context: &mut Self::Context) {
+impl StreamHandler<Result<websocket::Message, websocket::ProtocolError>> for WebsocketClient {
+    fn handle(
+        &mut self,
+        message: Result<websocket::Message, websocket::ProtocolError>,
+        context: &mut Self::Context,
+    ) {
         match message {
-            websocket::Message::Text(text) => {
-                trace!("Text message received: {}", text);
-
-                let message = unwrap_or_return!(
-                    MessageIn::from_json(self.id, &text),
-                    |error| warn!("Failed to parse incoming message ({}): {}", text, error)
-                );
-
-                // TODO: send instead of try_send?
-                self.server_address
-                    .try_send(message)
-                    .unwrap_or_else(|error| {
-                        error!("Failed to send message to webtron server: {}", error)
-                    });
+            Err(error) => {
+                error!("{}", error);
+                context.stop();
+                return;
             }
+            Ok(message) => match message {
+                websocket::Message::Text(text) => {
+                    trace!("Text message received: {}", text);
 
-            websocket::Message::Close(message) => {
-                trace!("Close received: {:?}", message);
-                context.stop()
-            }
+                    let message = unwrap_or_return!(
+                        MessageIn::from_json(self.id, &text),
+                        |error| warn!("Failed to parse incoming message ({}): {}", text, error)
+                    );
 
-            websocket::Message::Ping(message) => {
-                trace!("Ping received: {}", message);
-                context.pong(&message)
-            }
-            websocket::Message::Binary(binary) => trace!("Binary message received: {:?}", binary),
-            websocket::Message::Pong(message) => trace!("Pong received: {}", message),
-            websocket::Message::Nop => trace!("Nop message received"),
+                    // TODO: send instead of try_send?
+                    self.server_address
+                        .try_send(message)
+                        .unwrap_or_else(|error| {
+                            error!("Failed to send message to webtron server: {}", error)
+                        });
+                }
+
+                websocket::Message::Close(message) => {
+                    trace!("Close received: {:?}", message);
+                    context.stop()
+                }
+
+                websocket::Message::Ping(message) => {
+                    trace!("Ping received: {:?}", message);
+                    context.pong(&message)
+                }
+                websocket::Message::Binary(binary) => {
+                    trace!("Binary message received: {:?}", binary)
+                }
+                websocket::Message::Pong(message) => trace!("Pong received: {:?}", message),
+                websocket::Message::Continuation(message) => {
+                    trace!("Continuation received: {:?}", message)
+                }
+                websocket::Message::Nop => trace!("Nop message received"),
+            },
         }
     }
 }

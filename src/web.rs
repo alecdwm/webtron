@@ -2,7 +2,7 @@ mod websocket_client;
 
 use actix::Addr;
 use actix_files::Files;
-use actix_server::Server as ActixServer;
+use actix_web::dev::Server as ActixServer;
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_actors::ws as websocket;
 use failure::{Error, ResultExt};
@@ -21,16 +21,20 @@ pub fn start(server_address: Addr<WebtronServer>, config: &Config) -> Result<Act
             //
             .service(web::resource("/ws").route(web::get().to(
                 move |request: HttpRequest, stream: web::Payload| {
-                    let ip_address = request
-                        .connection_info()
-                        .remote()
-                        .map(|ip_address| ip_address.to_owned());
+                    let server_address = server_address.clone();
 
-                    websocket::start(
-                        WebsocketClient::new(ip_address, server_address.clone()),
-                        &request,
-                        stream,
-                    )
+                    async move {
+                        let ip_address = request
+                            .connection_info()
+                            .remote()
+                            .map(|ip_address| ip_address.to_owned());
+
+                        websocket::start(
+                            WebsocketClient::new(ip_address, server_address.clone()),
+                            &request,
+                            stream,
+                        )
+                    }
                 },
             )))
             //
@@ -40,5 +44,5 @@ pub fn start(server_address: Addr<WebtronServer>, config: &Config) -> Result<Act
     })
     .bind(config.bind_address)
     .with_context(|_| format!("Failed to bind to socket {}", config.bind_address))?
-    .start())
+    .run())
 }
