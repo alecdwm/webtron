@@ -3,9 +3,9 @@ mod messages;
 mod primitives;
 
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
+use anyhow::{anyhow, Context as ResultContext, Error};
 use chrono::{DateTime, Duration as OldDuration, Utc};
 use debug_stub_derive::DebugStub;
-use failure::{format_err, Error, ResultExt};
 use log::{error, info};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -106,13 +106,13 @@ impl Server {
         let client = self
             .clients
             .get_mut(&client_id)
-            .ok_or_else(|| format_err!("Client not found: {}", client_id))?;
+            .ok_or_else(|| anyhow!("Client not found: {}", client_id))?;
 
         if let Some(player_id) = client.player {
             let player = self
                 .players
                 .get_mut(&player_id)
-                .ok_or_else(|| format_err!("Player not found: {}", player_id))?;
+                .ok_or_else(|| anyhow!("Player not found: {}", player_id))?;
 
             player.name = name;
             player.color = color;
@@ -149,7 +149,7 @@ impl Server {
         let client = self
             .clients
             .remove(&id)
-            .ok_or_else(|| format_err!("Client {} not found", id))?;
+            .ok_or_else(|| anyhow!("Client {} not found", id))?;
 
         self.remove_client_relations(client)
             .context("Failed to cleanup client relations")?;
@@ -161,7 +161,7 @@ impl Server {
         let player = self
             .players
             .remove(&id)
-            .ok_or_else(|| format_err!("Player {} not found", id))?;
+            .ok_or_else(|| anyhow!("Player {} not found", id))?;
 
         self.remove_player_relations(player)
             .context("Failed to cleanup player relations")?;
@@ -173,7 +173,7 @@ impl Server {
         let game = self
             .games
             .remove(&id)
-            .ok_or_else(|| format_err!("Game {} not found", id))?;
+            .ok_or_else(|| anyhow!("Game {} not found", id))?;
 
         self.remove_game_relations(game)
             .context("Failed to cleanup game relations")?;
@@ -186,7 +186,7 @@ impl Server {
             let player = self
                 .players
                 .get_mut(&player_id)
-                .ok_or_else(|| format_err!("Player {} not found", player_id))?;
+                .ok_or_else(|| anyhow!("Player {} not found", player_id))?;
 
             player.client = None;
 
@@ -203,7 +203,7 @@ impl Server {
             let client = self
                 .clients
                 .get_mut(&client_id)
-                .ok_or_else(|| format_err!("Client {} not found", client_id))?;
+                .ok_or_else(|| anyhow!("Client {} not found", client_id))?;
 
             client.player = None;
         }
@@ -212,7 +212,7 @@ impl Server {
             let game = self
                 .games
                 .get_mut(&game_id)
-                .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+                .ok_or_else(|| anyhow!("Game {} not found", game_id))?;
 
             game.players.remove(&player.id);
 
@@ -231,7 +231,7 @@ impl Server {
             let player = self
                 .players
                 .get_mut(&player_id)
-                .ok_or_else(|| format_err!("Player {} not found", player_id))?;
+                .ok_or_else(|| anyhow!("Player {} not found", player_id))?;
 
             player.game = None;
         }
@@ -279,10 +279,10 @@ impl Server {
     ) -> Result<(), Error> {
         self.clients
             .get_mut(client_id)
-            .ok_or_else(|| format_err!("Client not found: {}", client_id))?
+            .ok_or_else(|| anyhow!("Client not found: {}", client_id))?
             .address
             .try_send(message.clone())
-            .with_context(|_| format_err!("Failed to message client {}", client_id))?;
+            .with_context(|| anyhow!("Failed to message client {}", client_id))?;
 
         Ok(())
     }
@@ -304,9 +304,9 @@ impl Server {
         let player_id = self
             .clients
             .get(&client_id)
-            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .ok_or_else(|| anyhow!("Client {} not found", client_id))?
             .player
-            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+            .ok_or_else(|| anyhow!("Client {} has no player", client_id))?;
 
         self.message_clients_in_game_from_player(&player_id, message)
     }
@@ -319,9 +319,9 @@ impl Server {
         let game_id = self
             .players
             .get(&player_id)
-            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .ok_or_else(|| anyhow!("Player {} not found", player_id))?
             .game
-            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+            .ok_or_else(|| anyhow!("Player {} not in a game", player_id))?;
 
         self.message_clients_in_game(&game_id, message)
     }
@@ -334,7 +334,7 @@ impl Server {
         let game = self
             .games
             .get(&game_id)
-            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+            .ok_or_else(|| anyhow!("Game {} not found", game_id))?;
 
         game.players
             .iter()
@@ -363,9 +363,9 @@ impl Server {
         let player_id = self
             .clients
             .get(&client_id)
-            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .ok_or_else(|| anyhow!("Client {} not found", client_id))?
             .player
-            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+            .ok_or_else(|| anyhow!("Client {} has no player", client_id))?;
 
         self.player_join_game(&player_id, game_id)
     }
@@ -389,16 +389,16 @@ impl Server {
         let game = self
             .games
             .get_mut(&game_id)
-            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+            .ok_or_else(|| anyhow!("Game {} not found", game_id))?;
 
         if game.is_full() {
-            return Err(format_err!("Game {} is full", game_id));
+            return Err(anyhow!("Game {} is full", game_id));
         }
 
         let player = self
             .players
             .get_mut(&player_id)
-            .ok_or_else(|| format_err!("Player {} not found", player_id))?;
+            .ok_or_else(|| anyhow!("Player {} not found", player_id))?;
 
         player.game = Some(game_id);
         game.players.insert(player_id.clone());
@@ -408,7 +408,7 @@ impl Server {
             &MessageOut::GamePlayers(
                 self.games
                     .get(&game_id)
-                    .ok_or_else(|| format_err!("Game {} not found", game_id))?
+                    .ok_or_else(|| anyhow!("Game {} not found", game_id))?
                     .players
                     .iter()
                     .filter_map(|player_id| self.players.get(player_id))
@@ -430,9 +430,9 @@ impl Server {
         let player_id = self
             .clients
             .get(&client_id)
-            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .ok_or_else(|| anyhow!("Client {} not found", client_id))?
             .player
-            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+            .ok_or_else(|| anyhow!("Client {} has no player", client_id))?;
 
         self.player_start_game(&player_id)
     }
@@ -441,14 +441,14 @@ impl Server {
         let game_id = self
             .players
             .get(&player_id)
-            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .ok_or_else(|| anyhow!("Player {} not found", player_id))?
             .game
-            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+            .ok_or_else(|| anyhow!("Player {} not in a game", player_id))?;
 
         let game = self
             .games
             .get_mut(&game_id)
-            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+            .ok_or_else(|| anyhow!("Game {} not found", game_id))?;
 
         let start_at = Utc::now() + OldDuration::seconds(GAME_START_TIMER_SECONDS);
         game.started = Some(start_at);
@@ -464,9 +464,9 @@ impl Server {
         let player_id = self
             .clients
             .get(&client_id)
-            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .ok_or_else(|| anyhow!("Client {} not found", client_id))?
             .player
-            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+            .ok_or_else(|| anyhow!("Client {} has no player", client_id))?;
 
         self.player_game_input(&player_id, input)
     }
@@ -479,14 +479,14 @@ impl Server {
         let game_id = self
             .players
             .get(&player_id)
-            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .ok_or_else(|| anyhow!("Player {} not found", player_id))?
             .game
-            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+            .ok_or_else(|| anyhow!("Player {} not in a game", player_id))?;
 
         let game = self
             .games
             .get_mut(&game_id)
-            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+            .ok_or_else(|| anyhow!("Game {} not found", game_id))?;
 
         game.arena
             .process_input(&mut game.updates, (*player_id, input));
@@ -498,9 +498,9 @@ impl Server {
         let player_id = self
             .clients
             .get(&client_id)
-            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .ok_or_else(|| anyhow!("Client {} not found", client_id))?
             .player
-            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+            .ok_or_else(|| anyhow!("Client {} has no player", client_id))?;
 
         self.player_spawn_game_players(&player_id)
     }
@@ -509,14 +509,14 @@ impl Server {
         let game_id = self
             .players
             .get(&player_id)
-            .ok_or_else(|| format_err!("Player {} not found", player_id))?
+            .ok_or_else(|| anyhow!("Player {} not found", player_id))?
             .game
-            .ok_or_else(|| format_err!("Player {} not in a game", player_id))?;
+            .ok_or_else(|| anyhow!("Player {} not in a game", player_id))?;
 
         let game = self
             .games
             .get_mut(&game_id)
-            .ok_or_else(|| format_err!("Game {} not found", game_id))?;
+            .ok_or_else(|| anyhow!("Game {} not found", game_id))?;
 
         game.arena.process_input(
             &mut game.updates,
@@ -533,9 +533,9 @@ impl Server {
         let player_id = self
             .clients
             .get(&client_id)
-            .ok_or_else(|| format_err!("Client {} not found", client_id))?
+            .ok_or_else(|| anyhow!("Client {} not found", client_id))?
             .player
-            .ok_or_else(|| format_err!("Client {} has no player", client_id))?;
+            .ok_or_else(|| anyhow!("Client {} has no player", client_id))?;
 
         self.player_part_game(&player_id)
     }
@@ -544,7 +544,7 @@ impl Server {
         let player = self
             .players
             .get_mut(player_id)
-            .ok_or_else(|| format_err!("Player {} not found", player_id))?;
+            .ok_or_else(|| anyhow!("Player {} not found", player_id))?;
 
         let current_game_id = match player.game {
             Some(game_id) => game_id,
@@ -554,7 +554,7 @@ impl Server {
         let current_game = self
             .games
             .get_mut(&current_game_id)
-            .ok_or_else(|| format_err!("Game {} not found", current_game_id))?;
+            .ok_or_else(|| anyhow!("Game {} not found", current_game_id))?;
 
         player.game = None;
         current_game.players.remove(&player_id);
@@ -569,7 +569,7 @@ impl Server {
                 &MessageOut::GamePlayers(
                     self.games
                         .get(&current_game_id)
-                        .ok_or_else(|| format_err!("Game {} not found", current_game_id))?
+                        .ok_or_else(|| anyhow!("Game {} not found", current_game_id))?
                         .players
                         .iter()
                         .filter_map(|player_id| self.players.get(player_id))
@@ -636,7 +636,7 @@ impl Server {
                         .client_part_game(&client_id)
                         .context("Failed to part game")?;
                     if !parted {
-                        return Err(format_err!("Client {} not in a game", client_id));
+                        return Err(anyhow!("Client {} not in a game", client_id));
                     }
 
                     info!("Client {} parted game", client_id);

@@ -43,8 +43,8 @@ pub mod outgoing {
 ///
 pub mod incoming {
     use actix::{Message as ActixMessage, Recipient};
+    use anyhow::Error;
     use debug_stub_derive::DebugStub;
-    use failure::Error;
     use serde_derive::Deserialize;
 
     use crate::server::{ClientId, Direction, GameId, MessageOut, PlayerColor};

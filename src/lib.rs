@@ -20,7 +20,7 @@ pub mod server;
 pub mod web;
 
 use actix::{Actor, System};
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 
 use config::Config;
 use server::Server as WebtronServer;
@@ -53,7 +53,7 @@ pub fn start() -> Result<(), Error> {
 ///
 pub fn get_error_chain(error: Error) -> String {
     error
-        .iter_chain()
+        .chain()
         .map(|f| format!("{}", f))
         .collect::<Vec<_>>()
         .join(": ")

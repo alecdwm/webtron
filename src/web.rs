@@ -5,7 +5,7 @@ use actix_files::Files;
 use actix_web::dev::Server as ActixServer;
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_actors::ws as websocket;
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 
 use crate::config::Config;
 use crate::server::Server as WebtronServer;
@@ -43,6 +43,6 @@ pub fn start(server_address: Addr<WebtronServer>, config: &Config) -> Result<Act
             .service(Files::new("/", "client").index_file("index.html"))
     })
     .bind(config.bind_address)
-    .with_context(|_| format!("Failed to bind to socket {}", config.bind_address))?
+    .with_context(|| format!("Failed to bind to socket {}", config.bind_address))?
     .run())
 }
