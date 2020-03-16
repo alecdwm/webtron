@@ -3,40 +3,21 @@ mod websocket_client;
 use actix::Addr;
 use actix_files::Files;
 use actix_web::dev::Server as ActixServer;
-use actix_web::{web, App, HttpRequest, HttpServer};
-use actix_web_actors::ws as websocket;
+use actix_web::{web, App, HttpServer};
 use anyhow::{Context, Error};
 
 use crate::config::Config;
 use crate::server::Server as WebtronServer;
-use websocket_client::WebsocketClient;
+use websocket_client::websocket_route;
 
 pub fn start(server_address: Addr<WebtronServer>, config: &Config) -> Result<ActixServer, Error> {
     Ok(HttpServer::new(move || {
-        let server_address = server_address.clone();
-
         App::new()
+            .data(server_address.clone())
             //
             // websocket handler
             //
-            .service(web::resource("/ws").route(web::get().to(
-                move |request: HttpRequest, stream: web::Payload| {
-                    let server_address = server_address.clone();
-
-                    async move {
-                        let ip_address = request
-                            .connection_info()
-                            .remote()
-                            .map(|ip_address| ip_address.to_owned());
-
-                        websocket::start(
-                            WebsocketClient::new(ip_address, server_address.clone()),
-                            &request,
-                            stream,
-                        )
-                    }
-                },
-            )))
+            .service(web::resource("/ws").to(websocket_route))
             //
             // fs handler
             //

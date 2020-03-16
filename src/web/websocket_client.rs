@@ -1,35 +1,39 @@
 use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Running, StreamHandler};
-use actix_web_actors::ws::{self as websocket, WebsocketContext};
+use actix_web::{web, Error as ActixError, HttpRequest, HttpResponse};
+use actix_web_actors::ws;
 use log::{error, trace, warn};
 use uuid::Uuid;
 
 use crate::server::{MessageIn, MessageOut, Server as WebtronServer};
 
+pub async fn websocket_route(
+    request: HttpRequest,
+    stream: web::Payload,
+    server_address: web::Data<Addr<WebtronServer>>,
+) -> Result<HttpResponse, ActixError> {
+    ws::start(
+        WebsocketClient {
+            id: Uuid::new_v4(),
+            ip_address: request.connection_info().remote().map(str::to_owned),
+            server_address: server_address.get_ref().clone(),
+        },
+        &request,
+        stream,
+    )
+}
+
 #[derive(Debug)]
-pub struct WebsocketClient {
+struct WebsocketClient {
     id: Uuid,
     ip_address: Option<String>,
     server_address: Addr<WebtronServer>,
 }
 
-impl WebsocketClient {
-    pub fn new(ip_address: Option<String>, server_address: Addr<WebtronServer>) -> Self {
-        let id = Uuid::new_v4();
-
-        WebsocketClient {
-            id,
-            ip_address,
-            server_address,
-        }
-    }
-}
-
 impl Actor for WebsocketClient {
-    type Context = WebsocketContext<Self>;
+    type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, context: &mut Self::Context) {
         self.server_address
-            // TODO: send instead of try_send?
             .try_send(MessageIn::connect(
                 self.id,
                 self.ip_address.clone(),
@@ -40,7 +44,6 @@ impl Actor for WebsocketClient {
 
     fn stopping(&mut self, _context: &mut Self::Context) -> Running {
         self.server_address
-            // TODO: send instead of try_send?
             .try_send(MessageIn::disconnect(self.id))
             .unwrap_or_else(|error| {
                 error!("Failed to send disconnect to webtron server: {}", error)
@@ -50,53 +53,46 @@ impl Actor for WebsocketClient {
     }
 }
 
-impl StreamHandler<Result<websocket::Message, websocket::ProtocolError>> for WebsocketClient {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebsocketClient {
     fn handle(
         &mut self,
-        message: Result<websocket::Message, websocket::ProtocolError>,
+        message: Result<ws::Message, ws::ProtocolError>,
         context: &mut Self::Context,
     ) {
+        let message = unwrap_or_return!(message, |error| error!(
+            "Failed to handle incoming message: {}",
+            error
+        ));
+
         match message {
-            Err(error) => {
-                error!("{}", error);
-                context.stop();
-                return;
+            ws::Message::Text(text) => {
+                trace!("Text message received: {}", text);
+
+                let message = unwrap_or_return!(
+                    MessageIn::from_json(self.id, &text),
+                    |error| warn!("Failed to parse incoming message ({}): {}", text, error)
+                );
+
+                self.server_address
+                    .try_send(message)
+                    .unwrap_or_else(|error| {
+                        error!("Failed to send message to webtron server: {}", error)
+                    });
             }
-            Ok(message) => match message {
-                websocket::Message::Text(text) => {
-                    trace!("Text message received: {}", text);
 
-                    let message = unwrap_or_return!(
-                        MessageIn::from_json(self.id, &text),
-                        |error| warn!("Failed to parse incoming message ({}): {}", text, error)
-                    );
+            ws::Message::Close(message) => {
+                trace!("Close received: {:?}", message);
+                context.stop()
+            }
 
-                    // TODO: send instead of try_send?
-                    self.server_address
-                        .try_send(message)
-                        .unwrap_or_else(|error| {
-                            error!("Failed to send message to webtron server: {}", error)
-                        });
-                }
-
-                websocket::Message::Close(message) => {
-                    trace!("Close received: {:?}", message);
-                    context.stop()
-                }
-
-                websocket::Message::Ping(message) => {
-                    trace!("Ping received: {:?}", message);
-                    context.pong(&message)
-                }
-                websocket::Message::Binary(binary) => {
-                    trace!("Binary message received: {:?}", binary)
-                }
-                websocket::Message::Pong(message) => trace!("Pong received: {:?}", message),
-                websocket::Message::Continuation(message) => {
-                    trace!("Continuation received: {:?}", message)
-                }
-                websocket::Message::Nop => trace!("Nop message received"),
-            },
+            ws::Message::Ping(message) => {
+                trace!("Ping received: {:?}", message);
+                context.pong(&message)
+            }
+            ws::Message::Binary(binary) => trace!("Binary message received: {:?}", binary),
+            ws::Message::Pong(message) => trace!("Pong received: {:?}", message),
+            ws::Message::Continuation(message) => trace!("Continuation received: {:?}", message),
+            ws::Message::Nop => trace!("Nop message received"),
         }
     }
 }
