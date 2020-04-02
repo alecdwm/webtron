@@ -1,293 +1,118 @@
-use log::error;
+mod entities;
+mod input;
+mod updates;
+mod util;
+
+use chrono::{DateTime, Duration as OldDuration, Utc};
+use log::{error, trace};
 use rand_core::{OsRng, RngCore};
 use serde_derive::Serialize;
 use std::collections::HashMap;
+use std::mem;
 
-use crate::server::{ArenaPoint, Direction, PlayerId, MAX_PLAYERS_PER_GAME};
+pub use self::entities::*;
+pub use self::input::*;
+pub use self::updates::*;
+pub use self::util::*;
+
+use crate::server::{ArenaId, ArenaPoint, Direction, Line, Player, PlayerId};
 
 const ARENA_WIDTH: usize = 800;
 const ARENA_HEIGHT: usize = 800;
+const ARENA_MAX_PLAYERS: usize = 8;
+const ARENA_START_TIMER_SECONDS: i64 = 5;
 const LIGHTCYCLE_SPEED: isize = 120;
-
-//
-// arena datastructure
-//
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Arena {
-    width: usize,
-    height: usize,
+    pub id: ArenaId,
+    pub width: usize,
+    pub height: usize,
+    pub max_players: usize,
 
-    lightcycles: HashMap<PlayerId, Lightcycle>,
-    trails: HashMap<PlayerId, Trail>,
-}
+    pub started: Option<DateTime<Utc>>,
 
-impl Default for Arena {
-    fn default() -> Self {
-        Self {
-            width: ARENA_WIDTH,
-            height: ARENA_HEIGHT,
-            lightcycles: Default::default(),
-            trails: Default::default(),
-        }
-    }
-}
+    pub players: HashMap<PlayerId, Player>,
+    pub lightcycles: HashMap<PlayerId, Lightcycle>,
+    pub trails: HashMap<PlayerId, Trail>,
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize)]
-pub struct Lightcycle {
-    position: ArenaPoint,
-    rotation: Direction,
-    speed: isize,
-    dead: bool,
-}
-
-impl Default for Lightcycle {
-    fn default() -> Self {
-        Self {
-            position: ArenaPoint::origin(),
-            rotation: Direction::Up,
-            speed: LIGHTCYCLE_SPEED,
-            dead: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug, Default, Clone, Hash, PartialEq, Serialize)]
-pub struct Trail {
-    points: Vec<ArenaPoint>,
-}
-
-//
-// arena input + update events
-//
-
-pub enum ArenaInput {
-    SpawnPlayers(Vec<PlayerId>),
-    Turn(Direction),
-}
-
-#[derive(Debug, Default, Clone, Hash, PartialEq, Serialize)]
-pub struct ArenaUpdates {
-    updates: Vec<ArenaUpdate>,
+    #[serde(skip)]
+    pub updates: Vec<ArenaUpdate>,
+    #[serde(skip)]
     updates_applied_so_far: usize,
 }
 
-impl ArenaUpdates {
-    pub fn push(&mut self, update: ArenaUpdate) {
-        self.updates.push(update);
+impl Arena {
+    pub fn add_player(&mut self, player: Player) {
+        self.updates.push(ArenaUpdate::AddPlayer(player.id, player));
     }
 
-    pub fn clear(&mut self) {
+    pub fn remove_player(&mut self, player_id: PlayerId) {
+        self.updates.push(ArenaUpdate::RemovePlayer(player_id));
+    }
+
+    pub fn clear_updates(&mut self) {
         self.updates.clear();
         self.updates_applied_so_far = 0;
     }
 
-    pub fn apply<'s, 'arena>(&'s mut self, arena: &'arena mut Arena) -> &'arena mut Arena {
-        for update in self.updates.iter().skip(self.updates_applied_so_far) {
-            update.apply(arena);
+    pub fn apply_updates(&mut self) -> &mut Self {
+        let updates = mem::replace(&mut self.updates, Vec::new());
+        for update in updates.iter().skip(self.updates_applied_so_far) {
+            update.apply(self);
             self.updates_applied_so_far += 1;
         }
+        mem::replace(&mut self.updates, updates);
 
-        arena
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Serialize)]
-pub enum ArenaUpdate {
-    AddLightcycle(PlayerId, Lightcycle),
-    AddTrail(PlayerId, Trail),
-
-    // UpdateLightcycle(PlayerId, Lightcycle),
-    UpdateLightcycleChangeDirection(PlayerId, Direction),
-    UpdateLightcycleApplyVelocity(PlayerId),
-    UpdateLightcycleApplyDeath(PlayerId),
-
-    // UpdateTrail(PlayerId, Trail),
-    UpdateTrailAppendPoint(PlayerId, ArenaPoint),
-    UpdateTrailReplaceLatestPoint(PlayerId, ArenaPoint),
-
-    RemoveLightcycle(PlayerId),
-    RemoveTrail(PlayerId),
-}
-
-impl ArenaUpdate {
-    pub fn apply<'s, 'arena>(&'s self, arena: &'arena mut Arena) -> &'arena mut Arena {
-        match self {
-            ArenaUpdate::AddLightcycle(player_id, lightcycle) => {
-                arena.lightcycles.insert(*player_id, *lightcycle);
-            }
-
-            ArenaUpdate::AddTrail(player_id, trail) => {
-                arena.trails.insert(*player_id, trail.clone());
-            }
-
-            ArenaUpdate::UpdateLightcycleChangeDirection(player_id, direction) => {
-                let lightcycle = match arena.lightcycles.get_mut(player_id) {
-                    Some(lightcycle) => lightcycle,
-                    None => {
-                        error!("Lightcycle {} not found", player_id);
-                        return arena;
-                    }
-                };
-
-                lightcycle.rotation = *direction;
-            }
-
-            ArenaUpdate::UpdateLightcycleApplyVelocity(player_id) => {
-                let lightcycle = match arena.lightcycles.get_mut(player_id) {
-                    Some(lightcycle) => lightcycle,
-                    None => {
-                        error!("Lightcycle {} not found", player_id);
-                        return arena;
-                    }
-                };
-
-                lightcycle.position += lightcycle.rotation.as_velocity() * lightcycle.speed;
-            }
-
-            ArenaUpdate::UpdateLightcycleApplyDeath(player_id) => {
-                let lightcycle = match arena.lightcycles.get_mut(player_id) {
-                    Some(lightcycle) => lightcycle,
-                    None => {
-                        error!("Lightcycle {} not found", player_id);
-                        return arena;
-                    }
-                };
-
-                lightcycle.dead = true;
-            }
-
-            ArenaUpdate::UpdateTrailAppendPoint(player_id, point) => {
-                let trail = match arena.trails.get_mut(player_id) {
-                    Some(trail) => trail,
-                    None => {
-                        error!("Trail {} not found", player_id);
-                        return arena;
-                    }
-                };
-
-                trail.points.push(*point);
-            }
-
-            ArenaUpdate::UpdateTrailReplaceLatestPoint(player_id, latest_point) => {
-                let trail = match arena.trails.get_mut(player_id) {
-                    Some(trail) => trail,
-                    None => {
-                        error!("Trail {} not found", player_id);
-                        return arena;
-                    }
-                };
-
-                trail.points.pop();
-                trail.points.push(*latest_point);
-            }
-
-            ArenaUpdate::RemoveLightcycle(player_id) => {
-                arena.lightcycles.remove(player_id);
-            }
-
-            ArenaUpdate::RemoveTrail(player_id) => {
-                arena.trails.remove(player_id);
-            }
-        }
-
-        arena
-    }
-}
-
-impl Arena {
-    pub fn process_input(
-        &mut self,
-        updates: &mut ArenaUpdates,
-        input_event: (PlayerId, ArenaInput),
-    ) {
-        let (player_id, input_event) = input_event;
-        match input_event {
-            ArenaInput::SpawnPlayers(player_ids) => {
-                self.process_input_spawn_players(updates, player_ids);
-            }
-
-            ArenaInput::Turn(direction) => {
-                self.process_input_turn_lightcycle(updates, player_id, direction);
-            }
-        }
+        self
     }
 
-    pub fn update(&mut self, updates: &mut ArenaUpdates) {
+    pub fn process_input(&mut self, player_id: PlayerId, input_event: ArenaInput) {
+        input_event
+            .process_into_updates(self, player_id)
+            .drain(..)
+            .for_each(|update| self.updates.push(update));
+    }
+
+    pub fn update(&mut self) {
         // apply process_input updates
-        updates.apply(self);
+        self.apply_updates();
 
-        self.update_lightcycle_positions(updates)
-            .apply(self)
-            .update_trail_positions(updates)
-            .apply(self)
-            .calculate_lightcycle_collisions(updates)
-            .apply(self);
-    }
+        let started = match self.started {
+            Some(started) => started,
+            None => return,
+        };
 
-    //
-    // process_input helpers
-    //
+        let now = Utc::now();
+        if now < started {
+            return;
+        }
 
-    fn process_input_spawn_players(
-        &mut self,
-        updates: &mut ArenaUpdates,
-        player_ids: Vec<PlayerId>,
-    ) {
-        calculate_spawnpoints(player_ids).drain(..).for_each(
-            |(player_id, spawn_position, spawn_direction)| {
-                updates.push(ArenaUpdate::AddLightcycle(
-                    player_id,
-                    Lightcycle {
-                        position: spawn_position,
-                        rotation: spawn_direction,
-                        ..Default::default()
-                    },
-                ));
-                updates.push(ArenaUpdate::AddTrail(
-                    player_id,
-                    Trail {
-                        points: vec![spawn_position, spawn_position],
-                    },
-                ));
-            },
-        );
-    }
-
-    fn process_input_turn_lightcycle(
-        &mut self,
-        updates: &mut ArenaUpdates,
-        player_id: PlayerId,
-        direction: Direction,
-    ) {
-        // TODO: Prevent turning 180° in one update (will immediately crash into own trail)
-        updates.push(ArenaUpdate::UpdateLightcycleChangeDirection(
-            player_id, direction,
-        ));
+        self.update_lightcycle_positions()
+            .apply_updates()
+            .update_trail_positions()
+            .apply_updates()
+            .calculate_lightcycle_collisions()
+            .apply_updates();
     }
 
     //
     // update helpers
     //
 
-    fn update_lightcycle_positions<'s, 'updates>(
-        &'s self,
-        updates: &'updates mut ArenaUpdates,
-    ) -> &'updates mut ArenaUpdates {
+    fn update_lightcycle_positions(&mut self) -> &mut Self {
         for (id, lightcycle) in self.lightcycles.iter() {
             if lightcycle.dead {
                 continue;
             };
 
-            updates.push(ArenaUpdate::UpdateLightcycleApplyVelocity(id.clone()))
+            self.updates
+                .push(ArenaUpdate::UpdateLightcycleApplyVelocity(*id))
         }
-        updates
+        self
     }
 
-    fn update_trail_positions<'s, 'updates>(
-        &'s self,
-        updates: &'updates mut ArenaUpdates,
-    ) -> &'updates mut ArenaUpdates {
+    fn update_trail_positions(&mut self) -> &mut Self {
         for id in self.trails.keys() {
             let latest_point = match self.lightcycles.get(id) {
                 Some(lightcycle) => {
@@ -306,18 +131,16 @@ impl Arena {
                 }
             };
 
-            updates.push(ArenaUpdate::UpdateTrailReplaceLatestPoint(
-                id.clone(),
-                latest_point,
-            ));
+            self.updates
+                .push(ArenaUpdate::UpdateTrailReplaceLatestPoint(
+                    *id,
+                    latest_point,
+                ));
         }
-        updates
+        self
     }
 
-    fn calculate_lightcycle_collisions<'s, 'updates>(
-        &'s self,
-        updates: &'updates mut ArenaUpdates,
-    ) -> &'updates mut ArenaUpdates {
+    fn calculate_lightcycle_collisions(&mut self) -> &mut Self {
         'next_lightcycle: for (id, lightcycle) in self.lightcycles.iter() {
             if lightcycle.dead {
                 continue 'next_lightcycle;
@@ -329,135 +152,53 @@ impl Arena {
                     let end = line[1];
 
                     if is_point_on_line_2d(lightcycle.position, Line(start, end)) {
-                        updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(id.clone()));
+                        self.updates
+                            .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
                         continue 'next_lightcycle;
                     }
                 }
             }
         }
-        updates
+        self
     }
 }
 
-const SPAWNPOINTS: [(isize, isize, Direction); MAX_PLAYERS_PER_GAME] = [
-    // (
-    //     ARENA_WIDTH as isize / 2,
-    //     ARENA_HEIGHT as isize / 2,
-    //     Direction::Up,
-    // ),
-    //
-    (
-        ARENA_WIDTH as isize / 2,
-        ARENA_HEIGHT as isize / 2 - ARENA_HEIGHT as isize / 4,
-        Direction::Down,
-    ),
-    (
-        ARENA_WIDTH as isize / 2,
-        ARENA_HEIGHT as isize / 2 + ARENA_HEIGHT as isize / 4,
-        Direction::Up,
-    ),
-    //
-    (
-        ARENA_WIDTH as isize / 2 - ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2,
-        Direction::Right,
-    ),
-    (
-        ARENA_WIDTH as isize / 2 + ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2,
-        Direction::Left,
-    ),
-    //
-    (
-        ARENA_WIDTH as isize / 2 - ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 - ARENA_HEIGHT as isize / 4,
-        Direction::Right,
-    ),
-    (
-        ARENA_WIDTH as isize / 2 - ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 + ARENA_HEIGHT as isize / 4,
-        Direction::Right,
-    ),
-    (
-        ARENA_WIDTH as isize / 2 + ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 - ARENA_HEIGHT as isize / 4,
-        Direction::Left,
-    ),
-    (
-        ARENA_WIDTH as isize / 2 + ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 + ARENA_HEIGHT as isize / 4,
-        Direction::Left,
-    ),
-];
+impl Default for Arena {
+    fn default() -> Self {
+        Self {
+            id: ArenaId::new_v4(),
+            width: ARENA_WIDTH,
+            height: ARENA_HEIGHT,
+            max_players: ARENA_MAX_PLAYERS,
 
-fn calculate_spawnpoints(player_ids: Vec<PlayerId>) -> Vec<(PlayerId, ArenaPoint, Direction)> {
-    let mut spawnpoints: Vec<(PlayerId, ArenaPoint, Direction)> = Vec::new();
-    let mut spawnpoints_used: Vec<usize> = Vec::new();
+            started: None,
 
-    for player_id in player_ids {
-        // check if no spawnpoints remain
-        if spawnpoints_used.len() >= SPAWNPOINTS.len() {
-            error!("No spawnpoints remain!");
-            break;
+            players: Default::default(),
+            lightcycles: Default::default(),
+            trails: Default::default(),
+
+            updates: Default::default(),
+            updates_applied_so_far: 0,
         }
-
-        // randomly select an available spawnpoint
-        let mut selected_spawnpoint = OsRng.next_u64() as usize % SPAWNPOINTS.len();
-        while spawnpoints_used
-            .iter()
-            .any(|spawnpoint| *spawnpoint == selected_spawnpoint)
-        {
-            selected_spawnpoint = OsRng.next_u64() as usize % SPAWNPOINTS.len();
-        }
-        spawnpoints_used.push(selected_spawnpoint);
-
-        // add the selected spawnpoint to our spawnpoints vector
-        let selected_spawnpoint = SPAWNPOINTS[selected_spawnpoint];
-        spawnpoints.push((
-            player_id,
-            ArenaPoint::new(selected_spawnpoint.0, selected_spawnpoint.1),
-            selected_spawnpoint.2,
-        ));
     }
-
-    spawnpoints
 }
 
-struct Line(ArenaPoint, ArenaPoint);
-
-fn is_point_on_line_2d(point: ArenaPoint, line: Line) -> bool {
-    let start = line.0;
-    let end = line.1;
-
-    if start.x == end.x {
-        if point.x != start.x {
-            return false;
-        }
-
-        return is_point_on_line_1d(point.y, (start.y, end.y));
-    }
-
-    if start.y == end.y {
-        if point.y != start.y {
-            return false;
-        }
-
-        return is_point_on_line_1d(point.x, (start.x, end.x));
-    }
-
-    false
+/// ArenaOverview represents an overview of an Arena for the arena selection screen.
+#[derive(Debug, Clone, Serialize)]
+pub struct ArenaOverview {
+    id: ArenaId,
+    max_players: usize,
+    started: Option<DateTime<Utc>>,
+    players: HashMap<PlayerId, Player>,
 }
 
-fn is_point_on_line_1d(point: isize, line: (isize, isize)) -> bool {
-    let (low, high) = if line.0 <= line.1 {
-        (line.0, line.1)
-    } else {
-        (line.1, line.0)
-    };
-
-    if point < low || high < point {
-        return false;
+impl From<&Arena> for ArenaOverview {
+    fn from(arena: &Arena) -> Self {
+        Self {
+            id: arena.id,
+            max_players: arena.max_players,
+            started: arena.started,
+            players: arena.players.clone(),
+        }
     }
-
-    true
 }

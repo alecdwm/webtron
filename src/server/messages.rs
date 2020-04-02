@@ -7,10 +7,9 @@ pub use outgoing::Message as MessageOut;
 ///
 pub mod outgoing {
     use actix::Message as ActixMessage;
-    use chrono::{DateTime, Utc};
     use serde_derive::Serialize;
 
-    use crate::server::{Arena, ArenaUpdates, GameId, NetworkPlayer, PlayerId};
+    use crate::server::{Arena, ArenaId, ArenaOverview, ArenaUpdate};
 
     ///
     /// Outgoing messages
@@ -18,17 +17,11 @@ pub mod outgoing {
     #[derive(Debug, Clone, Serialize, ActixMessage)]
     #[rtype(result = "()")]
     pub enum Message {
-        PlayerId(PlayerId),
-        TotalGames(usize),
+        ArenaList(Vec<ArenaOverview>),
+        ArenaJoined(ArenaId),
 
-        JoinedGame(GameId),
-        PartedGame,
-
-        GamePlayers(Vec<NetworkPlayer>),
-        GameStarting(DateTime<Utc>),
-
-        NewGameState(Arena),
-        PatchGameState(ArenaUpdates),
+        ArenaState(Box<Arena>),
+        ArenaStatePatch(Vec<ArenaUpdate>),
     }
 
     impl Message {
@@ -44,10 +37,9 @@ pub mod outgoing {
 pub mod incoming {
     use actix::{Message as ActixMessage, Recipient};
     use anyhow::Error;
-    use debug_stub_derive::DebugStub;
     use serde_derive::Deserialize;
 
-    use crate::server::{ClientId, Direction, GameId, MessageOut, PlayerColor};
+    use crate::server::{ArenaId, ClientId, Direction, MessageOut, Player};
 
     ///
     /// Incoming messages
@@ -62,31 +54,14 @@ pub mod incoming {
     #[derive(Debug, Deserialize)]
     pub enum MessagePayload {
         #[serde(skip)]
-        Connection(ConnectionMessage),
-
-        Matchmaking(MatchmakingMessage),
-        GameInput(GameInputMessage),
-    }
-
-    #[derive(DebugStub)]
-    pub enum ConnectionMessage {
-        Connect(
-            Option<String>,
-            #[debug_stub = "Recipient<MessageOut>"] Recipient<MessageOut>,
-        ),
+        Connect(Option<String>, Recipient<MessageOut>),
+        #[serde(skip)]
         Disconnect,
-    }
 
-    #[derive(Debug, Deserialize)]
-    pub enum MatchmakingMessage {
-        ConfigurePlayer { name: String, color: PlayerColor },
-        JoinGame(Option<GameId>),
-        PartGame,
-    }
+        GetArenaList,
+        Join(Player, Option<ArenaId>),
 
-    #[derive(Debug, Deserialize)]
-    pub enum GameInputMessage {
-        StartGame,
+        Start,
         Turn(Direction),
     }
 
@@ -98,16 +73,14 @@ pub mod incoming {
         ) -> Self {
             Self {
                 client_id,
-                payload: MessagePayload::Connection(ConnectionMessage::Connect(
-                    ip_address, address,
-                )),
+                payload: MessagePayload::Connect(ip_address, address),
             }
         }
 
         pub fn disconnect(client_id: ClientId) -> Self {
             Self {
                 client_id,
-                payload: MessagePayload::Connection(ConnectionMessage::Disconnect),
+                payload: MessagePayload::Disconnect,
             }
         }
 
