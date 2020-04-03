@@ -1,5 +1,5 @@
-import { RECEIVE_TOTAL_GAMES } from '/actions'
-import createReducer from '/utils/createReducer'
+import { RECEIVE_TOTAL_GAMES } from 'actions'
+import createReducer from 'utils/createReducer'
 
 const initialState = 0
 

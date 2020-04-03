@@ -1,6 +1,6 @@
-import { receiveSocketMessage, setGameState, setSocketState, setStatusText } from '/actions'
-import useForceUpdate from '/hooks/useForceUpdate'
-import useStoreDispatch from '/hooks/useStoreDispatch'
+import { receiveSocketMessage, setGameState, setSocketState, setStatusText } from 'actions'
+import useForceUpdate from 'hooks/useForceUpdate'
+import useStoreDispatch from 'hooks/useStoreDispatch'
 import { useCallback, useRef } from 'react'
 
 export const SocketStates = {
@@ -31,7 +31,7 @@ export default function useSocket() {
       dispatch(setSocketState(SocketStates.OPEN))
     })
 
-    socketRef.current.addEventListener('message', event => {
+    socketRef.current.addEventListener('message', (event) => {
       if (typeof event.data !== 'string') return console.warn('ignoring binary websocket message', event)
 
       const message = JSON.parse(event.data)
@@ -41,7 +41,7 @@ export default function useSocket() {
       dispatch(receiveSocketMessage(messageType, messageData))
     })
 
-    socketRef.current.addEventListener('error', event => {
+    socketRef.current.addEventListener('error', (event) => {
       console.error('socket error', event)
 
       dispatch(setStatusText('CONNECTION ERROR'))
@@ -63,7 +63,7 @@ export default function useSocket() {
   }, [socketRef])
 
   const send = useCallback(
-    message => {
+    (message) => {
       if (!socketRef.current) return console.warn('cannot send socket message: socket not found')
       socketRef.current.send(JSON.stringify(message))
     },

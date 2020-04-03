@@ -1,16 +1,16 @@
 import { useRef } from 'react'
 
-window.hooks_useUniqueId_uniqueIds = {}
+const uniqueIds = {}
 
 export default function useUniqueId() {
   const idRef = useRef(null)
   if (idRef.current !== null) return idRef.current
 
   idRef.current = generateId()
-  while (window.hooks_useUniqueId_uniqueIds[idRef.current] !== undefined) {
+  while (uniqueIds[idRef.current] !== undefined) {
     idRef.current = generateId()
   }
-  window.hooks_useUniqueId_uniqueIds[idRef.current] = true
+  uniqueIds[idRef.current] = true
 
   return idRef.current
 }

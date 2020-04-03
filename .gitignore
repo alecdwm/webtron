@@ -2,9 +2,9 @@
 # Project cruft #
 #################
 **/*.rs.bk
-/client/.parcel-cache
-/client/dist
+/client/.cache
 /client/node_modules
+/client/public
 /client/yarn-debug.log*
 /client/yarn-error.log*
 /target

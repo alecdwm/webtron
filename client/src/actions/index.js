@@ -1,5 +1,5 @@
-import { SocketStates } from '/hooks/useSocket'
-import createSimpleAction from '/utils/createSimpleAction'
+import { SocketStates } from 'hooks/useSocket'
+import createSimpleAction from 'utils/createSimpleAction'
 
 export const SET_GAME_OPTIONS = 'SET_GAME_OPTIONS'
 export const SET_GAME_STATE = 'SET_GAME_STATE'
@@ -39,7 +39,7 @@ export function setSocketState(socketState) {
   }
 }
 export function receiveSocketMessage(messageType, messageData) {
-  return dispatch => {
+  return (dispatch) => {
     switch (messageType) {
       case 'PlayerId':
         return dispatch(receivePlayerId(messageData))

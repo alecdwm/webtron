@@ -1,4 +1,4 @@
-import useClassName from '/hooks/useClassName'
+import useClassName from 'hooks/useClassName'
 import React from 'react'
 
 import styles from './MenuButton.module.css'

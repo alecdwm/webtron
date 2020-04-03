@@ -1,5 +1,5 @@
-import { SET_PLAYER_NAME } from '/actions'
-import createReducer from '/utils/createReducer'
+import { SET_PLAYER_NAME } from 'actions'
+import createReducer from 'utils/createReducer'
 
 const initialState = ''
 

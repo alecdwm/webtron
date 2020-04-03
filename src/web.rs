@@ -21,7 +21,7 @@ pub fn start(server_address: Addr<WebtronServer>, config: &Config) -> Result<Act
             //
             // fs handler
             //
-            .service(Files::new("/", "client").index_file("index.html"))
+            .service(Files::new("/", "client/public").index_file("index.html"))
     })
     .bind(config.bind_address)
     .with_context(|| anyhow!("Failed to bind to socket {}", config.bind_address))?

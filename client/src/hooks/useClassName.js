@@ -1,4 +1,4 @@
-import useForceUpdate from '/hooks/useForceUpdate'
+import useForceUpdate from 'hooks/useForceUpdate'
 import React, { forwardRef, useCallback, useEffect, useRef } from 'react'
 
 // Usage examples:

@@ -1,4 +1,4 @@
-import combineReducers from '/utils/combineReducers'
+import combineReducers from 'utils/combineReducers'
 
 import gameOptions from './gameOptions'
 import gameState from './gameState'

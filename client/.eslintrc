@@ -5,6 +5,7 @@
     "eqeqeq": [2, "allow-null"],
     "no-case-declarations": 0,
     "no-debugger": 1,
+    "no-empty-pattern": 1,
     "no-unreachable": 1,
     "no-unused-vars": 1,
     "react-hooks/exhaustive-deps": 1,

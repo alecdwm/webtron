@@ -1,7 +1,7 @@
-import { setGameState } from '/actions'
-import useClassName from '/hooks/useClassName'
-import { SocketStates } from '/hooks/useSocket'
-import useStoreDispatch from '/hooks/useStoreDispatch'
+import { setGameState } from 'actions'
+import useClassName from 'hooks/useClassName'
+import { SocketStates } from 'hooks/useSocket'
+import useStoreDispatch from 'hooks/useStoreDispatch'
 import React, { useEffect } from 'react'
 
 import styles from './Connect.module.css'

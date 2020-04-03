@@ -1,19 +1,19 @@
-import { setPlayerColor, setPlayerName } from '/actions'
-import MenuInput from '/components/MenuInput'
-import useClassName from '/hooks/useClassName'
-import useCursorBlink from '/hooks/useCursorBlink'
-import usePreloadImages from '/hooks/usePreloadImages'
-import useStore from '/hooks/useStore'
-import useStoreDispatch from '/hooks/useStoreDispatch'
-import gridbikeBlue from '/img/gridbike-blue.png'
-import gridbikeGreen from '/img/gridbike-green.png'
-import gridbikeOrange from '/img/gridbike-orange.png'
-import gridbikePurple from '/img/gridbike-purple.png'
-import gridbikeRed from '/img/gridbike-red.png'
-import gridbikeWhite from '/img/gridbike-white.png'
-import webtronColors from '/utils/colors'
+import { setPlayerColor, setPlayerName } from 'actions'
+import MenuInput from 'components/MenuInput'
+import useClassName from 'hooks/useClassName'
+import useCursorBlink from 'hooks/useCursorBlink'
+import usePreloadImages from 'hooks/usePreloadImages'
+import useStore from 'hooks/useStore'
+import useStoreDispatch from 'hooks/useStoreDispatch'
+import gridbikeBlue from 'img/gridbike-blue.png'
+import gridbikeGreen from 'img/gridbike-green.png'
+import gridbikeOrange from 'img/gridbike-orange.png'
+import gridbikePurple from 'img/gridbike-purple.png'
+import gridbikeRed from 'img/gridbike-red.png'
+import gridbikeWhite from 'img/gridbike-white.png'
 import PropTypes from 'prop-types'
 import React, { useCallback, useEffect } from 'react'
+import webtronColors from 'utils/colors'
 
 import styles from './MainMenu.module.css'
 
@@ -36,7 +36,7 @@ export default function MainMenu({ connect }) {
   const dispatch = useStoreDispatch()
 
   const addKeyToPlayerName = useCallback(
-    key => {
+    (key) => {
       resetCursorBlink()
 
       const name = (playerName + key).slice(0, MAX_PLAYER_NAME_LENGTH)
@@ -88,7 +88,7 @@ export default function MainMenu({ connect }) {
   )
 
   const onKeyPress = useCallback(
-    event => {
+    (event) => {
       switch (event.key) {
         case 'Enter':
         case 'Return':

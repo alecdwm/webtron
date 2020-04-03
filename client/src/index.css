@@ -11,7 +11,7 @@
   --footer-height: 4rem;
 }
 
-@import '/styles/base.css';
-@import '/styles/links.css';
-@import '/styles/page.css';
-@import '/styles/animations.css';
+@import 'styles/base.css';
+@import 'styles/links.css';
+@import 'styles/page.css';
+@import 'styles/animations.css';

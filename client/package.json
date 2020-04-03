@@ -1,29 +1,29 @@
 {
-  "name": "webtron-client",
+  "name": "webtron",
   "license": "GPL-3.0-only",
   "scripts": {
-    "dev": "parcel --port 3000 src/index.html",
-    "fmt": "prettier --write --parser json .eslintrc .parcelrc .csscombrc .importsortrc; prettier --write --parser html 'src/**/*.html'; prettier --write --parser css 'src/**/*.css'; prettier --write --parser babel 'src/**/*.js'; node node_modules/csscomb/src/cli.js -c .csscombrc src",
-    "build": "parcel build src/index.html",
-    "clean": "rimraf dist"
+    "dev": "GATSBY_TELEMETRY_DISABLED=1 gatsby develop --port 3000",
+    "fmt": "prettier --parser json --write .eslintrc .csscombrc .importsortrc; prettier --write gatsby-config.js gatsby-node.js src; node node_modules/csscomb/src/cli.js -c .csscombrc src",
+    "build": "GATSBY_TELEMETRY_DISABLED=1 gatsby build",
+    "clean": "GATSBY_TELEMETRY_DISABLED=1 gatsby clean"
   },
-  "devDependencies": {
-    "@parcel/validator-eslint": "^2.0.0-alpha.3.2",
+  "dependencies": {
     "babel-eslint": "^10.1.0",
     "csscomb": "csscomb/csscomb.js#1f27f9e4e0f6a9f0849b6fc6e8325baf9371aeaf",
     "eslint": "^6.8.0",
-    "eslint-config-prettier": "^6.10.0",
+    "eslint-config-prettier": "^6.10.1",
+    "eslint-loader": "^4.0.0",
     "eslint-plugin-react": "^7.19.0",
-    "eslint-plugin-react-hooks": "^2.5.0",
+    "eslint-plugin-react-hooks": "^3.0.0",
+    "gatsby": "^2.20.12",
+    "gatsby-plugin-eslint": "^2.0.8",
+    "http-proxy-middleware": "^1.0.3",
     "import-sort-style-module": "^6.0.0",
-    "parcel": "^2.0.0-alpha.3.2",
-    "postcss-modules": "^1.5.0",
-    "prettier": "^1.19.1",
-    "prettier-plugin-import-sort": "^0.0.3",
-    "rimraf": "^3.0.2"
-  },
-  "dependencies": {
-    "react": "^16.13.0",
-    "react-dom": "^16.13.0"
+    "prettier": "^2.0.2",
+    "prettier-plugin-import-sort": "^0.0.4",
+    "prettier-webpack-plugin": "^1.2.0",
+    "prop-types": "^15.7.2",
+    "react": "^16.13.1",
+    "react-dom": "^16.13.1"
   }
 }

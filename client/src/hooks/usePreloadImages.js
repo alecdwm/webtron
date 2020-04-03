@@ -1,5 +1,5 @@
-import { preloadImages } from '/actions'
-import useStoreDispatch from '/hooks/useStoreDispatch'
+import { preloadImages } from 'actions'
+import useStoreDispatch from 'hooks/useStoreDispatch'
 import { useEffect, useRef } from 'react'
 
 export default function usePreloadImages(urls = []) {

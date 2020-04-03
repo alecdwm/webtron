@@ -1,8 +1,8 @@
-import Connect from '/components/states/Connect'
-import Lobby from '/components/states/Lobby'
-import MainMenu from '/components/states/MainMenu'
-import useSocket from '/hooks/useSocket'
-import useStore from '/hooks/useStore'
+import Connect from 'components/states/Connect'
+import Lobby from 'components/states/Lobby'
+import MainMenu from 'components/states/MainMenu'
+import useSocket from 'hooks/useSocket'
+import useStore from 'hooks/useStore'
 import React from 'react'
 
 const gameStates = { MainMenu, Connect, Lobby }

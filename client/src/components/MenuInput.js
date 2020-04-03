@@ -1,6 +1,6 @@
-import useClassName, { resolveClassName } from '/hooks/useClassName'
-import useCursorBlink from '/hooks/useCursorBlink'
-import useUniqueId from '/hooks/useUniqueId'
+import useClassName, { resolveClassName } from 'hooks/useClassName'
+import useCursorBlink from 'hooks/useCursorBlink'
+import useUniqueId from 'hooks/useUniqueId'
 import PropTypes from 'prop-types'
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
@@ -18,7 +18,7 @@ export default function MenuInput({ value, onChange, onSubmit, focusOnMount, cla
   const [focused, setFocused] = useState(false)
 
   const handleChange = useCallback(
-    event => {
+    (event) => {
       resetCursorBlink()
       onChange(event.currentTarget.value)
     },
@@ -33,14 +33,14 @@ export default function MenuInput({ value, onChange, onSubmit, focusOnMount, cla
     [onSubmit],
   )
 
-  const handleSelect = useCallback(event => {
+  const handleSelect = useCallback((event) => {
     const target = event.currentTarget
     const value = target.value
     target.setSelectionRange(value.length, value.length)
   }, [])
 
   const handleFocus = useCallback(
-    event => {
+    (event) => {
       const target = event.currentTarget
       const value = target.value
       target.setSelectionRange(value.length, value.length)

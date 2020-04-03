@@ -1,16 +1,16 @@
-import MenuButton from '/components/MenuButton'
-import MenuInput from '/components/MenuInput'
-import { MAX_PLAYER_NAME_LENGTH } from '/components/states/MainMenu'
-import useBooleanState from '/hooks/useBooleanState'
-import useClassName from '/hooks/useClassName'
-import useLobbyDataPolling from '/hooks/useLobbyDataPolling'
-import usePreloadImages from '/hooks/usePreloadImages'
-import gridbikeBlue from '/img/gridbike-blue.png'
-import gridbikeGreen from '/img/gridbike-green.png'
-import gridbikeOrange from '/img/gridbike-orange.png'
-import gridbikePurple from '/img/gridbike-purple.png'
-import gridbikeRed from '/img/gridbike-red.png'
-import gridbikeWhite from '/img/gridbike-white.png'
+import MenuButton from 'components/MenuButton'
+import MenuInput from 'components/MenuInput'
+import { MAX_PLAYER_NAME_LENGTH } from 'components/states/MainMenu'
+import useBooleanState from 'hooks/useBooleanState'
+import useClassName from 'hooks/useClassName'
+import useLobbyDataPolling from 'hooks/useLobbyDataPolling'
+import usePreloadImages from 'hooks/usePreloadImages'
+import gridbikeBlue from 'img/gridbike-blue.png'
+import gridbikeGreen from 'img/gridbike-green.png'
+import gridbikeOrange from 'img/gridbike-orange.png'
+import gridbikePurple from 'img/gridbike-purple.png'
+import gridbikeRed from 'img/gridbike-red.png'
+import gridbikeWhite from 'img/gridbike-white.png'
 import React, { useCallback, useState } from 'react'
 
 import styles from './Lobby.module.css'
@@ -32,17 +32,17 @@ export default function Lobby({ store: { playerId, games, players }, disconnect,
   useLobbyDataPolling(send)
 
   const [createGameMenuIsOpen, openCreateGameMenu, closeCreateGameMenu] = useBooleanState(false)
-  const currentGame = Object.values(games.byId).find(game => game && game.players && game.players.includes(playerId))
+  const currentGame = Object.values(games.byId).find((game) => game && game.players && game.players.includes(playerId))
 
   const createGame = useCallback(
-    name => {
+    (name) => {
       send({ Lobby: { CreateGame: name } })
       send({ Lobby: 'FetchLobbyData' })
     },
     [send],
   )
   const joinGame = useCallback(
-    name => {
+    (name) => {
       send({ Lobby: { JoinGame: name } })
       send({ Lobby: 'FetchLobbyData' })
     },
@@ -81,7 +81,7 @@ export default function Lobby({ store: { playerId, games, players }, disconnect,
 }
 
 function MainLobby({ games, players, joinGame, openCreateGameMenu, disconnect }) {
-  const handleJoinClick = useCallback(event => joinGame(event.currentTarget.getAttribute('data-id')), [joinGame])
+  const handleJoinClick = useCallback((event) => joinGame(event.currentTarget.getAttribute('data-id')), [joinGame])
 
   const MainLobby = useClassName(styles.mainLobby)
   const Space = useClassName(styles.space)
@@ -104,11 +104,11 @@ function MainLobby({ games, players, joinGame, openCreateGameMenu, disconnect })
       <Space />
       <GameList>
         {noGames ? 'No Games Found' : null}
-        {games.allIds.map(gameId => (
+        {games.allIds.map((gameId) => (
           <GameItem key={gameId}>
             <GameItemName>{games.byId[gameId].name}</GameItemName>
             <GameItemPlayers>
-              {games.byId[gameId].players.map(playerId => (
+              {games.byId[gameId].players.map((playerId) => (
                 <img
                   style={{ transform: 'rotate(270deg)' }}
                   key={playerId}
@@ -145,7 +145,7 @@ function GameLobby({ currentGame, playerId: currentPlayerId, players, leaveGame 
       <Title>{currentGame.name}</Title>
       <Space />
       <div>players:</div>
-      {currentGame.players.map(playerId => (
+      {currentGame.players.map((playerId) => (
         <div key={playerId}>
           {players.byId[playerId].name}
           {playerId === currentPlayerId ? ' (you)' : ''}
@@ -166,13 +166,8 @@ function CreateGameMenu({ playerId, players, createGame, closeCreateGameMenu }) 
   }, [gameName, players, playerId, createGame])
 
   const handleGameNameChange = useCallback(
-    name => {
-      setGameName(
-        name
-          .slice(0, MAX_GAME_NAME_LENGTH)
-          .replace(/ /g, '_')
-          .toLowerCase(),
-      )
+    (name) => {
+      setGameName(name.slice(0, MAX_GAME_NAME_LENGTH).replace(/ /g, '_').toLowerCase())
     },
     [setGameName],
   )
