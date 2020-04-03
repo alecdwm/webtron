@@ -4,7 +4,7 @@ mod primitives;
 
 use actix::{Actor, AsyncContext, Context, Handler};
 use anyhow::{anyhow, Context as ResultContext, Error};
-use log::{error, info};
+use log::{error, info, warn};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -115,8 +115,9 @@ impl Server {
             MessageInPayload::Disconnect => {
                 info!("Client disconnected: {}", client_id);
 
-                self.client_part_arena(client_id)
-                    .with_context(|| anyhow!("Failed to remove client from their arena"))?;
+                self.client_part_arena(client_id).unwrap_or_else(|error| {
+                    warn!("Failed to remove client from their arena: {}", error)
+                });
 
                 self.clients
                     .remove(&client_id)
