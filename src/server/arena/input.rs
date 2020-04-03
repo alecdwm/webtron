@@ -74,6 +74,11 @@ impl ArenaInput {
                     }
                 };
 
+                if lightcycle.dead {
+                    trace!("Refusing to turn dead lightcycle");
+                    return vec![];
+                }
+
                 if lightcycle.rotation.is_opposite(direction) {
                     trace!("Refusing to turn lightcycle in opposite direction");
                     return vec![];
