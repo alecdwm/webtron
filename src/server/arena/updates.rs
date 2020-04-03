@@ -7,6 +7,7 @@ pub enum ArenaUpdate {
     AddTrail(PlayerId, Trail),
 
     Start(DateTime<Utc>),
+    End,
 
     // UpdateLightcycle(PlayerId, Lightcycle),
     UpdateLightcycleChangeDirection(PlayerId, Direction),
@@ -38,6 +39,7 @@ impl ArenaUpdate {
             }
 
             ArenaUpdate::Start(start_at) => arena.started = Some(*start_at),
+            ArenaUpdate::End => arena.started = None,
 
             ArenaUpdate::UpdateLightcycleChangeDirection(player_id, direction) => {
                 let lightcycle = match arena.lightcycles.get_mut(player_id) {

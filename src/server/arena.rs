@@ -93,6 +93,8 @@ impl Arena {
             .calculate_lightcycle_collisions()
             .apply_updates()
             .update_trail_positions()
+            .apply_updates()
+            .test_round_end()
             .apply_updates();
     }
 
@@ -183,6 +185,13 @@ impl Arena {
                     *id,
                     latest_point,
                 ));
+        }
+        self
+    }
+
+    fn test_round_end(&mut self) -> &mut Self {
+        if self.lightcycles.values().all(|lightcycle| lightcycle.dead) {
+            self.updates.push(ArenaUpdate::End);
         }
         self
     }
