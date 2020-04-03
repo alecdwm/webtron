@@ -90,9 +90,9 @@ impl Arena {
 
         self.update_lightcycle_positions()
             .apply_updates()
-            .update_trail_positions()
-            .apply_updates()
             .calculate_lightcycle_collisions()
+            .apply_updates()
+            .update_trail_positions()
             .apply_updates();
     }
 
@@ -108,6 +108,28 @@ impl Arena {
 
             self.updates
                 .push(ArenaUpdate::UpdateLightcycleApplyVelocity(*id))
+        }
+        self
+    }
+
+    fn calculate_lightcycle_collisions(&mut self) -> &mut Self {
+        'next_lightcycle: for (id, lightcycle) in self.lightcycles.iter() {
+            if lightcycle.dead {
+                continue 'next_lightcycle;
+            };
+
+            for trail in self.trails.values() {
+                for line in trail.points.windows(2) {
+                    let start = line[0];
+                    let end = line[1];
+
+                    if is_point_on_line_2d(lightcycle.position, Line(start, end)) {
+                        self.updates
+                            .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                        continue 'next_lightcycle;
+                    }
+                }
+            }
         }
         self
     }
@@ -136,28 +158,6 @@ impl Arena {
                     *id,
                     latest_point,
                 ));
-        }
-        self
-    }
-
-    fn calculate_lightcycle_collisions(&mut self) -> &mut Self {
-        'next_lightcycle: for (id, lightcycle) in self.lightcycles.iter() {
-            if lightcycle.dead {
-                continue 'next_lightcycle;
-            };
-
-            for trail in self.trails.values() {
-                for line in trail.points.windows(2) {
-                    let start = line[0];
-                    let end = line[1];
-
-                    if is_point_on_line_2d(lightcycle.position, Line(start, end)) {
-                        self.updates
-                            .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
-                        continue 'next_lightcycle;
-                    }
-                }
-            }
         }
         self
     }
