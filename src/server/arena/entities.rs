@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize)]
 pub struct Lightcycle {
     pub position: ArenaPoint,
-    pub rotation: Direction,
+    pub direction: Direction,
     pub speed: isize,
     pub dead: bool,
 }
@@ -12,7 +12,7 @@ impl Default for Lightcycle {
     fn default() -> Self {
         Self {
             position: ArenaPoint::origin(),
-            rotation: Direction::Up,
+            direction: Direction::Up,
             speed: LIGHTCYCLE_SPEED,
             dead: Default::default(),
         }

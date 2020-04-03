@@ -50,7 +50,7 @@ impl ArenaUpdate {
                     }
                 };
 
-                lightcycle.rotation = *direction;
+                lightcycle.direction = *direction;
             }
 
             ArenaUpdate::UpdateLightcycleApplyVelocity(player_id) => {
@@ -62,7 +62,7 @@ impl ArenaUpdate {
                     }
                 };
 
-                lightcycle.position += lightcycle.rotation.as_velocity() * lightcycle.speed;
+                lightcycle.position += lightcycle.direction.as_velocity() * lightcycle.speed;
             }
 
             ArenaUpdate::UpdateLightcycleApplyDeath(player_id) => {

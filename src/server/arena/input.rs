@@ -44,7 +44,7 @@ impl ArenaInput {
                             player_id,
                             Lightcycle {
                                 position: spawn_position,
-                                rotation: spawn_direction,
+                                direction: spawn_direction,
                                 ..Default::default()
                             },
                         ));
@@ -79,7 +79,7 @@ impl ArenaInput {
                     return vec![];
                 }
 
-                if lightcycle.rotation.is_opposite(direction) {
+                if lightcycle.direction.is_opposite(direction) {
                     trace!("Refusing to turn lightcycle in opposite direction");
                     return vec![];
                 }
