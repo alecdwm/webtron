@@ -30,7 +30,7 @@ pub struct Client {
 
 #[derive(Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]
 pub struct Player {
-    #[serde(skip_deserializing)]
+    #[serde(skip_serializing, skip_deserializing, default = "PlayerId::new_v4")]
     pub id: PlayerId,
     pub name: String,
     pub color: PlayerColor,
