@@ -186,7 +186,6 @@ impl Server {
 
             MessageInPayload::Start => {
                 self.client_input(client_id, ArenaInput::Start)?;
-                info!("Client {} started game", client_id);
             }
             MessageInPayload::Turn(direction) => {
                 self.client_input(client_id, ArenaInput::Turn(direction))?;
