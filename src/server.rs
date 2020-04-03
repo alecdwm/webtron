@@ -137,7 +137,7 @@ impl Server {
                     .try_send(MessageOut::ArenaList(arena_list))
                     .with_context(|| anyhow!("Failed to send ArenaList to client {}", client_id))?;
             }
-            MessageInPayload::Join(player, arena_id) => {
+            MessageInPayload::Join { player, arena_id } => {
                 self.client_part_arena(client_id)
                     .with_context(|| anyhow!("Failed to remove client from their arena"))?;
 

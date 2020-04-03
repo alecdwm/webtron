@@ -59,7 +59,10 @@ pub mod incoming {
         Disconnect,
 
         GetArenaList,
-        Join(Player, Option<ArenaId>),
+        Join {
+            player: Player,
+            arena_id: Option<ArenaId>,
+        },
 
         Start,
         Turn(Direction),
