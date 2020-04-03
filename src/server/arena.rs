@@ -118,6 +118,7 @@ impl Arena {
                 continue 'next_lightcycle;
             };
 
+            // test for trail collisions
             for trail in self.trails.values() {
                 for line in trail.points.windows(2) {
                     let start = line[0];
@@ -129,6 +130,30 @@ impl Arena {
                         continue 'next_lightcycle;
                     }
                 }
+            }
+
+            // test for arena bounds collisions
+            if lightcycle.position.x < 0
+                || lightcycle.position.y < 0
+                || lightcycle.position.x > self.width as isize
+                || lightcycle.position.y > self.height as isize
+            {
+                self.updates
+                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                continue 'next_lightcycle;
+            }
+
+            // test for collisions with other lightcycles
+            if self
+                .lightcycles
+                .iter()
+                .filter(|(_, other_lightcycle)| !other_lightcycle.dead)
+                .filter(|(other_id, _)| id != *other_id)
+                .any(|(_, other_lightcycle)| lightcycle.position == other_lightcycle.position)
+            {
+                self.updates
+                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                continue 'next_lightcycle;
             }
         }
         self
