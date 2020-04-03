@@ -255,6 +255,7 @@ impl Server {
                     .unwrap_or_else(|error| {
                         error!("Failed to send ArenaStatePatch to client: {}", error);
                     });
+                client.updates_sent_so_far = arena.updates.len();
                 return;
             }
         })
