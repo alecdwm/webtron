@@ -9,12 +9,10 @@ pub enum ArenaUpdate {
     Start(DateTime<Utc>),
     End,
 
-    // UpdateLightcycle(PlayerId, Lightcycle),
-    UpdateLightcycleChangeDirection(PlayerId, Direction),
-    UpdateLightcycleApplyVelocity(PlayerId),
+    UpdateLightcyclePosition(PlayerId, ArenaPoint),
+    UpdateLightcycleDirection(PlayerId, Direction),
     UpdateLightcycleApplyDeath(PlayerId),
 
-    // UpdateTrail(PlayerId, Trail),
     UpdateTrailAppendPoint(PlayerId, ArenaPoint),
     UpdateTrailReplaceLatestPoint(PlayerId, ArenaPoint),
 
@@ -29,11 +27,9 @@ impl ArenaUpdate {
             ArenaUpdate::AddPlayer(player_id, player) => {
                 arena.players.insert(*player_id, player.clone());
             }
-
             ArenaUpdate::AddLightcycle(player_id, lightcycle) => {
                 arena.lightcycles.insert(*player_id, *lightcycle);
             }
-
             ArenaUpdate::AddTrail(player_id, trail) => {
                 arena.trails.insert(*player_id, trail.clone());
             }
@@ -41,7 +37,18 @@ impl ArenaUpdate {
             ArenaUpdate::Start(start_at) => arena.started = Some(*start_at),
             ArenaUpdate::End => arena.started = None,
 
-            ArenaUpdate::UpdateLightcycleChangeDirection(player_id, direction) => {
+            ArenaUpdate::UpdateLightcyclePosition(player_id, position) => {
+                let lightcycle = match arena.lightcycles.get_mut(player_id) {
+                    Some(lightcycle) => lightcycle,
+                    None => {
+                        error!("Lightcycle {} not found", player_id);
+                        return arena;
+                    }
+                };
+
+                lightcycle.position = *position;
+            }
+            ArenaUpdate::UpdateLightcycleDirection(player_id, direction) => {
                 let lightcycle = match arena.lightcycles.get_mut(player_id) {
                     Some(lightcycle) => lightcycle,
                     None => {
@@ -52,19 +59,6 @@ impl ArenaUpdate {
 
                 lightcycle.direction = *direction;
             }
-
-            ArenaUpdate::UpdateLightcycleApplyVelocity(player_id) => {
-                let lightcycle = match arena.lightcycles.get_mut(player_id) {
-                    Some(lightcycle) => lightcycle,
-                    None => {
-                        error!("Lightcycle {} not found", player_id);
-                        return arena;
-                    }
-                };
-
-                lightcycle.position += lightcycle.direction.as_velocity() * lightcycle.speed;
-            }
-
             ArenaUpdate::UpdateLightcycleApplyDeath(player_id) => {
                 let lightcycle = match arena.lightcycles.get_mut(player_id) {
                     Some(lightcycle) => lightcycle,
@@ -88,7 +82,6 @@ impl ArenaUpdate {
 
                 trail.points.push(*point);
             }
-
             ArenaUpdate::UpdateTrailReplaceLatestPoint(player_id, latest_point) => {
                 let trail = match arena.trails.get_mut(player_id) {
                     Some(trail) => trail,
@@ -105,11 +98,9 @@ impl ArenaUpdate {
             ArenaUpdate::RemovePlayer(player_id) => {
                 arena.players.remove(player_id);
             }
-
             ArenaUpdate::RemoveLightcycle(player_id) => {
                 arena.lightcycles.remove(player_id);
             }
-
             ArenaUpdate::RemoveTrail(player_id) => {
                 arena.trails.remove(player_id);
             }

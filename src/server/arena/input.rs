@@ -84,9 +84,7 @@ impl ArenaInput {
                     return vec![];
                 }
 
-                return vec![ArenaUpdate::UpdateLightcycleChangeDirection(
-                    player_id, direction,
-                )];
+                return vec![ArenaUpdate::UpdateLightcycleDirection(player_id, direction)];
             }
         }
     }

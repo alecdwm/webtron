@@ -108,8 +108,10 @@ impl Arena {
                 continue;
             };
 
-            self.updates
-                .push(ArenaUpdate::UpdateLightcycleApplyVelocity(*id))
+            self.updates.push(ArenaUpdate::UpdateLightcyclePosition(
+                *id,
+                lightcycle.position + lightcycle.direction.as_velocity() * lightcycle.speed,
+            ))
         }
         self
     }
