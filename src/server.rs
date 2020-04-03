@@ -139,8 +139,9 @@ impl Server {
                     .with_context(|| anyhow!("Failed to send ArenaList to client {}", client_id))?;
             }
             MessageInPayload::Join { player, arena_id } => {
-                self.client_part_arena(client_id)
-                    .with_context(|| anyhow!("Failed to remove client from their arena"))?;
+                self.client_part_arena(client_id).unwrap_or_else(|error| {
+                    warn!("Failed to remove client from their arena: {}", error)
+                });
 
                 let arena_id = match arena_id {
                     Some(arena_id) => {
