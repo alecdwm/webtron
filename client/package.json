@@ -2,7 +2,7 @@
   "name": "webtron",
   "license": "GPL-3.0-only",
   "scripts": {
-    "dev": "GATSBY_TELEMETRY_DISABLED=1 gatsby develop --port 3000",
+    "dev": "GATSBY_TELEMETRY_DISABLED=1 gatsby develop --port 3001",
     "fmt": "prettier --parser json --write .eslintrc .csscombrc .importsortrc; prettier --write gatsby-config.js gatsby-node.js src; node node_modules/csscomb/src/cli.js -c .csscombrc src",
     "build": "GATSBY_TELEMETRY_DISABLED=1 gatsby build",
     "clean": "GATSBY_TELEMETRY_DISABLED=1 gatsby clean"
@@ -17,7 +17,6 @@
     "eslint-plugin-react-hooks": "^3.0.0",
     "gatsby": "^2.20.12",
     "gatsby-plugin-eslint": "^2.0.8",
-    "http-proxy-middleware": "^1.0.3",
     "import-sort-style-module": "^6.0.0",
     "prettier": "^2.0.2",
     "prettier-plugin-import-sort": "^0.0.4",
