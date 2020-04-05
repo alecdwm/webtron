@@ -21,6 +21,7 @@ pub mod web;
 
 use actix::{Actor, System};
 use anyhow::{Context, Error};
+use std::env;
 
 use config::Config;
 use server::Server as WebtronServer;
@@ -30,6 +31,9 @@ use server::Server as WebtronServer;
 /// starts Actix actors and runs event loop.
 ///
 pub fn start() -> Result<(), Error> {
+    if env::var_os("RUST_LOG").is_none() {
+        env::set_var("RUST_LOG", "webtron=trace");
+    }
     pretty_env_logger::init();
 
     let config = Config::new();
