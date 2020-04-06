@@ -1,9 +1,10 @@
-.connectingText {
+.statusText {
   position: absolute;
   top: 280px;
   left: 280px;
   transform: translate(-50%, -50%);
-  color: white;
+  text-align: center;
+  color: var(--orange);
   font-size: 32px;
   font-weight: bold;
 }

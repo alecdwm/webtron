@@ -1,3 +1,4 @@
+import { SocketStates } from 'hooks/useSocket'
 import createSimpleAction from 'utils/createSimpleAction'
 
 export const SET_CONFIG = 'SET_CONFIG'
@@ -17,7 +18,14 @@ export const setPlayerColor = createSimpleAction(SET_PLAYER_COLOR, 'color')
 export const SET_SOCKET_STATE = 'SET_SOCKET_STATE'
 export const RECEIVE_SOCKET_MESSAGE = 'RECEIVE_SOCKET_MESSAGE'
 
-export const setSocketState = createSimpleAction(SET_SOCKET_STATE, 'socketState')
+export function setSocketState(socketState) {
+  return (dispatch) => {
+    if (socketState === SocketStates.CONNECTING) dispatch(setStage('Connect'))
+    if (socketState === SocketStates.OPEN) dispatch(setStage('ArenaSelect'))
+    if (socketState === SocketStates.CLOSED) dispatch(setStage('MainMenu'))
+    dispatch({ type: SET_SOCKET_STATE, socketState })
+  }
+}
 export function receiveSocketMessage(messageType, messageData) {
   return (dispatch) => {
     const typeHandlers = {
