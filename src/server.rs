@@ -85,8 +85,6 @@ impl Server {
 
         arena.remove_player(player_id);
 
-        // TODO: Remove empty arenas
-
         Ok(())
     }
 }
@@ -213,7 +211,12 @@ impl Server {
     }
 
     pub fn update(&mut self) {
-        self.arenas.values_mut().for_each(|arena| arena.update());
+        self.arenas.retain(|_, arena| {
+            arena.update();
+
+            // discard arena if all players have left
+            arena.players.len() > 0
+        })
     }
 
     pub fn send_updates(&mut self) {
