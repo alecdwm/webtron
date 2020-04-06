@@ -1,4 +1,6 @@
 import { setPlayerColor, setPlayerName } from 'actions'
+import CaretLeft from 'components/CaretLeft'
+import CaretRight from 'components/CaretRight'
 import MenuButton from 'components/MenuButton'
 import MenuInput from 'components/MenuInput'
 import useClassName from 'hooks/useClassName'
@@ -77,9 +79,13 @@ export default function MainMenu({ connect }) {
       <NameInput focusOnMount onChange={handlePlayerNameChange} onSubmit={connect} value={player.name} />
 
       <ColorLabel>COLOR:</ColorLabel>
-      <ColorButtonLeft onClick={setPreviousPlayerColor}>{'<'}</ColorButtonLeft>
+      <ColorButtonLeft onClick={setPreviousPlayerColor}>
+        <CaretLeft />
+      </ColorButtonLeft>
       <ColorPreview src={gridbikeImages[player.color]} />
-      <ColorButtonRight onClick={setNextPlayerColor}>{'>'}</ColorButtonRight>
+      <ColorButtonRight onClick={setNextPlayerColor}>
+        <CaretRight />
+      </ColorButtonRight>
 
       <ConnectButton onClick={connect}>CONNECT</ConnectButton>
     </MainMenu>

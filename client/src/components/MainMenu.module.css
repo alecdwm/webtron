@@ -8,17 +8,28 @@
 .colorButtonRight,
 .connectButton {
   position: absolute;
-  color: white;
+  color: var(--white);
   font-size: 32px;
 }
 .colorButtonLeft,
 .colorButtonRight {
   cursor: pointer;
+  transition: color 300ms ease, border 300ms ease;
+  color: var(--white);
+  outline: none;
+}
+.colorButtonLeft:hover,
+.colorButtonRight:hover {
+  color: var(--blue);
+}
+.colorButtonLeft:active,
+.colorButtonRight:active {
+  transition: none;
+  color: var(--white);
+  outline: none;
 }
 .statusText,
 .nameInput,
-.colorButtonLeft,
-.colorButtonRight,
 .connectButton {
   font-weight: bold;
 }
@@ -59,6 +70,8 @@
 .colorButtonLeft {
   top: 270px;
   left: 280px;
+  display: flex;
+  align-items: center;
   transform: translate(0, -50%);
 }
 .colorPreview {
@@ -69,6 +82,8 @@
 .colorButtonRight {
   top: 270px;
   left: 400px;
+  display: flex;
+  align-items: center;
   transform: translate(-100%, -50%);
 }
 .connectButton {
