@@ -1,6 +1,6 @@
+import { MAX_PLAYER_NAME_LENGTH } from 'components/MainMenu'
 import MenuButton from 'components/MenuButton'
 import MenuInput from 'components/MenuInput'
-import { MAX_PLAYER_NAME_LENGTH } from 'components/states/MainMenu'
 import useBooleanState from 'hooks/useBooleanState'
 import useClassName from 'hooks/useClassName'
 import useLobbyDataPolling from 'hooks/useLobbyDataPolling'

@@ -1,24 +1,24 @@
-import Connect from 'components/states/Connect'
-import Lobby from 'components/states/Lobby'
-import MainMenu from 'components/states/MainMenu'
+import Connect from 'components/Connect'
+import Lobby from 'components/Lobby'
+import MainMenu from 'components/MainMenu'
 import useSocket from 'hooks/useSocket'
 import useStore from 'hooks/useStore'
 import React from 'react'
 
-const gameStates = { MainMenu, Connect, Lobby }
+const stages = { MainMenu, Connect, Lobby }
 
 export default function Webtron() {
-  const { gameState } = useStore()
+  const { stage } = useStore()
   const [connect, disconnect, send] = useSocket()
 
-  const GameState = gameStates[gameState] || null
-  if (GameState === null) {
-    const validStates = Object.keys(gameStates).join(', ')
-    console.error(`No state by name '${gameState}' exists! Valid states: ${validStates}`)
+  const Stage = stages[stage] || null
+  if (Stage === null) {
+    const validStages = Object.keys(stages).join(', ')
+    console.error(`No stage by name '${stage}' exists! Valid stages: ${validStages}`)
     return null
   }
 
-  return <GameState connect={connect} disconnect={disconnect} send={send} />
+  return <Stage connect={connect} disconnect={disconnect} send={send} />
 }
 
 //	update() {

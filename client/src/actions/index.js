@@ -1,11 +1,11 @@
 import createSimpleAction from 'utils/createSimpleAction'
 
 export const SET_CONFIG = 'SET_CONFIG'
-export const SET_GAME_STATE = 'SET_GAME_STATE'
+export const SET_STAGE = 'SET_STAGE'
 export const PRELOAD_IMAGES = 'PRELOAD_IMAGES'
 
 export const setConfig = createSimpleAction(SET_CONFIG, 'config')
-export const setGameState = createSimpleAction(SET_GAME_STATE, 'state')
+export const setStage = createSimpleAction(SET_STAGE, 'stage')
 export const preloadImages = createSimpleAction(PRELOAD_IMAGES, 'urls')
 
 export const SET_PLAYER_NAME = 'SET_PLAYER_NAME'
