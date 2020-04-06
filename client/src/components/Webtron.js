@@ -1,15 +1,14 @@
+import Arena from 'components/Arena'
 import ArenaSelect from 'components/ArenaSelect'
 import Connect from 'components/Connect'
 import MainMenu from 'components/MainMenu'
-import useSocket from 'hooks/useSocket'
 import useStore from 'hooks/useStore'
 import React from 'react'
 
-const stages = { MainMenu, Connect, ArenaSelect }
+const stages = { MainMenu, Connect, ArenaSelect, Arena }
 
 export default function Webtron() {
   const { stage } = useStore()
-  const [connect, disconnect, send] = useSocket()
 
   const Stage = stages[stage] || null
   if (Stage === null) {
@@ -18,7 +17,7 @@ export default function Webtron() {
     return null
   }
 
-  return <Stage connect={connect} disconnect={disconnect} send={send} />
+  return <Stage />
 }
 
 //	update() {

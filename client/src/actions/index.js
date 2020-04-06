@@ -1,5 +1,7 @@
-import { SocketStates } from 'hooks/useSocket'
+import { getArenaList, join } from 'actions/socket'
 import createSimpleAction from 'utils/createSimpleAction'
+import socketStates from 'utils/socketStates'
+export * from 'actions/socket'
 
 export const SET_CONFIG = 'SET_CONFIG'
 export const SET_STAGE = 'SET_STAGE'
@@ -20,10 +22,10 @@ export const RECEIVE_SOCKET_MESSAGE = 'RECEIVE_SOCKET_MESSAGE'
 
 export function setSocketState(socketState) {
   return (dispatch) => {
-    if (socketState === SocketStates.CONNECTING) dispatch(setStage('Connect'))
-    if (socketState === SocketStates.OPEN) dispatch(setStage('ArenaSelect'))
-    if (socketState === SocketStates.CLOSED) dispatch(setStage('MainMenu'))
     dispatch({ type: SET_SOCKET_STATE, socketState })
+    if (socketState === socketStates.CONNECTING) dispatch(setStage('Connect'))
+    if (socketState === socketStates.OPEN) dispatch(getArenaList())
+    if (socketState === socketStates.CLOSED) dispatch(setStage('MainMenu'))
   }
 }
 export function receiveSocketMessage(messageType, messageData) {
@@ -45,7 +47,21 @@ export const RECEIVE_ARENA_JOINED = 'RECEIVE_ARENA_JOINED'
 export const RECEIVE_ARENA_STATE = 'RECEIVE_ARENA_STATE'
 export const RECEIVE_ARENA_STATE_PATCH = 'RECEIVE_ARENA_STATE_PATCH'
 
-export const receiveArenaList = createSimpleAction(RECEIVE_ARENA_LIST, 'arenaList')
-export const receiveArenaJoined = createSimpleAction(RECEIVE_ARENA_JOINED, 'arenaId')
+export function receiveArenaList(arenaList) {
+  return (dispatch, getState) => {
+    const prevArenaList = getState().arenaList
+    dispatch({ type: RECEIVE_ARENA_LIST, arenaList })
+    if (prevArenaList === null) {
+      if (arenaList.length < 1) dispatch(join())
+      else dispatch(setStage('ArenaSelect'))
+    }
+  }
+}
+export function receiveArenaJoined(arenaId) {
+  return (dispatch) => {
+    dispatch({ type: RECEIVE_ARENA_JOINED, arenaId })
+    dispatch(setStage('Arena'))
+  }
+}
 export const receiveArenaState = createSimpleAction(RECEIVE_ARENA_STATE, 'state')
 export const receiveArenaStatePatch = createSimpleAction(RECEIVE_ARENA_STATE_PATCH, 'statePatch')

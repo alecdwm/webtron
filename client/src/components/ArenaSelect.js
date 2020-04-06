@@ -1,32 +1,25 @@
+import { join } from 'actions'
 import MenuButton from 'components/MenuButton'
 import useArenaListPolling from 'hooks/useArenaListPolling'
 import useClassName from 'hooks/useClassName'
 import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
-import PropTypes from 'prop-types'
+import useStoreDispatch from 'hooks/useStoreDispatch'
 import React, { useCallback } from 'react'
-import defaultPlayer from 'utils/defaultPlayer'
 import gridbikeImages from 'utils/gridbikeImages'
 
 import styles from './ArenaSelect.module.css'
 
-export default function ArenaSelect({ send }) {
+export default function ArenaSelect() {
   usePreloadImages(Object.values(gridbikeImages))
-  useArenaListPolling(send)
+  useArenaListPolling()
 
-  const { player, arenaList } = useStore()
+  const { arenaList } = useStore()
+  const dispatch = useStoreDispatch()
 
-  const joinArena = useCallback(
-    ({ currentTarget }) => {
-      send({
-        Join: {
-          player: defaultPlayer(player),
-          arena_id: currentTarget.getAttribute('data-id') || null,
-        },
-      })
-    },
-    [send, player],
-  )
+  const joinArena = useCallback(({ currentTarget }) => dispatch(join(currentTarget.getAttribute('data-id'))), [
+    dispatch,
+  ])
 
   const ArenaSelect = useClassName(styles.arenaSelect)
   const NewArenaButton = useClassName(styles.newArenaButton, MenuButton)
@@ -62,7 +55,4 @@ export default function ArenaSelect({ send }) {
       </ArenaList>
     </ArenaSelect>
   )
-}
-ArenaSelect.propTypes = {
-  send: PropTypes.func.isRequired,
 }

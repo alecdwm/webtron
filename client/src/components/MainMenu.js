@@ -1,4 +1,4 @@
-import { setPlayerColor, setPlayerName } from 'actions'
+import { connect, setPlayerColor, setPlayerName } from 'actions'
 import CaretLeft from 'components/CaretLeft'
 import CaretRight from 'components/CaretRight'
 import MenuButton from 'components/MenuButton'
@@ -8,7 +8,6 @@ import useEventListener from 'hooks/useEventListener'
 import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
-import PropTypes from 'prop-types'
 import React, { useCallback } from 'react'
 import colors from 'utils/colors'
 import gridbikeImages from 'utils/gridbikeImages'
@@ -18,11 +17,13 @@ import styles from './MainMenu.module.css'
 
 const MAX_PLAYER_NAME_LENGTH = 12
 
-export default function MainMenu({ connect }) {
+export default function MainMenu() {
   usePreloadImages(Object.values(gridbikeImages))
 
   const { player, socketState } = useStore()
   const dispatch = useStoreDispatch()
+
+  const onConnect = useCallback(() => dispatch(connect()), [dispatch])
 
   const handlePlayerNameChange = useCallback(
     (name) => dispatch(setPlayerName(name.slice(0, MAX_PLAYER_NAME_LENGTH).toLowerCase().replace(/ /g, '_'))),
@@ -66,7 +67,7 @@ export default function MainMenu({ connect }) {
       <StatusText>{statusFromSocketState(socketState)}</StatusText>
 
       <NameLabel>NAME:</NameLabel>
-      <NameInput focusOnMount onChange={handlePlayerNameChange} onSubmit={connect} value={player.name} />
+      <NameInput focusOnMount onChange={handlePlayerNameChange} onSubmit={onConnect} value={player.name} />
 
       <ColorLabel>COLOR:</ColorLabel>
       <ColorButtonLeft onClick={setPreviousPlayerColor}>
@@ -77,10 +78,7 @@ export default function MainMenu({ connect }) {
         <CaretRight />
       </ColorButtonRight>
 
-      <ConnectButton onClick={connect}>CONNECT</ConnectButton>
+      <ConnectButton onClick={onConnect}>CONNECT</ConnectButton>
     </MainMenu>
   )
-}
-MainMenu.propTypes = {
-  connect: PropTypes.func.isRequired,
 }

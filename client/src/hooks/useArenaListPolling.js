@@ -1,14 +1,18 @@
+import { getArenaList } from 'actions'
+import useStoreDispatch from 'hooks/useStoreDispatch'
 import { useEffect } from 'react'
 
-export default function useArenaListPolling(send) {
+export default function useArenaListPolling() {
+  const dispatch = useStoreDispatch()
+
   useEffect(() => {
     let timeout = null
-    const getArenaList = () => {
-      send({ GetArenaList: null })
-      timeout = window.setTimeout(getArenaList, 2000)
+    const getArenaListTimeout = () => {
+      dispatch(getArenaList())
+      timeout = window.setTimeout(getArenaListTimeout, 2000)
     }
-    getArenaList()
+    getArenaListTimeout()
 
     return () => window.clearTimeout(timeout)
-  }, [send])
+  }, [dispatch])
 }

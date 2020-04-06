@@ -1,7 +1,7 @@
-import { SocketStates } from 'hooks/useSocket'
+import socketStates from 'utils/socketStates'
 
 export default function statusFromSocketState(socketState) {
-  if (socketState === SocketStates.CONNECTING) return 'CONNECTING'
-  if (socketState === SocketStates.CLOSED) return 'CONNECTION CLOSED'
+  if (socketState === socketStates.CONNECTING) return 'CONNECTING'
+  if (socketState === socketStates.CLOSED) return 'CONNECTION CLOSED'
   return ''
 }

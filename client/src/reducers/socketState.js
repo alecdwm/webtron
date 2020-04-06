@@ -1,8 +1,8 @@
 import { SET_SOCKET_STATE } from 'actions'
-import { SocketStates } from 'hooks/useSocket'
 import createReducer from 'utils/createReducer'
+import socketStates from 'utils/socketStates'
 
-const initialState = SocketStates.NOT_CONNECTED
+const initialState = socketStates.NOT_CONNECTED
 
 export default createReducer(initialState, {
   [SET_SOCKET_STATE]: (_, action) => action.socketState,
