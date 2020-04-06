@@ -7,20 +7,10 @@ export default function useThunkReducer(reducer, initialState) {
   stateRef.current = state
 
   const getState = useCallback(() => stateRef.current, [])
-  const thunkMiddleware = useCallback(
-    (dispatch) => (actionCreator) => {
-      if (typeof actionCreator !== 'function') {
-        return dispatch(actionCreator)
-      }
-      return actionCreator(dispatch, getState)
-    },
-    [getState],
+  const thunkDispatch = useCallback(
+    (action) => (typeof action === 'function' ? action(thunkDispatch, getState) : dispatch(action)),
+    [getState, dispatch],
   )
-
-  const thunkDispatch = useCallback((actionCreator) => thunkMiddleware(dispatch)(actionCreator), [
-    thunkMiddleware,
-    dispatch,
-  ])
 
   return [state, thunkDispatch]
 }
