@@ -1,3 +1,5 @@
+const { DefinePlugin } = require('webpack')
+const process = require('process')
 const PrettierPlugin = require('prettier-webpack-plugin')
 
 exports.onCreateWebpackConfig = ({ actions }) => {
@@ -5,6 +7,6 @@ exports.onCreateWebpackConfig = ({ actions }) => {
     resolve: {
       modules: ['src', 'node_modules'],
     },
-    plugins: [new PrettierPlugin()],
+    plugins: [new PrettierPlugin(), new DefinePlugin({ 'global.devMode': process.env.NODE_ENV !== 'production' })],
   })
 }

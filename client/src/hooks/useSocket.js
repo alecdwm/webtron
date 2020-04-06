@@ -1,4 +1,4 @@
-import { receiveSocketMessage, setGameState, setSocketState, setStatusText } from 'actions'
+import { receiveSocketMessage, setGameState, setSocketState } from 'actions'
 import useForceUpdate from 'hooks/useForceUpdate'
 import useStoreDispatch from 'hooks/useStoreDispatch'
 import { useCallback, useRef } from 'react'
@@ -20,14 +20,13 @@ export default function useSocket() {
     if (socketRef.current) return console.warn('cannot open new socket: socket already exists')
 
     const protocol = window.location.protocol === 'https' ? 'wss' : 'ws'
-    const socket_url = `${protocol}://${window.location.host}/ws`
+    const host = global.devMode ? 'localhost:3000' : window.location.host
+    const socket_url = `${protocol}://${host}/ws`
 
     socketRef.current = new WebSocket(socket_url)
-    dispatch(setStatusText('Connecting...'))
     dispatch(setSocketState(SocketStates.CONNECTING))
 
     socketRef.current.addEventListener('open', () => {
-      dispatch(setStatusText(''))
       dispatch(setSocketState(SocketStates.OPEN))
     })
 
@@ -44,12 +43,10 @@ export default function useSocket() {
     socketRef.current.addEventListener('error', (event) => {
       console.error('socket error', event)
 
-      dispatch(setStatusText('CONNECTION ERROR'))
       dispatch(setSocketState(SocketStates.CLOSING))
     })
 
     socketRef.current.addEventListener('close', () => {
-      dispatch(setStatusText('CONNECTION CLOSED'))
       dispatch(setSocketState(SocketStates.CLOSED))
       socketRef.current = null
       forceUpdate()

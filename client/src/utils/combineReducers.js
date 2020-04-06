@@ -1,6 +1,6 @@
 export default function combineReducers(reducers) {
   return function combinedReducer(store = {}, action) {
-    if (store && store.gameOptions && store.gameOptions.debugReducers) console.log(action)
+    if (store && store.config && store.config.debugReducers) console.log(action)
     const nextStore = {}
     let changed = false
     for (const [key, reducer] of Object.entries(reducers)) {

@@ -11,10 +11,6 @@ export default function Webtron() {
   const { gameState } = useStore()
   const [connect, disconnect, send] = useSocket()
 
-  // useEffect(() => {
-  //   connect()
-  // }, [connect])
-
   const GameState = gameStates[gameState] || null
   if (GameState === null) {
     const validStates = Object.keys(gameStates).join(', ')

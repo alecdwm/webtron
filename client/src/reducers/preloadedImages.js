@@ -4,7 +4,7 @@ import createReducer from 'utils/createReducer'
 const initialState = []
 
 export default createReducer(initialState, {
-  [PRELOAD_IMAGES]: (store, action) =>
+  [PRELOAD_IMAGES]: (_, action) =>
     action.urls.map((url) => {
       const image = new Image()
       image.src = url

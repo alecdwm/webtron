@@ -5,5 +5,5 @@ import createReducer from 'utils/createReducer'
 const initialState = SocketStates.NOT_CONNECTED
 
 export default createReducer(initialState, {
-  [SET_SOCKET_STATE]: (store, action) => action.socketState,
+  [SET_SOCKET_STATE]: (_, action) => action.socketState,
 })
