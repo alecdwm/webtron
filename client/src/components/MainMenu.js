@@ -1,4 +1,5 @@
 import { setPlayerColor, setPlayerName } from 'actions'
+import MenuButton from 'components/MenuButton'
 import MenuInput from 'components/MenuInput'
 import useClassName from 'hooks/useClassName'
 import usePreloadImages from 'hooks/usePreloadImages'
@@ -41,11 +42,6 @@ export default function MainMenu({ connect }) {
   const onKeyDown = useCallback(
     ({ key }) => {
       switch (key) {
-        case 'Enter':
-        case 'Return':
-          connect()
-          break
-
         case 'ArrowLeft':
           setPreviousPlayerColor()
           break
@@ -55,7 +51,7 @@ export default function MainMenu({ connect }) {
           break
       }
     },
-    [connect, setPreviousPlayerColor, setNextPlayerColor],
+    [setPreviousPlayerColor, setNextPlayerColor],
   )
 
   useEffect(() => {
@@ -71,7 +67,7 @@ export default function MainMenu({ connect }) {
   const ColorButtonLeft = useClassName(styles.colorButtonLeft)
   const ColorPreview = useClassName(styles.colorPreview, 'img')
   const ColorButtonRight = useClassName(styles.colorButtonRight)
-  const ConnectButton = useClassName([styles.connectButton])
+  const ConnectButton = useClassName(styles.connectButton, MenuButton)
 
   return (
     <MainMenu>
