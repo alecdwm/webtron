@@ -4,12 +4,13 @@ import CaretRight from 'components/CaretRight'
 import MenuButton from 'components/MenuButton'
 import MenuInput from 'components/MenuInput'
 import useClassName from 'hooks/useClassName'
+import useEventListener from 'hooks/useEventListener'
 import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
 import PropTypes from 'prop-types'
-import React, { useCallback, useEffect } from 'react'
-import webtronColors from 'utils/colors'
+import React, { useCallback } from 'react'
+import colors from 'utils/colors'
 import gridbikeImages from 'utils/gridbikeImages'
 import statusFromSocketState from 'utils/statusFromSocketState'
 
@@ -29,37 +30,26 @@ export default function MainMenu({ connect }) {
   )
 
   const setNextPlayerColor = useCallback(
-    () => dispatch(setPlayerColor(webtronColors[(webtronColors.indexOf(player.color) + 1) % webtronColors.length])),
+    () => dispatch(setPlayerColor(colors[(colors.indexOf(player.color) + 1) % colors.length])),
     [dispatch, player.color],
   )
-
-  const setPreviousPlayerColor = useCallback(() => {
-    dispatch(
-      setPlayerColor(
-        webtronColors[(webtronColors.indexOf(player.color) + webtronColors.length - 1) % webtronColors.length],
-      ),
-    )
-  }, [dispatch, player.color])
+  const setPreviousPlayerColor = useCallback(
+    () => dispatch(setPlayerColor(colors[(colors.indexOf(player.color) + colors.length - 1) % colors.length])),
+    [dispatch, player.color],
+  )
 
   const onKeyDown = useCallback(
     ({ key }) => {
       switch (key) {
         case 'ArrowLeft':
-          setPreviousPlayerColor()
-          break
-
+          return setPreviousPlayerColor()
         case 'ArrowRight':
-          setNextPlayerColor()
-          break
+          return setNextPlayerColor()
       }
     },
     [setPreviousPlayerColor, setNextPlayerColor],
   )
-
-  useEffect(() => {
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onKeyDown])
+  useEventListener('keydown', onKeyDown)
 
   const MainMenu = useClassName(styles.mainMenu)
   const StatusText = useClassName(styles.statusText)
