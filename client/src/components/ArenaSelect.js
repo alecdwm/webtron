@@ -43,7 +43,7 @@ export default function ArenaSelect() {
               {Object.entries(arena.players).map(([playerId, player]) => (
                 <ArenaPlayer key={playerId} src={gridbikeImages[player.color]} />
               ))}
-              {[...Array(arena.max_players - Object.keys(arena.players).length)].map((index) => (
+              {[...Array(arena.max_players - Object.keys(arena.players).length)].map((_, index) => (
                 <ArenaPlayer key={index} src={gridbikeImages['dark']} />
               ))}
             </ArenaPlayers>
