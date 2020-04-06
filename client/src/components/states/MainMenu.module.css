@@ -1,8 +1,7 @@
 /* common attributes */
 .statusText,
 .nameLabel,
-.namePreview,
-.namePreview:after,
+.nameInput,
 .colorLabel,
 .colorButtonLeft,
 .colorPreview,
@@ -18,7 +17,7 @@
   cursor: pointer;
 }
 .statusText,
-.namePreview,
+.nameInput,
 .colorButtonLeft,
 .colorButtonRight,
 .connectButton {
@@ -48,7 +47,7 @@
   left: 240px;
   transform: translate(-100%, -50%);
 }
-.namePreview {
+.nameInput {
   top: 210px;
   left: 280px;
   transform: translate(0, -50%);
@@ -77,32 +76,4 @@
   top: 350px;
   left: 280px;
   transform: translate(-50%, -50%);
-}
-
-/* text cursor */
-.namePreview:after {
-  top: 0;
-  right: 0;
-  display: block;
-  content: '_';
-  transform: translate(100%, 0);
-  font-weight: normal;
-}
-.namePreview.noName:after {
-  transform: translate(100%, -50%);
-}
-.namePreview.cursorBlink:after {
-  animation: cursorBlink 1.2s linear infinite;
-}
-
-@keyframes cursorBlink {
-  0% {
-    visibility: hidden;
-  }
-  50% {
-    visibility: hidden;
-  }
-  100% {
-    visibility: visible;
-  }
 }

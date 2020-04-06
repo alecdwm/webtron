@@ -6,12 +6,12 @@ import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 import styles from './MenuInput.module.css'
 
-export default function MenuInput({ value, onChange, onSubmit, focusOnMount, className, ...passProps }) {
+export default function MenuInput({ className, focusOnMount, onChange, onSubmit, value, ...passProps }) {
   const inputRef = useRef(null)
   useLayoutEffect(() => {
     if (!focusOnMount) return
     if (inputRef.current === null) return
-    inputRef.current.focus()
+    window.setTimeout(() => inputRef.current.focus(), 10)
   }, [focusOnMount])
 
   const [cursorBlink, resetCursorBlink] = useCursorBlink()
@@ -20,6 +20,7 @@ export default function MenuInput({ value, onChange, onSubmit, focusOnMount, cla
   const handleChange = useCallback(
     (event) => {
       resetCursorBlink()
+      if (typeof onChange !== 'function') return
       onChange(event.currentTarget.value)
     },
     [resetCursorBlink, onChange],
@@ -27,23 +28,22 @@ export default function MenuInput({ value, onChange, onSubmit, focusOnMount, cla
 
   const handleKeyDown = useCallback(
     ({ key }) => {
-      if (key !== 'Enter') return
+      if (key !== 'Enter' && key !== 'Return') return
+      if (typeof onSubmit !== 'function') return
       onSubmit()
     },
     [onSubmit],
   )
 
-  const handleSelect = useCallback((event) => {
-    const target = event.currentTarget
-    const value = target.value
-    target.setSelectionRange(value.length, value.length)
+  const handleSelect = useCallback(({ currentTarget }) => {
+    const value = currentTarget.value
+    currentTarget.setSelectionRange(value.length, value.length)
   }, [])
 
   const handleFocus = useCallback(
-    (event) => {
-      const target = event.currentTarget
-      const value = target.value
-      target.setSelectionRange(value.length, value.length)
+    ({ currentTarget }) => {
+      const value = currentTarget.value
+      currentTarget.setSelectionRange(value.length, value.length)
       resetCursorBlink()
       setFocused(true)
     },
@@ -79,9 +79,9 @@ export default function MenuInput({ value, onChange, onSubmit, focusOnMount, cla
   )
 }
 MenuInput.propTypes = {
-  value: PropTypes.string,
-  onChange: PropTypes.func.isRequired,
-  onSubmit: PropTypes.func.isRequired,
-  focusOnMount: PropTypes.bool,
   className: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+  focusOnMount: PropTypes.bool,
+  onChange: PropTypes.func,
+  onSubmit: PropTypes.func,
+  value: PropTypes.string,
 }

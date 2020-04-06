@@ -1,67 +1,42 @@
 import { setPlayerColor, setPlayerName } from 'actions'
 import MenuInput from 'components/MenuInput'
 import useClassName from 'hooks/useClassName'
-import useCursorBlink from 'hooks/useCursorBlink'
 import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
-import gridbikeBlue from 'img/gridbike-blue.png'
-import gridbikeGreen from 'img/gridbike-green.png'
-import gridbikeOrange from 'img/gridbike-orange.png'
-import gridbikePurple from 'img/gridbike-purple.png'
-import gridbikeRed from 'img/gridbike-red.png'
-import gridbikeWhite from 'img/gridbike-white.png'
 import PropTypes from 'prop-types'
 import React, { useCallback, useEffect } from 'react'
 import webtronColors from 'utils/colors'
+import gridbikeImages from 'utils/gridbikeImages'
+import statusFromSocketState from 'utils/statusFromSocketState'
 
 import styles from './MainMenu.module.css'
-
-const gridbikeImages = {
-  blue: gridbikeBlue,
-  green: gridbikeGreen,
-  orange: gridbikeOrange,
-  purple: gridbikePurple,
-  red: gridbikeRed,
-  white: gridbikeWhite,
-}
 
 export const MAX_PLAYER_NAME_LENGTH = 12
 
 export default function MainMenu({ connect }) {
-  const { playerName, playerColor, statusText } = useStore()
-  const [cursorBlink, resetCursorBlink] = useCursorBlink()
-  usePreloadImages([gridbikeBlue, gridbikeGreen, gridbikeOrange, gridbikePurple, gridbikeRed, gridbikeWhite])
+  usePreloadImages(Object.values(gridbikeImages))
 
+  const { player, socketState } = useStore()
   const dispatch = useStoreDispatch()
 
-  const addKeyToPlayerName = useCallback(
-    (key) => {
-      resetCursorBlink()
-
-      const name = (playerName + key).slice(0, MAX_PLAYER_NAME_LENGTH)
-      dispatch(setPlayerName(name))
-    },
-    [dispatch, resetCursorBlink, playerName],
+  const handlePlayerNameChange = useCallback(
+    (name) => dispatch(setPlayerName(name.slice(0, MAX_PLAYER_NAME_LENGTH).toLowerCase().replace(/ /g, '_'))),
+    [dispatch],
   )
 
-  const removeKeyFromPlayerName = useCallback(() => {
-    resetCursorBlink()
-
-    const name = playerName.slice(0, -1)
-    dispatch(setPlayerName(name))
-  }, [dispatch, resetCursorBlink, playerName])
-
-  const setNextPlayerColor = useCallback(() => {
-    const color = webtronColors[(webtronColors.indexOf(playerColor) + 1) % webtronColors.length]
-    dispatch(setPlayerColor(color))
-  }, [dispatch, playerColor])
+  const setNextPlayerColor = useCallback(
+    () => dispatch(setPlayerColor(webtronColors[(webtronColors.indexOf(player.color) + 1) % webtronColors.length])),
+    [dispatch, player.color],
+  )
 
   const setPreviousPlayerColor = useCallback(() => {
-    const currentIndex = webtronColors.indexOf(playerColor)
-    const color = webtronColors[(currentIndex > 0 ? currentIndex : webtronColors.length) - 1]
-    dispatch(setPlayerColor(color))
-  }, [dispatch, playerColor])
+    dispatch(
+      setPlayerColor(
+        webtronColors[(webtronColors.indexOf(player.color) + webtronColors.length - 1) % webtronColors.length],
+      ),
+    )
+  }, [dispatch, player.color])
 
   const onKeyDown = useCallback(
     ({ key }) => {
@@ -69,10 +44,6 @@ export default function MainMenu({ connect }) {
         case 'Enter':
         case 'Return':
           connect()
-          break
-
-        case 'Backspace':
-          removeKeyFromPlayerName()
           break
 
         case 'ArrowLeft':
@@ -84,43 +55,18 @@ export default function MainMenu({ connect }) {
           break
       }
     },
-    [connect, removeKeyFromPlayerName, setPreviousPlayerColor, setNextPlayerColor],
-  )
-
-  const onKeyPress = useCallback(
-    (event) => {
-      switch (event.key) {
-        case 'Enter':
-        case 'Return':
-          break
-
-        case ' ':
-          event.preventDefault()
-          addKeyToPlayerName('_')
-          break
-
-        default:
-          addKeyToPlayerName(event.key.toLowerCase())
-          break
-      }
-    },
-    [addKeyToPlayerName],
+    [connect, setPreviousPlayerColor, setNextPlayerColor],
   )
 
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keypress', onKeyPress)
-
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keypress', onKeyPress)
-    }
-  }, [onKeyDown, onKeyPress])
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onKeyDown])
 
   const MainMenu = useClassName(styles.mainMenu)
   const StatusText = useClassName(styles.statusText)
   const NameLabel = useClassName(styles.nameLabel)
-  const NamePreview = useClassName([styles.namePreview, cursorBlink && styles.cursorBlink])
+  const NameInput = useClassName(styles.nameInput, MenuInput)
   const ColorLabel = useClassName(styles.colorLabel)
   const ColorButtonLeft = useClassName(styles.colorButtonLeft)
   const ColorPreview = useClassName(styles.colorPreview, 'img')
@@ -129,16 +75,14 @@ export default function MainMenu({ connect }) {
 
   return (
     <MainMenu>
-      <StatusText>{statusText}</StatusText>
-
-      <MenuInput />
+      <StatusText>{statusFromSocketState(socketState)}</StatusText>
 
       <NameLabel>NAME:</NameLabel>
-      <NamePreview className={playerName === '' && styles.noName}>{playerName}</NamePreview>
+      <NameInput focusOnMount onChange={handlePlayerNameChange} onSubmit={connect} value={player.name} />
 
       <ColorLabel>COLOR:</ColorLabel>
       <ColorButtonLeft onClick={setPreviousPlayerColor}>{'<'}</ColorButtonLeft>
-      <ColorPreview src={gridbikeImages[playerColor]} />
+      <ColorPreview src={gridbikeImages[player.color]} />
       <ColorButtonRight onClick={setNextPlayerColor}>{'>'}</ColorButtonRight>
 
       <ConnectButton onClick={connect}>CONNECT</ConnectButton>
