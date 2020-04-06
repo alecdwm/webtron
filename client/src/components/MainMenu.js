@@ -16,7 +16,7 @@ import statusFromSocketState from 'utils/statusFromSocketState'
 
 import styles from './MainMenu.module.css'
 
-export const MAX_PLAYER_NAME_LENGTH = 12
+const MAX_PLAYER_NAME_LENGTH = 12
 
 export default function MainMenu({ connect }) {
   usePreloadImages(Object.values(gridbikeImages))

@@ -1,5 +1,6 @@
 import combineReducers from 'utils/combineReducers'
 
+import arenaList from './arenaList'
 import config from './config'
 import player from './player'
 import preloadedImages from './preloadedImages'
@@ -10,6 +11,7 @@ export default combineReducers({
   config,
   player,
   preloadedImages,
+  arenaList,
   socketState,
   stage,
 })

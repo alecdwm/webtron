@@ -1,4 +1,4 @@
-import { receiveSocketMessage, setGameState, setSocketState } from 'actions'
+import { receiveSocketMessage, setSocketState } from 'actions'
 import useForceUpdate from 'hooks/useForceUpdate'
 import useStoreDispatch from 'hooks/useStoreDispatch'
 import { useCallback, useRef } from 'react'
@@ -50,7 +50,6 @@ export default function useSocket() {
       dispatch(setSocketState(SocketStates.CLOSED))
       socketRef.current = null
       forceUpdate()
-      // dispatch(setGameState('MainMenu'))
     })
   }, [dispatch, socketRef, forceUpdate])
 

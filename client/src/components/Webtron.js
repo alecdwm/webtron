@@ -1,11 +1,11 @@
+import ArenaSelect from 'components/ArenaSelect'
 import Connect from 'components/Connect'
-import Lobby from 'components/Lobby'
 import MainMenu from 'components/MainMenu'
 import useSocket from 'hooks/useSocket'
 import useStore from 'hooks/useStore'
 import React from 'react'
 
-const stages = { MainMenu, Connect, Lobby }
+const stages = { MainMenu, Connect, ArenaSelect }
 
 export default function Webtron() {
   const { stage } = useStore()
