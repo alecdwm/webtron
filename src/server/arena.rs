@@ -26,6 +26,7 @@ const LIGHTCYCLE_SPEED: isize = 1;
 #[derive(Debug, Clone, Serialize)]
 pub struct Arena {
     pub id: ArenaId,
+    pub name: String,
     pub width: usize,
     pub height: usize,
     pub max_players: usize,
@@ -43,6 +44,13 @@ pub struct Arena {
 }
 
 impl Arena {
+    pub fn with_name(name: &str) -> Self {
+        Self {
+            name: name.to_uppercase().to_owned(),
+            ..Default::default()
+        }
+    }
+
     pub fn add_player(&mut self, player: Player) {
         self.updates.push(ArenaUpdate::AddPlayer(player.id, player));
     }
@@ -203,6 +211,7 @@ impl Default for Arena {
     fn default() -> Self {
         Self {
             id: ArenaId::new_v4(),
+            name: Default::default(),
             width: ARENA_WIDTH,
             height: ARENA_HEIGHT,
             max_players: ARENA_MAX_PLAYERS,
@@ -223,6 +232,7 @@ impl Default for Arena {
 #[derive(Debug, Clone, Serialize)]
 pub struct ArenaOverview {
     id: ArenaId,
+    name: String,
     max_players: usize,
     started: Option<DateTime<Utc>>,
     players: HashMap<PlayerId, Player>,
@@ -232,6 +242,7 @@ impl From<&Arena> for ArenaOverview {
     fn from(arena: &Arena) -> Self {
         Self {
             id: arena.id,
+            name: arena.name.clone(),
             max_players: arena.max_players,
             started: arena.started,
             players: arena.players.clone(),

@@ -29,8 +29,8 @@ impl Server {
         Default::default()
     }
 
-    pub fn new_arena(&mut self) -> ArenaId {
-        let arena = Arena::default();
+    pub fn new_arena(&mut self, name: &str) -> ArenaId {
+        let arena = Arena::with_name(name);
         let id = arena.id;
 
         self.arenas.insert(id, arena);
@@ -146,10 +146,10 @@ impl Server {
                         if self.arenas.contains_key(&arena_id) {
                             arena_id
                         } else {
-                            self.new_arena()
+                            self.new_arena(&player.name)
                         }
                     }
-                    None => self.new_arena(),
+                    None => self.new_arena(&player.name),
                 };
 
                 let arena = self
