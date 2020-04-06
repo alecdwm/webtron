@@ -1,8 +1,9 @@
 import 'index.css'
 
-import Root from 'components/Root'
 import WebtronLogo from 'img/webtron.svg'
-import React, { useEffect } from 'react'
+import React, { Suspense, useEffect } from 'react'
+
+const ClientSideOnlyRoot = React.lazy(() => import('components/Root'))
 
 export default function IndexPage() {
   useEffect(() => {
@@ -10,13 +11,18 @@ export default function IndexPage() {
     webtron.classList.add('loaded')
   }, [])
 
+  const isSSR = typeof window === 'undefined'
+  if (isSSR) return null
+
   return (
     <>
       <header>
         <img src={WebtronLogo} alt="Webtron" />
       </header>
       <main id="webtron">
-        <Root />
+        <Suspense fallback={<div />}>
+          <ClientSideOnlyRoot />
+        </Suspense>
       </main>
       <footer>
         <p>
