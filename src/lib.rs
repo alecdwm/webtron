@@ -1,10 +1,4 @@
 ///
-/// Useful macros (for internal use).
-///
-#[macro_use]
-pub mod macros;
-
-///
 /// Handles server configuration.
 ///
 pub mod config;
@@ -19,32 +13,25 @@ pub mod server;
 ///
 pub mod web;
 
-use actix::{Actor, System};
 use anyhow::{Context, Error};
-use std::env;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio::try_join;
 
 use config::Config;
 use server::Server as WebtronServer;
 
 ///
-/// Sets up environment, creates event loop,
-/// starts Actix actors and runs event loop.
+/// Starts up webtron server.
 ///
-pub fn start() -> Result<(), Error> {
-    if env::var_os("RUST_LOG").is_none() {
-        env::set_var("RUST_LOG", "webtron=trace");
-    }
-    pretty_env_logger::init();
+pub async fn start() -> Result<(), Error> {
+    let config = Arc::new(Config::new());
 
-    let config = Config::new();
+    let (server_tx, server_rx) = mpsc::channel(100);
+    let server = tokio::spawn(WebtronServer::new(server_rx).start());
+    let web = tokio::spawn(web::start(server_tx, config));
 
-    let system = System::new("webtron");
-    let server_address = WebtronServer::new().start();
-    web::start(server_address, &config).context("Failed to start HttpServer")?;
-
-    system
-        .run()
-        .context("Failed to start webtron actix system arbiter")?;
+    try_join!(server, web).context("Failure occurred in task")?;
 
     Ok(())
 }

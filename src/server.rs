@@ -2,11 +2,12 @@ mod arena;
 mod messages;
 mod primitives;
 
-use actix::{Actor, AsyncContext, Context, Handler};
 use anyhow::{anyhow, Context as ResultContext, Error};
 use log::{error, info, warn};
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::sync::mpsc::Receiver;
+use tokio::time;
 
 pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate};
 pub use messages::{MessageIn, MessageOut};
@@ -17,18 +18,105 @@ use messages::MessageInPayload;
 
 const UPDATE_RATE_MILLISECONDS: u64 = 25; // 1000 / 25 = 40 updates per second
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Server {
-    message_queue: Vec<MessageIn>,
+    message_queue: Receiver<MessageIn>,
     clients: HashMap<ClientId, Client>,
     arenas: HashMap<ArenaId, Arena>,
 }
 
 impl Server {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(message_queue: Receiver<MessageIn>) -> Self {
+        Self {
+            message_queue,
+            clients: Default::default(),
+            arenas: Default::default(),
+        }
     }
 
+    pub async fn start(mut self) {
+        let mut interval = time::interval(Duration::from_millis(UPDATE_RATE_MILLISECONDS));
+        loop {
+            interval.tick().await;
+            self.process_messages().await;
+            self.update();
+            self.send_updates().await;
+        }
+    }
+
+    pub async fn process_messages(&mut self) {
+        while let Ok(message) = self.message_queue.try_recv() {
+            self.handle_message(message.client_id, message.payload)
+                .await
+                .unwrap_or_else(|error| {
+                    error!(
+                        "Failed to process incoming message: {}",
+                        get_error_chain(error)
+                    )
+                })
+        }
+    }
+
+    pub fn update(&mut self) {
+        self.arenas.retain(|_, arena| {
+            arena.update();
+
+            // discard arena if all players have left
+            !arena.players.is_empty()
+        })
+    }
+
+    pub async fn send_updates(&mut self) {
+        let clients = &mut self.clients;
+        let arenas = &self.arenas;
+
+        for client in clients.values_mut() {
+            let arena = match client.arena {
+                Some(arena) => arena,
+                None => continue,
+            };
+
+            let arena = match arenas.get(&arena) {
+                Some(arena) => arena,
+                None => continue,
+            };
+
+            if client.updates_sent_so_far == 0 {
+                if let Err(error) = client
+                    .tx
+                    .send(MessageOut::ArenaState(Box::from(arena.clone())))
+                    .await
+                {
+                    error!("Failed to send ArenaState to client: {}", error);
+                    continue;
+                }
+                client.updates_sent_so_far = arena.updates.len();
+                continue;
+            }
+
+            if client.updates_sent_so_far < arena.updates.len() {
+                if let Err(error) = client
+                    .tx
+                    .send(MessageOut::ArenaStatePatch(
+                        arena
+                            .updates
+                            .iter()
+                            .skip(client.updates_sent_so_far)
+                            .cloned()
+                            .collect(),
+                    ))
+                    .await
+                {
+                    error!("Failed to send ArenaStatePatch to client: {}", error);
+                    continue;
+                }
+                client.updates_sent_so_far = arena.updates.len();
+            }
+        }
+    }
+}
+
+impl Server {
     pub fn new_arena(&mut self, name: &str) -> ArenaId {
         let arena = Arena::with_name(name);
         let id = arena.id;
@@ -90,20 +178,20 @@ impl Server {
 }
 
 impl Server {
-    pub fn handle_message(
+    pub async fn handle_message(
         &mut self,
         client_id: ClientId,
         payload: MessageInPayload,
     ) -> Result<(), Error> {
         match payload {
-            MessageInPayload::Connect(ip_address, address) => {
+            MessageInPayload::Connect(ip_address, tx) => {
                 info!("Client connected: {}", client_id);
                 self.clients.insert(
                     client_id,
                     Client {
                         id: client_id,
                         ip_address,
-                        address,
+                        tx,
                         player: None,
                         arena: None,
                         updates_sent_so_far: 0,
@@ -132,8 +220,9 @@ impl Server {
                     .ok_or_else(|| anyhow!("Client {} not found", client_id))?;
 
                 client
-                    .address
-                    .try_send(MessageOut::ArenaList(arena_list))
+                    .tx
+                    .send(MessageOut::ArenaList(arena_list))
+                    .await
                     .with_context(|| anyhow!("Failed to send ArenaList to client {}", client_id))?;
             }
             MessageInPayload::Join { player, arena_id } => {
@@ -173,8 +262,9 @@ impl Server {
                 client.arena = Some(arena_id);
 
                 client
-                    .address
-                    .try_send(MessageOut::ArenaJoined(arena.id))
+                    .tx
+                    .send(MessageOut::ArenaJoined(arena.id))
+                    .await
                     .with_context(|| {
                         anyhow!("Failed to send ArenaJoined to client {}", client_id)
                     })?;
@@ -190,101 +280,5 @@ impl Server {
             }
         }
         Ok(())
-    }
-}
-
-impl Server {
-    pub fn process_messages(&mut self) {
-        // take ownership of queued messages
-        let mut process_messages_queue = Vec::with_capacity(self.message_queue.len());
-
-        // move all message_queue messages into process_messages_queue
-        process_messages_queue.append(&mut self.message_queue);
-
-        // process each message
-        process_messages_queue.drain(..).for_each(|message| {
-            self.handle_message(message.client_id, message.payload)
-                .unwrap_or_else(|error| {
-                    error!("Failed processing MessageIn: {}", get_error_chain(error))
-                });
-        });
-    }
-
-    pub fn update(&mut self) {
-        self.arenas.retain(|_, arena| {
-            arena.update();
-
-            // discard arena if all players have left
-            arena.players.len() > 0
-        })
-    }
-
-    pub fn send_updates(&mut self) {
-        let clients = &mut self.clients;
-        let arenas = &self.arenas;
-
-        clients.values_mut().for_each(|client| {
-            let arena = match client.arena {
-                Some(arena) => arena,
-                None => return,
-            };
-
-            let arena = match arenas.get(&arena) {
-                Some(arena) => arena,
-                None => return,
-            };
-
-            if client.updates_sent_so_far == 0 {
-                unwrap_or_return!(
-                    client
-                        .address
-                        .try_send(MessageOut::ArenaState(Box::from(arena.clone()))),
-                    |error| error!("Failed to send ArenaState to client: {}", error)
-                );
-                client.updates_sent_so_far = arena.updates.len();
-                return;
-            }
-
-            if client.updates_sent_so_far < arena.updates.len() {
-                client
-                    .address
-                    .try_send(MessageOut::ArenaStatePatch(
-                        arena
-                            .updates
-                            .iter()
-                            .skip(client.updates_sent_so_far)
-                            .cloned()
-                            .collect(),
-                    ))
-                    .unwrap_or_else(|error| {
-                        error!("Failed to send ArenaStatePatch to client: {}", error);
-                    });
-                client.updates_sent_so_far = arena.updates.len();
-                return;
-            }
-        })
-    }
-}
-
-impl Actor for Server {
-    type Context = Context<Self>;
-
-    fn started(&mut self, context: &mut Context<Self>) {
-        context.run_interval(
-            Duration::from_millis(UPDATE_RATE_MILLISECONDS),
-            |server, _context| {
-                server.process_messages();
-                server.update();
-                server.send_updates();
-            },
-        );
-    }
-}
-
-impl Handler<MessageIn> for Server {
-    type Result = ();
-
-    fn handle(&mut self, message: MessageIn, _context: &mut Context<Self>) {
-        self.message_queue.push(message);
     }
 }

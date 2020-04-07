@@ -6,25 +6,20 @@ authors = ["alecdwm <alec@owls.io>"]
 edition = "2018"
 
 [dependencies]
-actix = "0.9.0"
-actix-codec = "0.2.0"
-actix-web = "2.0.0"
-actix-web-actors = "2.0.0"
-actix-web-static-files = "2.0.0"
-anyhow = "1.0.27"
-awc = "1.0.1"
+anyhow = "1.0.28"
 chrono = { version = "0.4.11", features = ["serde"] }
-euclid = { version = "0.20.7", features = ["serde"] }
+euclid = { version = "0.20.10", features = ["serde"] }
 futures = "0.3.4"
 log = "0.4.8"
+mime_guess = "2.0.3"
 pretty_env_logger = "0.4.0"
+quit = "1.0.0"
 rand_core = "0.5.1"
-serde = "1.0.104"
-serde_derive = "1.0.104"
-serde_json = "1.0.48"
-structopt = "0.3.11"
-url = "2.1.1"
+rust-embed = { version = "5.5.1", features = ["interpolate-folder-path", "compression"] }
+serde = "1.0.106"
+serde_derive = "1.0.106"
+serde_json = "1.0.51"
+structopt = "0.3.12"
+tokio = { version = "0.2.16", features = ["rt-threaded", "time", "macros", "sync"] }
 uuid = { version = "0.8.1", features = ["v4", "serde"] }
-
-[build-dependencies]
-actix-web-static-files = "2.0.0"
+warp = "0.2.2"

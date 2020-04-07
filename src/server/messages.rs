@@ -6,7 +6,6 @@ pub use outgoing::Message as MessageOut;
 /// Server to client messages
 ///
 pub mod outgoing {
-    use actix::Message as ActixMessage;
     use serde_derive::Serialize;
 
     use crate::server::{Arena, ArenaId, ArenaOverview, ArenaUpdate};
@@ -14,8 +13,7 @@ pub mod outgoing {
     ///
     /// Outgoing messages
     ///
-    #[derive(Debug, Clone, Serialize, ActixMessage)]
-    #[rtype(result = "()")]
+    #[derive(Debug, Clone, Serialize)]
     pub enum Message {
         ArenaList(Vec<ArenaOverview>),
         ArenaJoined(ArenaId),
@@ -35,17 +33,16 @@ pub mod outgoing {
 /// Client to server messages
 ///
 pub mod incoming {
-    use actix::{Message as ActixMessage, Recipient};
     use anyhow::Error;
     use serde_derive::Deserialize;
+    use tokio::sync::mpsc::Sender;
 
     use crate::server::{ArenaId, ClientId, Direction, MessageOut, Player};
 
     ///
     /// Incoming messages
     ///
-    #[derive(Debug, ActixMessage)]
-    #[rtype(result = "()")]
+    #[derive(Debug)]
     pub struct Message {
         pub client_id: ClientId,
         pub payload: MessagePayload,
@@ -54,7 +51,7 @@ pub mod incoming {
     #[derive(Debug, Deserialize)]
     pub enum MessagePayload {
         #[serde(skip)]
-        Connect(Option<String>, Recipient<MessageOut>),
+        Connect(Option<String>, Sender<MessageOut>),
         #[serde(skip)]
         Disconnect,
 
@@ -72,11 +69,11 @@ pub mod incoming {
         pub fn connect(
             client_id: ClientId,
             ip_address: Option<String>,
-            address: Recipient<MessageOut>,
+            tx: Sender<MessageOut>,
         ) -> Self {
             Self {
                 client_id,
-                payload: MessagePayload::Connect(ip_address, address),
+                payload: MessagePayload::Connect(ip_address, tx),
             }
         }
 

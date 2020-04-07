@@ -1,4 +1,3 @@
-use actix_web_static_files::resource_dir;
 use std::env;
 use std::process::Command;
 
@@ -22,8 +21,4 @@ fn main() {
         .status()
         .expect("Failed to build client");
     assert!(out.success());
-
-    resource_dir("client/public")
-        .build()
-        .expect("Failed to bundle client resources");
 }

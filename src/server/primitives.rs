@@ -1,6 +1,6 @@
-use actix::Recipient;
 use euclid::{Point2D, Vector2D};
 use serde_derive::{Deserialize, Serialize};
+use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 use crate::server::MessageOut;
@@ -22,7 +22,7 @@ pub struct Line(pub ArenaPoint, pub ArenaPoint);
 pub struct Client {
     pub id: ClientId,
     pub ip_address: Option<String>,
-    pub address: Recipient<MessageOut>,
+    pub tx: Sender<MessageOut>,
     pub player: Option<PlayerId>,
     pub arena: Option<ArenaId>,
     pub updates_sent_so_far: usize,

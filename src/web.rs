@@ -1,55 +1,33 @@
-mod proxy;
-mod websocket_client;
+mod embed;
+mod websocket;
 
-use actix::Addr;
-use actix_web::dev::Server as ActixServer;
-use actix_web::{web, App, HttpServer};
-use actix_web_static_files::ResourceFiles;
-use anyhow::{anyhow, Context, Error};
-use std::collections::HashMap;
-use url::Url;
+use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
+use warp::Filter;
 
 use crate::config::Config;
-use crate::server::Server as WebtronServer;
-use proxy::forward;
-use websocket_client::websocket_route;
+use crate::server::MessageIn;
+use embed::embed;
+use websocket::websocket;
 
-#[cfg(debug_assertions)]
-const DEBUG: bool = true;
-#[cfg(not(debug_assertions))]
-const DEBUG: bool = false;
+pub async fn start(server_tx: Sender<MessageIn>, config: Arc<Config>) {
+    let server_tx = warp::any().map(move || server_tx.clone());
 
-#[cfg(debug_assertions)]
-fn generate() -> HashMap<&'static str, actix_web_static_files::Resource> {
-    HashMap::new()
-}
-#[cfg(not(debug_assertions))]
-include!(concat!(env!("OUT_DIR"), "/generated.rs"));
+    //
+    // websocket handler
+    //
+    let ws = warp::path("ws")
+        .and(warp::path::end())
+        .and(warp::ws())
+        .and(warp::addr::remote())
+        .and(server_tx)
+        .map(websocket);
 
-pub fn start(server_address: Addr<WebtronServer>, config: &Config) -> Result<ActixServer, Error> {
-    Ok(HttpServer::new(move || {
-        let mut app = App::new()
-            .data(server_address.clone())
-            .data(Url::parse("http://localhost:3001").expect("Failed to parse url"))
-            //
-            // websocket handler
-            //
-            .service(web::resource("/ws").to(websocket_route));
+    //
+    // fs handler
+    //
+    let embed = embed();
 
-        if DEBUG {
-            //
-            // proxy handler
-            //
-            app = app.default_service(web::route().to(forward));
-        } else {
-            //
-            // fs handler
-            //
-            app = app.service(ResourceFiles::new("/", generate()))
-        }
-        app
-    })
-    .bind(config.bind_address)
-    .with_context(|| anyhow!("Failed to bind to socket {}", config.bind_address))?
-    .run())
+    let routes = ws.or(embed);
+    warp::serve(routes).bind(config.bind_address).await;
 }

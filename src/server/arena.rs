@@ -46,7 +46,7 @@ pub struct Arena {
 impl Arena {
     pub fn with_name(name: &str) -> Self {
         Self {
-            name: name.to_uppercase().to_owned(),
+            name: name.to_uppercase(),
             ..Default::default()
         }
     }
