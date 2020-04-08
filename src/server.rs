@@ -134,7 +134,7 @@ impl Server {
 
         let arena_id = client
             .arena
-            .with_context(|| anyhow!("Client {} not in an arena"))?;
+            .with_context(|| anyhow!("Client {} not in an arena", client_id))?;
 
         let arena = self
             .arenas
@@ -160,7 +160,7 @@ impl Server {
 
         let arena_id = client
             .arena
-            .with_context(|| anyhow!("Client {} not in an arena"))?;
+            .with_context(|| anyhow!("Client {} not in an arena", client_id))?;
 
         let arena = self
             .arenas
