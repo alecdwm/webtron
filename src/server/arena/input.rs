@@ -74,6 +74,20 @@ impl ArenaInput {
                     }
                 };
 
+                match arena.started {
+                    None => {
+                        trace!("Refusing to turn lightcycle in stopped arena");
+                        return vec![];
+                    }
+                    Some(started) => {
+                        let now = Utc::now();
+                        if now < started {
+                            trace!("Refusing to turn lightcycle before arena has started");
+                            return vec![];
+                        }
+                    }
+                }
+
                 if lightcycle.dead {
                     trace!("Refusing to turn dead lightcycle");
                     return vec![];
