@@ -1,7 +1,6 @@
 use futures::sink::{Sink, SinkExt};
 use futures::stream::{Stream, StreamExt};
 use log::{debug, error, trace, warn};
-use std::marker::Unpin;
 use std::net::SocketAddr;
 use tokio::select;
 use tokio::sync::mpsc;

@@ -14,7 +14,7 @@ export function connect() {
     if (socket) return console.warn('cannot open new socket: socket already exists')
 
     const protocol = window.location.protocol === 'https' ? 'wss' : 'ws'
-    const host = global.devMode ? 'localhost:3000' : window.location.host
+    const host = window.location.host
     const socket_url = `${protocol}://${host}/ws`
 
     socket = new WebSocket(socket_url)
