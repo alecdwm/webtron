@@ -84,7 +84,10 @@ impl ArenaInput {
                     return vec![];
                 }
 
-                return vec![ArenaUpdate::UpdateLightcycleDirection(player_id, direction)];
+                return vec![
+                    ArenaUpdate::UpdateTrailAppendPoint(player_id, lightcycle.position),
+                    ArenaUpdate::UpdateLightcycleDirection(player_id, direction),
+                ];
             }
         }
     }
