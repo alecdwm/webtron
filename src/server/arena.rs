@@ -20,7 +20,7 @@ use crate::server::{ArenaId, ArenaPoint, Direction, Line, Player, PlayerId};
 const ARENA_WIDTH: usize = 560;
 const ARENA_HEIGHT: usize = 560;
 const ARENA_MAX_PLAYERS: usize = 8;
-const ARENA_START_TIMER_SECONDS: i64 = 5;
+const ARENA_START_TIMER_SECONDS: i64 = 1;
 const LIGHTCYCLE_SPEED: isize = 1;
 
 #[derive(Debug, Clone, Serialize)]
