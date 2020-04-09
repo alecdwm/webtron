@@ -8,6 +8,8 @@ export const CONNECT = 'CONNECT'
 export const SEND = 'SEND'
 export const GET_ARENA_LIST = 'GET_ARENA_LIST'
 export const JOIN = 'JOIN'
+export const START = 'START'
+export const TURN = 'TURN'
 
 export function connect() {
   return (dispatch) => {
@@ -26,8 +28,8 @@ export function connect() {
       if (typeof event.data !== 'string') return console.warn('ignoring binary websocket message', event)
 
       const message = JSON.parse(event.data)
-      const messageType = Object.keys(message).pop()
-      const messageData = message[messageType]
+      const messageType = typeof message === 'object' ? Object.keys(message).pop() : message
+      const messageData = typeof message === 'object' ? message[messageType] : null
 
       dispatch(receiveSocketMessage(messageType, messageData))
     })
@@ -63,5 +65,19 @@ export function join(arenaId = null) {
     const { player } = getState()
     dispatch({ type: JOIN, player, arenaId })
     dispatch(send({ Join: { player: defaultPlayer(player), arena_id: arenaId } }))
+  }
+}
+
+export function start() {
+  return (dispatch) => {
+    dispatch({ type: START })
+    dispatch(send({ Start: null }))
+  }
+}
+
+export function turn(direction) {
+  return (dispatch) => {
+    dispatch({ type: TURN, direction })
+    dispatch(send({ Turn: direction }))
   }
 }

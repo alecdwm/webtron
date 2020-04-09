@@ -19,16 +19,3 @@ export default function Webtron() {
 
   return <Stage />
 }
-
-//	update() {
-//		this.updateNow = Date.now()
-//		const dt = (this.updateNow - this.updateThen) / 1000.0
-//		this.updateThen = this.updateNow
-
-//		if (this.state && this.state.onUpdate && this.state.ready) {
-//			this.state.onUpdate.call(this.state, dt)
-//		}
-//		this.renderer.render(this.scene)
-
-//		window.requestAnimationFrame(this.update.bind(this))
-//	}

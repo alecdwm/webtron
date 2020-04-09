@@ -1,0 +1,9 @@
+.nameTag {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+.lightcycle {
+  position: absolute;
+}

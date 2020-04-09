@@ -1,0 +1,33 @@
+.arena {
+  animation: fadein 1s ease;
+}
+
+.background {
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  transition: opacity 300ms ease;
+  transform: translate(-50%, -50%);
+  opacity: 0.1;
+}
+.backgroundStarted {
+  opacity: 1;
+}
+
+.startButton {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2.5rem;
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
