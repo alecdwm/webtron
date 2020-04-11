@@ -7,14 +7,14 @@ import useEventListener from 'hooks/useEventListener'
 import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
-import background from 'img/background.png'
+import backgroundPanel from 'img/background-panel.svg'
 import React, { useCallback } from 'react'
 import lightcycleImages from 'utils/lightcycleImages'
 
 import styles from './Arena.module.css'
 
 export default function Arena() {
-  usePreloadImages([background, ...Object.values(lightcycleImages)])
+  usePreloadImages([backgroundPanel, ...Object.values(lightcycleImages)])
 
   const { arena } = useStore()
   const dispatch = useStoreDispatch()
@@ -48,12 +48,12 @@ export default function Arena() {
   useEventListener('keydown', onKeyDown)
 
   const Arena = useClassName(styles.arena)
-  const Background = useClassName([styles.background, arena.started !== null && styles.backgroundStarted], 'img')
+  const Background = useClassName([styles.background, arena.started !== null && styles.backgroundStarted])
   const StartButton = useClassName(styles.startButton, MenuButton)
 
   return (
     <Arena>
-      <Background src={background} />
+      <Background style={{ backgroundImage: `url(${backgroundPanel})` }} />
 
       {Object.entries(arena.lightribbons).map(([id, { points }]) => (
         <Lightribbon key={id} color={arena.players[id] ? arena.players[id].color : 'white'} points={points} />
