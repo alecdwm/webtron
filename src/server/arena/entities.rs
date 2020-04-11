@@ -20,6 +20,6 @@ impl Default for Lightcycle {
 }
 
 #[derive(Debug, Default, Clone, Hash, PartialEq, Serialize)]
-pub struct Trail {
+pub struct Lightribbon {
     pub points: Vec<ArenaPoint>,
 }

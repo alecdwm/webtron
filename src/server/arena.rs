@@ -35,7 +35,7 @@ pub struct Arena {
 
     pub players: HashMap<PlayerId, Player>,
     pub lightcycles: HashMap<PlayerId, Lightcycle>,
-    pub trails: HashMap<PlayerId, Trail>,
+    pub lightribbons: HashMap<PlayerId, Lightribbon>,
 
     #[serde(skip)]
     pub updates: Vec<ArenaUpdate>,
@@ -100,7 +100,7 @@ impl Arena {
             .apply_updates()
             .calculate_lightcycle_collisions()
             .apply_updates()
-            .update_trail_positions()
+            .update_lightribbon_positions()
             .apply_updates()
             .test_round_end()
             .apply_updates();
@@ -130,9 +130,9 @@ impl Arena {
                 continue 'next_lightcycle;
             };
 
-            // test for trail collisions
-            for trail in self.trails.values() {
-                for line in trail.points.windows(2) {
+            // test for lightribbon collisions
+            for lightribbon in self.lightribbons.values() {
+                for line in lightribbon.points.windows(2) {
                     let start = line[0];
                     let end = line[1];
 
@@ -171,8 +171,8 @@ impl Arena {
         self
     }
 
-    fn update_trail_positions(&mut self) -> &mut Self {
-        for id in self.trails.keys() {
+    fn update_lightribbon_positions(&mut self) -> &mut Self {
+        for id in self.lightribbons.keys() {
             let latest_point = match self.lightcycles.get(id) {
                 Some(lightcycle) => {
                     if lightcycle.dead {
@@ -183,7 +183,7 @@ impl Arena {
                 }
                 None => {
                     error!(
-                        "Failed to update trail position: No lightcycle with id {}",
+                        "Failed to update lightribbon position: No lightcycle with id {}",
                         id
                     );
                     continue;
@@ -191,7 +191,7 @@ impl Arena {
             };
 
             self.updates
-                .push(ArenaUpdate::UpdateTrailReplaceLatestPoint(
+                .push(ArenaUpdate::UpdateLightribbonReplaceLatestPoint(
                     *id,
                     latest_point,
                 ));
@@ -220,7 +220,7 @@ impl Default for Arena {
 
             players: Default::default(),
             lightcycles: Default::default(),
-            trails: Default::default(),
+            lightribbons: Default::default(),
 
             updates: Default::default(),
             updates_applied_so_far: 0,

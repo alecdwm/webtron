@@ -1,4 +1,4 @@
-import gridbikeBlue from 'img/gridbike-blue.png'
+import lightcycleBlue from 'img/lightcycle-blue.png'
 import PropTypes from 'prop-types'
 import React from 'react'
 
@@ -13,7 +13,7 @@ export default function HTML(props) {
           content="A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!"
         />
         <title>Webtron</title>
-        <link rel="icon" type="image/png" href={gridbikeBlue} />
+        <link rel="icon" type="image/png" href={lightcycleBlue} />
         {props.headComponents}
       </head>
       <body {...props.bodyAttributes}>

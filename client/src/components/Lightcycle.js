@@ -2,7 +2,7 @@ import useClassName from 'hooks/useClassName'
 import PropTypes from 'prop-types'
 import React from 'react'
 import { colorToHexString } from 'utils/colors'
-import gridbikeImages from 'utils/gridbikeImages'
+import lightcycleImages from 'utils/lightcycleImages'
 
 import styles from './Lightcycle.module.css'
 
@@ -23,7 +23,7 @@ export default function Lightcycle({ name, color, position = [0, 0], direction, 
   return (
     <>
       <NameTag style={{ left, bottom: bottom + 20, color: colorToHexString(color) }}>{name}</NameTag>
-      <Lightcycle src={gridbikeImages[color]} style={{ left, bottom, transform }} />
+      <Lightcycle src={lightcycleImages[color]} style={{ left, bottom, transform }} />
     </>
   )
 }

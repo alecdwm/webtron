@@ -10,7 +10,7 @@ import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
 import React, { useCallback } from 'react'
 import colors from 'utils/colors'
-import gridbikeImages from 'utils/gridbikeImages'
+import lightcycleImages from 'utils/lightcycleImages'
 import statusFromSocketState from 'utils/statusFromSocketState'
 
 import styles from './MainMenu.module.css'
@@ -18,7 +18,7 @@ import styles from './MainMenu.module.css'
 const MAX_PLAYER_NAME_LENGTH = 10
 
 export default function MainMenu() {
-  usePreloadImages(Object.values(gridbikeImages))
+  usePreloadImages(Object.values(lightcycleImages))
 
   const { player, socketState } = useStore()
   const dispatch = useStoreDispatch()
@@ -73,7 +73,7 @@ export default function MainMenu() {
       <ColorButtonLeft onClick={setPreviousPlayerColor}>
         <CaretLeft />
       </ColorButtonLeft>
-      <ColorPreview src={gridbikeImages[player.color]} />
+      <ColorPreview src={lightcycleImages[player.color]} />
       <ColorButtonRight onClick={setNextPlayerColor}>
         <CaretRight />
       </ColorButtonRight>

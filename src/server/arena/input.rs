@@ -19,7 +19,10 @@ impl ArenaInput {
                 }
 
                 let mut updates = Vec::with_capacity(
-                    arena.lightcycles.len() + arena.trails.len() + (arena.players.len() * 2) + 1,
+                    arena.lightcycles.len()
+                        + arena.lightribbons.len()
+                        + (arena.players.len() * 2)
+                        + 1,
                 );
 
                 // remove existing lightcycles
@@ -29,14 +32,14 @@ impl ArenaInput {
                     .copied()
                     .for_each(|id| updates.push(ArenaUpdate::RemoveLightcycle(id)));
 
-                // remove existing trails
+                // remove existing lightribbons
                 arena
-                    .trails
+                    .lightribbons
                     .keys()
                     .copied()
-                    .for_each(|id| updates.push(ArenaUpdate::RemoveTrail(id)));
+                    .for_each(|id| updates.push(ArenaUpdate::RemoveLightribbon(id)));
 
-                // add new lightcycles and trails
+                // add new lightcycles and lightribbons
                 let player_ids = arena.players.keys().copied().collect();
                 calculate_spawnpoints(player_ids).drain(..).for_each(
                     |(player_id, spawn_position, spawn_direction)| {
@@ -48,9 +51,9 @@ impl ArenaInput {
                                 ..Default::default()
                             },
                         ));
-                        updates.push(ArenaUpdate::AddTrail(
+                        updates.push(ArenaUpdate::AddLightribbon(
                             player_id,
-                            Trail {
+                            Lightribbon {
                                 points: vec![spawn_position, spawn_position],
                             },
                         ));
@@ -99,7 +102,7 @@ impl ArenaInput {
                 }
 
                 return vec![
-                    ArenaUpdate::UpdateTrailAppendPoint(player_id, lightcycle.position),
+                    ArenaUpdate::UpdateLightribbonAppendPoint(player_id, lightcycle.position),
                     ArenaUpdate::UpdateLightcycleDirection(player_id, direction),
                 ];
             }

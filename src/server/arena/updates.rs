@@ -4,7 +4,7 @@ use super::*;
 pub enum ArenaUpdate {
     AddPlayer(PlayerId, Player),
     AddLightcycle(PlayerId, Lightcycle),
-    AddTrail(PlayerId, Trail),
+    AddLightribbon(PlayerId, Lightribbon),
 
     Start(DateTime<Utc>),
     End,
@@ -13,12 +13,12 @@ pub enum ArenaUpdate {
     UpdateLightcycleDirection(PlayerId, Direction),
     UpdateLightcycleApplyDeath(PlayerId),
 
-    UpdateTrailAppendPoint(PlayerId, ArenaPoint),
-    UpdateTrailReplaceLatestPoint(PlayerId, ArenaPoint),
+    UpdateLightribbonAppendPoint(PlayerId, ArenaPoint),
+    UpdateLightribbonReplaceLatestPoint(PlayerId, ArenaPoint),
 
     RemovePlayer(PlayerId),
     RemoveLightcycle(PlayerId),
-    RemoveTrail(PlayerId),
+    RemoveLightribbon(PlayerId),
 }
 
 impl ArenaUpdate {
@@ -30,8 +30,8 @@ impl ArenaUpdate {
             ArenaUpdate::AddLightcycle(player_id, lightcycle) => {
                 arena.lightcycles.insert(*player_id, *lightcycle);
             }
-            ArenaUpdate::AddTrail(player_id, trail) => {
-                arena.trails.insert(*player_id, trail.clone());
+            ArenaUpdate::AddLightribbon(player_id, lightribbon) => {
+                arena.lightribbons.insert(*player_id, lightribbon.clone());
             }
 
             ArenaUpdate::Start(start_at) => arena.started = Some(*start_at),
@@ -71,28 +71,28 @@ impl ArenaUpdate {
                 lightcycle.dead = true;
             }
 
-            ArenaUpdate::UpdateTrailAppendPoint(player_id, point) => {
-                let trail = match arena.trails.get_mut(player_id) {
-                    Some(trail) => trail,
+            ArenaUpdate::UpdateLightribbonAppendPoint(player_id, point) => {
+                let lightribbon = match arena.lightribbons.get_mut(player_id) {
+                    Some(lightribbon) => lightribbon,
                     None => {
-                        error!("Trail {} not found", player_id);
+                        error!("Lightribbon {} not found", player_id);
                         return arena;
                     }
                 };
 
-                trail.points.push(*point);
+                lightribbon.points.push(*point);
             }
-            ArenaUpdate::UpdateTrailReplaceLatestPoint(player_id, latest_point) => {
-                let trail = match arena.trails.get_mut(player_id) {
-                    Some(trail) => trail,
+            ArenaUpdate::UpdateLightribbonReplaceLatestPoint(player_id, latest_point) => {
+                let lightribbon = match arena.lightribbons.get_mut(player_id) {
+                    Some(lightribbon) => lightribbon,
                     None => {
-                        error!("Trail {} not found", player_id);
+                        error!("Lightribbon {} not found", player_id);
                         return arena;
                     }
                 };
 
-                trail.points.pop();
-                trail.points.push(*latest_point);
+                lightribbon.points.pop();
+                lightribbon.points.push(*latest_point);
             }
 
             ArenaUpdate::RemovePlayer(player_id) => {
@@ -101,8 +101,8 @@ impl ArenaUpdate {
             ArenaUpdate::RemoveLightcycle(player_id) => {
                 arena.lightcycles.remove(player_id);
             }
-            ArenaUpdate::RemoveTrail(player_id) => {
-                arena.trails.remove(player_id);
+            ArenaUpdate::RemoveLightribbon(player_id) => {
+                arena.lightribbons.remove(player_id);
             }
         }
 

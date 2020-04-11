@@ -6,12 +6,12 @@ import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
 import React, { useCallback } from 'react'
-import gridbikeImages from 'utils/gridbikeImages'
+import lightcycleImages from 'utils/lightcycleImages'
 
 import styles from './ArenaSelect.module.css'
 
 export default function ArenaSelect() {
-  usePreloadImages(Object.values(gridbikeImages))
+  usePreloadImages(Object.values(lightcycleImages))
   useArenaListPolling()
 
   const { arenaList } = useStore()
@@ -41,10 +41,10 @@ export default function ArenaSelect() {
             <ArenaSpace />
             <ArenaPlayers>
               {Object.entries(arena.players).map(([playerId, player]) => (
-                <ArenaPlayer key={playerId} src={gridbikeImages[player.color]} />
+                <ArenaPlayer key={playerId} src={lightcycleImages[player.color]} />
               ))}
               {[...Array(arena.max_players - Object.keys(arena.players).length)].map((_, index) => (
-                <ArenaPlayer key={index} src={gridbikeImages['dark']} />
+                <ArenaPlayer key={index} src={lightcycleImages['dark']} />
               ))}
             </ArenaPlayers>
             <JoinButton data-id={arena.id} onClick={joinArena}>

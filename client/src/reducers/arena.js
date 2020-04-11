@@ -15,7 +15,7 @@ export default createReducer(initialState, {
 
     players: {},
     lightcycles: {},
-    trails: {},
+    lightribbons: {},
   }),
   [RECEIVE_ARENA_STATE]: (_, { state }) => ({ ...state }),
   [RECEIVE_ARENA_STATE_PATCH]: (arena, { statePatch = [] }) => statePatch.reduce(updateArena, arena),
@@ -40,11 +40,11 @@ function updateArena(arena, update) {
         [playerId]: lightcycle,
       },
     }),
-    AddTrail: ([playerId, trail]) => ({
+    AddLightribbon: ([playerId, lightribbon]) => ({
       ...arena,
-      trails: {
-        ...arena.trails,
-        [playerId]: trail,
+      lightribbons: {
+        ...arena.lightribbons,
+        [playerId]: lightribbon,
       },
     }),
 
@@ -88,23 +88,23 @@ function updateArena(arena, update) {
       },
     }),
 
-    UpdateTrailAppendPoint: ([playerId, point]) => ({
+    UpdateLightribbonAppendPoint: ([playerId, point]) => ({
       ...arena,
-      trails: {
-        ...arena.trails,
+      lightribbons: {
+        ...arena.lightribbons,
         [playerId]: {
-          ...arena.trails[playerId],
-          points: [...arena.trails[playerId].points, point],
+          ...arena.lightribbons[playerId],
+          points: [...arena.lightribbons[playerId].points, point],
         },
       },
     }),
-    UpdateTrailReplaceLatestPoint: ([playerId, latestPoint]) => ({
+    UpdateLightribbonReplaceLatestPoint: ([playerId, latestPoint]) => ({
       ...arena,
-      trails: {
-        ...arena.trails,
+      lightribbons: {
+        ...arena.lightribbons,
         [playerId]: {
-          ...arena.trails[playerId],
-          points: [...arena.trails[playerId].points.slice(0, -1), latestPoint],
+          ...arena.lightribbons[playerId],
+          points: [...arena.lightribbons[playerId].points.slice(0, -1), latestPoint],
         },
       },
     }),
@@ -117,9 +117,9 @@ function updateArena(arena, update) {
       ...arena,
       lightcycles: Object.fromEntries(Object.entries(arena.lightcycles).filter(([id]) => id !== playerId)),
     }),
-    RemoveTrail: (playerId) => ({
+    RemoveLightribbon: (playerId) => ({
       ...arena,
-      trails: Object.fromEntries(Object.entries(arena.trails).filter(([id]) => id !== playerId)),
+      lightribbons: Object.fromEntries(Object.entries(arena.lightribbons).filter(([id]) => id !== playerId)),
     }),
   }
 

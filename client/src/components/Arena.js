@@ -7,14 +7,14 @@ import useEventListener from 'hooks/useEventListener'
 import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
-import gridBG from 'img/gridBG.png'
+import background from 'img/background.png'
 import React, { useCallback } from 'react'
-import gridbikeImages from 'utils/gridbikeImages'
+import lightcycleImages from 'utils/lightcycleImages'
 
 import styles from './Arena.module.css'
 
 export default function Arena() {
-  usePreloadImages([gridBG, ...Object.values(gridbikeImages)])
+  usePreloadImages([background, ...Object.values(lightcycleImages)])
 
   const { arena } = useStore()
   const dispatch = useStoreDispatch()
@@ -53,9 +53,9 @@ export default function Arena() {
 
   return (
     <Arena>
-      <Background src={gridBG} />
+      <Background src={background} />
 
-      {Object.entries(arena.trails).map(([id, { points }]) => (
+      {Object.entries(arena.lightribbons).map(([id, { points }]) => (
         <Lightribbon key={id} color={arena.players[id] ? arena.players[id].color : 'white'} points={points} />
       ))}
       {Object.entries(arena.lightcycles).map(([id, { position, direction, speed, dead }]) => (
