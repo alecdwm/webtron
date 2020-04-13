@@ -2,13 +2,19 @@ use futures::sink::{Sink, SinkExt};
 use futures::stream::{Stream, StreamExt};
 use log::{debug, error, trace, warn};
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::Mutex;
+use tokio::time;
 use warp::reply::Reply;
 use warp::ws::{Message, WebSocket, Ws};
 
 use crate::server::{ClientId, MessageIn, MessageOut};
+
+const PING_RATE_SECONDS: u64 = 15;
 
 pub fn websocket(
     ws: Ws,
@@ -28,6 +34,7 @@ async fn handle_websocket(
 
     let (messages_tx, messages_rx) = mpsc::channel::<MessageOut>(100);
     let (ws_tx, ws_rx) = websocket.split();
+    let ws_tx = Arc::new(Mutex::new(ws_tx));
 
     // send new client
     if let Err(error) = server_tx
@@ -39,11 +46,13 @@ async fn handle_websocket(
     }
 
     let in_task = tokio::spawn(handle_in(id, ws_rx, server_tx.clone()));
-    let out_task = tokio::spawn(handle_out(messages_rx, ws_tx));
+    let out_task = tokio::spawn(handle_out(messages_rx, ws_tx.clone()));
+    let ping_task = tokio::spawn(handle_ping(ws_tx));
 
     if let Err(error) = select! {
         out = in_task => out,
         out = out_task => out,
+        out = ping_task => out,
     } {
         error!("Failure occurred while handling websocket: {}", error);
     }
@@ -98,7 +107,7 @@ async fn handle_in(
     debug!("Websocket handler (in) closed");
 }
 
-async fn handle_out(mut rx: Receiver<MessageOut>, mut tx: impl Sink<Message> + Unpin) {
+async fn handle_out(mut rx: Receiver<MessageOut>, tx: Arc<Mutex<impl Sink<Message> + Unpin>>) {
     debug!("Websocket handler (out) created");
     while let Some(message) = rx.recv().await {
         let text = match message.to_json() {
@@ -112,9 +121,28 @@ async fn handle_out(mut rx: Receiver<MessageOut>, mut tx: impl Sink<Message> + U
             }
         };
 
-        if tx.send(Message::text(text)).await.is_err() {
+        if tx.lock().await.send(Message::text(text)).await.is_err() {
             error!("Failed to send outgoing message")
         }
     }
     debug!("Websocket handler (out) closed");
+}
+
+async fn handle_ping(tx: Arc<Mutex<impl Sink<Message> + Unpin>>) {
+    debug!("Websocket handler (ping) created");
+    let mut interval = time::interval(Duration::from_secs(PING_RATE_SECONDS));
+    loop {
+        interval.tick().await;
+        if tx
+            .lock()
+            .await
+            .send(Message::ping(Vec::new()))
+            .await
+            .is_err()
+        {
+            error!("Failed to send outgoing ping");
+            break;
+        }
+    }
+    debug!("Websocket handler (ping) closed");
 }
