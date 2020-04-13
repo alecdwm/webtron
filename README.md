@@ -1,61 +1,28 @@
-![WebtronLogo](https://raw.githubusercontent.com/alecdwm/webtron/master/logo.png)
+<div align="center">
 
-# Todo
-* Clean up long-dead bikes and trails to reduce load on network and rendering
-* Implement client-side prediction between network updates
-* Add touch/mobile-friendly controls
+# [![webtron](client/src/img/webtron.svg)](https://tron.owls.io)
+A browser-based multiplayer implementation of the classic Tron Lightcycles arcade game.
 
-# Building
-## Dependencies
-* node
-* npm
-* go
+[![a screenshot of an in-progress webtron game](screenshot.png)](https://tron.owls.io)
 
-## Installation
-```bash
-# get project + build server
-go get go.owls.io/webtron
+</div>
 
-# install client dependencies + build client
-cd $GOPATH/src/go.owls.io/webtron
-npm install
-npm build:release
+## Building the server binary from source
+1. Install [nodejs](https://nodejs.org) and [yarn](https://yarnpkg.com) for building the bundled web client.
+1. Install [rustup](https://www.rust-lang.org/tools/install).
+1. Install the latest stable rust toolchain with `rustup toolchain install stable`.
+1. Clone the project locally with `git clone git@github.com:alecdwm/webtron.git`.
+1. Change to the cloned directory with `cd webtron`.
+1. Build the project with `cargo build --release`.
 
-# (optional) install
-go install
-cp -r $GOPATH/src/go.owls.io/webtron/client/bin $GOPATH/bin/webtron-client
+The server binary will be located at `target/release/webtron`.
 
-# run server
-webtron
-```
+## Running the server in development
+1. Install [cargo-watch](https://github.com/passcod/cargo-watch).
+1. Clone the project locally with `git clone git@github.com:alecdwm/webtron.git`.
+1. Change to the cloned directory with `cd webtron`.
+1. Run the server (and automatically restart it on code changes) with `cargo watch -i 'client/**' -x fmt -x run`.
+1. In another terminal, change to the client subdirectory with `cd webtron/client`.
+1. Run the client development server with `yarn dev`.
 
-## Development
-```bash
-# get project + build server
-go get go.owls.io/webtron
-
-# install client dependencies
-cd $GOPATH/src/go.owls.io/webtron
-npm install
-
-# run server in development mode
-npm run dev
-```
-
-# License
-Webtron - A networked-multiplayer clone of the classic 'Tron Lightcycles' arcade game!
-
-Copyright (C) 2016 alecdwm <owls.io>
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+The web client will be available at [http://localhost:3000](http://localhost:3000).
