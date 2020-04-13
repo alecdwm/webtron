@@ -263,7 +263,7 @@ impl Server {
 
                 client
                     .tx
-                    .send(MessageOut::ArenaJoined(arena.id))
+                    .send(MessageOut::ArenaJoined(arena.id, player_id))
                     .await
                     .with_context(|| {
                         anyhow!("Failed to send ArenaJoined to client {}", client_id)

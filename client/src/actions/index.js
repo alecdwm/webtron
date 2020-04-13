@@ -57,9 +57,9 @@ export function receiveArenaList(arenaList) {
     }
   }
 }
-export function receiveArenaJoined(arenaId) {
+export function receiveArenaJoined([arenaId, playerId]) {
   return (dispatch) => {
-    dispatch({ type: RECEIVE_ARENA_JOINED, arenaId })
+    dispatch({ type: RECEIVE_ARENA_JOINED, arenaId, playerId })
     dispatch(setStage('Arena'))
   }
 }
