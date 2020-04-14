@@ -5,14 +5,14 @@
 html {
   position: relative;
   min-height: 100%;
+  color: var(--blue);
+  background-color: var(--darkaqua);
+  font-family: 'Courier New', Courier, monospace;
 }
 
 body {
   margin: 0;
   padding: 0 0 var(--footer-height) 0;
-  color: var(--blue);
-  background-color: var(--darkaqua);
-  font-family: 'Courier New', Courier, monospace;
 }
 
 img {
