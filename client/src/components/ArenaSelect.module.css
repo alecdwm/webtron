@@ -39,3 +39,15 @@
 .joinButton {
   margin-left: 3rem;
 }
+
+@media screen and (max-width: 630px) {
+  .newArenaButton {
+    font-size: 1.5rem;
+  }
+  .arenaName {
+    font-size: 1.5rem;
+  }
+  .joinButton {
+    margin-left: 1.5rem;
+  }
+}

@@ -18,6 +18,7 @@
   opacity: 0.1;
   background-repeat: repeat;
   background-position: center;
+  background-size: 14.286%;
 }
 .backgroundStarted {
   opacity: 1;
@@ -37,5 +38,11 @@
   }
   to {
     opacity: 1;
+  }
+}
+
+@media screen and (max-width: 630px) {
+  .startButton {
+    font-size: 2rem;
   }
 }

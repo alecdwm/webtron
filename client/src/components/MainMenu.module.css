@@ -91,3 +91,41 @@
   left: 280px;
   transform: translate(-50%, -50%);
 }
+.nameLabel:after,
+.colorLabel:after {
+  content: ':';
+}
+
+@media screen and (max-width: 630px) {
+  .mainMenu {
+    justify-content: center;
+  }
+
+  .flexSpace {
+    flex-grow: 1;
+  }
+
+  .statusText,
+  .nameLabel,
+  .nameInput,
+  .colorLabel,
+  .colorButtonLeft,
+  .colorPreview,
+  .colorButtonRight,
+  .connectButton {
+    position: initial;
+    transform: none;
+    font-size: 2rem;
+  }
+  .colorPreview {
+    transform: rotate(270deg);
+  }
+  .nameLabel:after,
+  .colorLabel:after {
+    content: '';
+  }
+  .colorControl {
+    display: flex;
+    align-items: center;
+  }
+}

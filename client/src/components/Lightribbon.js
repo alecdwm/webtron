@@ -17,7 +17,14 @@ export default function Lightribbon({ color, points }) {
 
   return (
     <Lightribbon viewBox={`0 0 ${width} ${height}`}>
-      <polyline points={polylinePoints} stroke={colorToHexString(color)} strokeWidth="2" fill="none" />
+      <polyline
+        points={polylinePoints}
+        stroke={colorToHexString(color)}
+        strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
+        shapeRendering="crispEdges"
+        fill="none"
+      />
     </Lightribbon>
   )
 }

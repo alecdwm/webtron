@@ -1,4 +1,5 @@
 import useClassName from 'hooks/useClassName'
+import useStore from 'hooks/useStore'
 import PropTypes from 'prop-types'
 import React from 'react'
 import { colorToHexString } from 'utils/colors'
@@ -7,8 +8,13 @@ import lightcycleImages from 'utils/lightcycleImages'
 import styles from './Lightcycle.module.css'
 
 export default function Lightcycle({ name, color, position = [0, 0], direction, speed, dead }) {
-  const left = position[0]
-  const bottom = position[1]
+  const {
+    arena: { width, height },
+  } = useStore()
+
+  const left = `${(position[0] / width) * 100}%`
+  const bottom = `${(position[1] / height) * 100}%`
+  const tagBottom = `calc(${(position[1] / height) * 100}% + 20px)`
   const rotationMap = {
     up: '270deg',
     down: '90deg',
@@ -22,7 +28,7 @@ export default function Lightcycle({ name, color, position = [0, 0], direction, 
 
   return (
     <>
-      <NameTag style={{ left, bottom: bottom + 20, color: colorToHexString(color) }}>{name}</NameTag>
+      <NameTag style={{ left, bottom: tagBottom, color: colorToHexString(color) }}>{name}</NameTag>
       <Lightcycle src={lightcycleImages[color]} style={{ left, bottom, transform }} />
     </>
   )

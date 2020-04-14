@@ -53,10 +53,12 @@ export default function MainMenu() {
   useEventListener('keydown', onKeyDown)
 
   const MainMenu = useClassName(styles.mainMenu)
+  const FlexSpace = useClassName(styles.flexSpace)
   const StatusText = useClassName(styles.statusText)
   const NameLabel = useClassName(styles.nameLabel)
   const NameInput = useClassName(styles.nameInput, MenuInput)
   const ColorLabel = useClassName(styles.colorLabel)
+  const ColorControl = useClassName(styles.colorControl)
   const ColorButtonLeft = useClassName(styles.colorButtonLeft)
   const ColorPreview = useClassName(styles.colorPreview, 'img')
   const ColorButtonRight = useClassName(styles.colorButtonRight)
@@ -64,21 +66,33 @@ export default function MainMenu() {
 
   return (
     <MainMenu>
+      <FlexSpace />
+
       <StatusText>{statusFromSocketState(socketState)}</StatusText>
 
-      <NameLabel>NAME:</NameLabel>
+      {statusFromSocketState(socketState) ? <FlexSpace /> : null}
+
+      <NameLabel>NAME</NameLabel>
       <NameInput focusOnMount onChange={handlePlayerNameChange} onSubmit={onConnect} value={player.name} />
 
-      <ColorLabel>COLOR:</ColorLabel>
-      <ColorButtonLeft onClick={setPreviousPlayerColor}>
-        <CaretLeft />
-      </ColorButtonLeft>
-      <ColorPreview src={lightcycleImages[player.color]} />
-      <ColorButtonRight onClick={setNextPlayerColor}>
-        <CaretRight />
-      </ColorButtonRight>
+      <FlexSpace />
+
+      <ColorLabel>COLOR</ColorLabel>
+      <ColorControl>
+        <ColorButtonLeft onClick={setPreviousPlayerColor}>
+          <CaretLeft />
+        </ColorButtonLeft>
+        <ColorPreview src={lightcycleImages[player.color]} />
+        <ColorButtonRight onClick={setNextPlayerColor}>
+          <CaretRight />
+        </ColorButtonRight>
+      </ColorControl>
+
+      <FlexSpace />
 
       <ConnectButton onClick={onConnect}>CONNECT</ConnectButton>
+
+      <FlexSpace />
     </MainMenu>
   )
 }
