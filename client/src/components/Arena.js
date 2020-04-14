@@ -84,7 +84,7 @@ function useKeyControls(started) {
           return onTurn('down')
       }
     },
-    [started],
+    [started, onTurn],
   )
   useEventListener('keydown', onKeyDown)
 }
