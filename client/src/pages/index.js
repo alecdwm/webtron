@@ -1,34 +1,11 @@
-import 'index.css'
-
-import WebtronLogo from 'img/webtron.svg'
-import React, { Suspense, useEffect } from 'react'
-
-const ClientSideOnlyRoot = React.lazy(() => import('components/Root'))
+import Webtron from 'components/Webtron'
+import useAddWebtronLoadedClass from 'hooks/useAddWebtronLoadedClass'
+import usePreventWebtronContextMenu from 'hooks/usePreventWebtronContextMenu'
+import React from 'react'
 
 export default function IndexPage() {
-  useEffect(() => {
-    const webtron = document.getElementById('webtron')
-    webtron.classList.add('loaded')
-  }, [])
+  usePreventWebtronContextMenu()
+  useAddWebtronLoadedClass()
 
-  const isSSR = typeof window === 'undefined'
-  if (isSSR) return null
-
-  return (
-    <>
-      <header>
-        <img src={WebtronLogo} alt="Webtron" />
-      </header>
-      <main id="webtron">
-        <Suspense fallback={<div />}>
-          <ClientSideOnlyRoot />
-        </Suspense>
-      </main>
-      <footer>
-        <p>
-          <a href="https://owls.io">owls.io</a>
-        </p>
-      </footer>
-    </>
-  )
+  return <Webtron />
 }

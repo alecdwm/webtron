@@ -2,10 +2,11 @@
   "name": "webtron",
   "license": "MIT",
   "scripts": {
-    "dev": "GATSBY_TELEMETRY_DISABLED=1 gatsby develop --port 3001",
-    "fmt": "prettier --parser json --write .eslintrc .csscombrc .importsortrc; prettier --write gatsby-config.js gatsby-node.js src; node node_modules/csscomb/src/cli.js -c .csscombrc src",
-    "build": "GATSBY_TELEMETRY_DISABLED=1 gatsby build",
-    "clean": "GATSBY_TELEMETRY_DISABLED=1 gatsby clean"
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev --port 3001",
+    "fmt": "prettier --parser json --write .eslintrc .csscombrc .importsortrc; prettier --write next.config.js src; node node_modules/csscomb/src/cli.js -c .csscombrc src",
+    "prebuild": "NEXT_TELEMETRY_DISABLED=1 NODE_ENV=production next build",
+    "build": "NEXT_TELEMETRY_DISABLED=1 NODE_ENV=production next export -o dist",
+    "postbuild": "touch dist/.gitkeep"
   },
   "dependencies": {
     "babel-eslint": "^10.1.0",
@@ -15,14 +16,16 @@
     "eslint-loader": "^4.0.0",
     "eslint-plugin-react": "^7.19.0",
     "eslint-plugin-react-hooks": "^3.0.0",
-    "gatsby": "^2.20.12",
-    "gatsby-plugin-eslint": "^2.0.8",
     "import-sort-style-module": "^6.0.0",
+    "next": "^9.3.4",
+    "next-compose-plugins": "^2.2.0",
     "prettier": "^2.0.2",
+    "prettier-loader": "^3.3.0",
     "prettier-plugin-import-sort": "^0.0.4",
-    "prettier-webpack-plugin": "^1.2.0",
     "prop-types": "^15.7.2",
     "react": "^16.13.1",
-    "react-dom": "^16.13.1"
+    "react-dom": "^16.13.1",
+    "url-loader": "^4.1.0",
+    "webpack": "^4.42.1"
   }
 }
