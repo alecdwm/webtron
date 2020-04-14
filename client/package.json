@@ -1,6 +1,6 @@
 {
   "name": "webtron",
-  "license": "GPL-3.0-only",
+  "license": "MIT",
   "scripts": {
     "dev": "GATSBY_TELEMETRY_DISABLED=1 gatsby develop --port 3001",
     "fmt": "prettier --parser json --write .eslintrc .csscombrc .importsortrc; prettier --write gatsby-config.js gatsby-node.js src; node node_modules/csscomb/src/cli.js -c .csscombrc src",
