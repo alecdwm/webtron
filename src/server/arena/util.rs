@@ -10,12 +10,12 @@ const SPAWNPOINTS: [(f64, f64, Direction); ARENA_MAX_PLAYERS] = [
     (
         ARENA_WIDTH / 2.0,
         ARENA_HEIGHT / 2.0 - ARENA_HEIGHT / 4.0,
-        Direction::Down,
+        Direction::Up,
     ),
     (
         ARENA_WIDTH / 2.0,
         ARENA_HEIGHT / 2.0 + ARENA_HEIGHT / 4.0,
-        Direction::Up,
+        Direction::Down,
     ),
     //
     (
