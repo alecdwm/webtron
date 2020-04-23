@@ -21,7 +21,9 @@ const ARENA_WIDTH: f64 = 560.0;
 const ARENA_HEIGHT: f64 = 560.0;
 const ARENA_MAX_PLAYERS: usize = 8;
 const ARENA_START_TIMER_SECONDS: i64 = 1;
-const LIGHTCYCLE_SPEED: f64 = 80.0;
+const LIGHTCYCLE_SPEED: f64 = 55.0;
+// const LIGHTCYCLE_BRAKE_SPEED: f64 = 40.0;
+// const LIGHTCYCLE_BOOST_SPEED: f64 = 70.0;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Arena {
