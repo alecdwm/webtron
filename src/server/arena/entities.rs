@@ -1,10 +1,10 @@
 use super::*;
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize)]
 pub struct Lightcycle {
     pub position: ArenaPoint,
     pub direction: Direction,
-    pub speed: isize,
+    pub speed: f64,
     pub dead: bool,
 }
 
@@ -19,7 +19,7 @@ impl Default for Lightcycle {
     }
 }
 
-#[derive(Debug, Default, Clone, Hash, PartialEq, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize)]
 pub struct Lightribbon {
     pub points: Vec<ArenaPoint>,
 }

@@ -15,20 +15,20 @@ pub use self::input::*;
 pub use self::updates::*;
 pub use self::util::*;
 
-use crate::server::{ArenaId, ArenaPoint, Direction, Line, Player, PlayerId};
+use crate::server::{ArenaId, ArenaLine, ArenaPoint, Direction, Player, PlayerId};
 
-const ARENA_WIDTH: usize = 560;
-const ARENA_HEIGHT: usize = 560;
+const ARENA_WIDTH: f64 = 560.0;
+const ARENA_HEIGHT: f64 = 560.0;
 const ARENA_MAX_PLAYERS: usize = 8;
 const ARENA_START_TIMER_SECONDS: i64 = 1;
-const LIGHTCYCLE_SPEED: isize = 1;
+const LIGHTCYCLE_SPEED: f64 = 80.0;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Arena {
     pub id: ArenaId,
     pub name: String,
-    pub width: usize,
-    pub height: usize,
+    pub width: f64,
+    pub height: f64,
     pub max_players: usize,
 
     pub started: Option<DateTime<Utc>>,
@@ -82,7 +82,7 @@ impl Arena {
             .for_each(|update| self.updates.push(update));
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, delta_time: f64) {
         // apply process_input updates
         self.apply_updates();
 
@@ -96,9 +96,9 @@ impl Arena {
             return;
         }
 
-        self.update_lightcycle_positions()
+        self.update_lightcycle_positions(delta_time)
             .apply_updates()
-            .calculate_lightcycle_collisions()
+            .calculate_lightcycle_collisions(delta_time)
             .apply_updates()
             .update_lightribbon_positions()
             .apply_updates()
@@ -110,7 +110,7 @@ impl Arena {
     // update helpers
     //
 
-    fn update_lightcycle_positions(&mut self) -> &mut Self {
+    fn update_lightcycle_positions(&mut self, delta_time: f64) -> &mut Self {
         for (id, lightcycle) in self.lightcycles.iter() {
             if lightcycle.dead {
                 continue;
@@ -118,25 +118,46 @@ impl Arena {
 
             self.updates.push(ArenaUpdate::UpdateLightcyclePosition(
                 *id,
-                lightcycle.position + lightcycle.direction.as_velocity() * lightcycle.speed,
+                lightcycle.position
+                    + lightcycle.direction.as_velocity() * lightcycle.speed * delta_time,
             ))
         }
         self
     }
 
-    fn calculate_lightcycle_collisions(&mut self) -> &mut Self {
+    fn calculate_lightcycle_collisions(&mut self, delta_time: f64) -> &mut Self {
         'next_lightcycle: for (id, lightcycle) in self.lightcycles.iter() {
             if lightcycle.dead {
                 continue 'next_lightcycle;
             };
 
+            let last_position = lightcycle.position
+                - lightcycle.direction.as_velocity() * lightcycle.speed * delta_time;
+
+            let travelled = ArenaLine {
+                from: last_position.to_untyped(),
+                to: lightcycle.position.to_untyped(),
+            };
+
             // test for lightribbon collisions
             for lightribbon in self.lightribbons.values() {
                 for line in lightribbon.points.windows(2) {
-                    let start = line[0];
-                    let end = line[1];
+                    let line = ArenaLine {
+                        from: line[0].to_untyped(),
+                        to: line[1].to_untyped(),
+                    };
 
-                    if is_point_on_line_2d(lightcycle.position, Line(start, end)) {
+                    if travelled.overlaps_segment(&line) {
+                        self.updates
+                            .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                        continue 'next_lightcycle;
+                    }
+
+                    if let Some(intersection) = travelled.intersection(&line) {
+                        self.updates.push(ArenaUpdate::UpdateLightcyclePosition(
+                            *id,
+                            ArenaPoint::from_untyped(intersection),
+                        ));
                         self.updates
                             .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
                         continue 'next_lightcycle;
@@ -145,10 +166,10 @@ impl Arena {
             }
 
             // test for arena bounds collisions
-            if lightcycle.position.x < 0
-                || lightcycle.position.y < 0
-                || lightcycle.position.x > self.width as isize
-                || lightcycle.position.y > self.height as isize
+            if lightcycle.position.x < 0.0
+                || lightcycle.position.y < 0.0
+                || lightcycle.position.x > self.width
+                || lightcycle.position.y > self.height
             {
                 self.updates
                     .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));

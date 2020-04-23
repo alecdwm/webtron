@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Hash, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum ArenaUpdate {
     AddPlayer(PlayerId, Player),
     AddLightcycle(PlayerId, Lightcycle),

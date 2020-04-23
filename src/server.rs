@@ -39,7 +39,7 @@ impl Server {
         loop {
             interval.tick().await;
             self.process_messages().await;
-            self.update();
+            self.update(UPDATE_RATE_MILLISECONDS as f64 / 1000.0);
             self.send_updates().await;
         }
     }
@@ -57,9 +57,9 @@ impl Server {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, delta_time: f64) {
         self.arenas.retain(|_, arena| {
-            arena.update();
+            arena.update(delta_time);
 
             // discard arena if all players have left
             !arena.players.is_empty()

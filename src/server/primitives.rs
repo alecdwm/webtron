@@ -1,4 +1,5 @@
 use euclid::{Point2D, Vector2D};
+use lyon_geom::LineSegment;
 use serde_derive::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
@@ -12,11 +13,11 @@ pub type ArenaId = Uuid;
 /// The euclidian space in which ArenaVectors and ArenaPoints operate.
 pub struct ArenaSpace;
 /// Represents a direction in the ArenaSpace
-pub type ArenaVector = Vector2D<isize, ArenaSpace>;
+pub type ArenaVector = Vector2D<f64, ArenaSpace>;
 /// Represents a position in the ArenaSpace
-pub type ArenaPoint = Point2D<isize, ArenaSpace>;
+pub type ArenaPoint = Point2D<f64, ArenaSpace>;
 /// Represents a line between two points in the ArenaSpace
-pub struct Line(pub ArenaPoint, pub ArenaPoint);
+pub type ArenaLine = LineSegment<f64>;
 
 #[derive(Debug)]
 pub struct Client {
@@ -75,10 +76,10 @@ pub enum Direction {
 impl Direction {
     pub fn as_velocity(self) -> ArenaVector {
         match self {
-            Direction::Up => ArenaVector::new(0, 1),
-            Direction::Down => ArenaVector::new(0, -1),
-            Direction::Left => ArenaVector::new(-1, 0),
-            Direction::Right => ArenaVector::new(1, 0),
+            Direction::Up => ArenaVector::new(0.0, 1.0),
+            Direction::Down => ArenaVector::new(0.0, -1.0),
+            Direction::Left => ArenaVector::new(-1.0, 0.0),
+            Direction::Right => ArenaVector::new(1.0, 0.0),
         }
     }
 

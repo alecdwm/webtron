@@ -1,52 +1,52 @@
 use super::*;
 
-const SPAWNPOINTS: [(isize, isize, Direction); ARENA_MAX_PLAYERS] = [
+const SPAWNPOINTS: [(f64, f64, Direction); ARENA_MAX_PLAYERS] = [
     // (
-    //     ARENA_WIDTH as isize / 2,
-    //     ARENA_HEIGHT as isize / 2,
+    //     ARENA_WIDTH / 2.0,
+    //     ARENA_HEIGHT / 2.0,
     //     Direction::Up,
     // ),
     //
     (
-        ARENA_WIDTH as isize / 2,
-        ARENA_HEIGHT as isize / 2 - ARENA_HEIGHT as isize / 4,
+        ARENA_WIDTH / 2.0,
+        ARENA_HEIGHT / 2.0 - ARENA_HEIGHT / 4.0,
         Direction::Down,
     ),
     (
-        ARENA_WIDTH as isize / 2,
-        ARENA_HEIGHT as isize / 2 + ARENA_HEIGHT as isize / 4,
+        ARENA_WIDTH / 2.0,
+        ARENA_HEIGHT / 2.0 + ARENA_HEIGHT / 4.0,
         Direction::Up,
     ),
     //
     (
-        ARENA_WIDTH as isize / 2 - ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2,
+        ARENA_WIDTH / 2.0 - ARENA_WIDTH / 4.0,
+        ARENA_HEIGHT / 2.0,
         Direction::Right,
     ),
     (
-        ARENA_WIDTH as isize / 2 + ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2,
+        ARENA_WIDTH / 2.0 + ARENA_WIDTH / 4.0,
+        ARENA_HEIGHT / 2.0,
         Direction::Left,
     ),
     //
     (
-        ARENA_WIDTH as isize / 2 - ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 - ARENA_HEIGHT as isize / 4,
+        ARENA_WIDTH / 2.0 - ARENA_WIDTH / 4.0,
+        ARENA_HEIGHT / 2.0 - ARENA_HEIGHT / 4.0,
         Direction::Right,
     ),
     (
-        ARENA_WIDTH as isize / 2 - ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 + ARENA_HEIGHT as isize / 4,
+        ARENA_WIDTH / 2.0 - ARENA_WIDTH / 4.0,
+        ARENA_HEIGHT / 2.0 + ARENA_HEIGHT / 4.0,
         Direction::Right,
     ),
     (
-        ARENA_WIDTH as isize / 2 + ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 - ARENA_HEIGHT as isize / 4,
+        ARENA_WIDTH / 2.0 + ARENA_WIDTH / 4.0,
+        ARENA_HEIGHT / 2.0 - ARENA_HEIGHT / 4.0,
         Direction::Left,
     ),
     (
-        ARENA_WIDTH as isize / 2 + ARENA_WIDTH as isize / 4,
-        ARENA_HEIGHT as isize / 2 + ARENA_HEIGHT as isize / 4,
+        ARENA_WIDTH / 2.0 + ARENA_WIDTH / 4.0,
+        ARENA_HEIGHT / 2.0 + ARENA_HEIGHT / 4.0,
         Direction::Left,
     ),
 ];
@@ -82,41 +82,4 @@ pub fn calculate_spawnpoints(player_ids: Vec<PlayerId>) -> Vec<(PlayerId, ArenaP
     }
 
     spawnpoints
-}
-
-pub fn is_point_on_line_2d(point: ArenaPoint, line: Line) -> bool {
-    let start = line.0;
-    let end = line.1;
-
-    if start.x == end.x {
-        if point.x != start.x {
-            return false;
-        }
-
-        return is_point_on_line_1d(point.y, (start.y, end.y));
-    }
-
-    if start.y == end.y {
-        if point.y != start.y {
-            return false;
-        }
-
-        return is_point_on_line_1d(point.x, (start.x, end.x));
-    }
-
-    false
-}
-
-pub fn is_point_on_line_1d(point: isize, line: (isize, isize)) -> bool {
-    let (low, high) = if line.0 <= line.1 {
-        (line.0, line.1)
-    } else {
-        (line.1, line.0)
-    };
-
-    if point < low || high < point {
-        return false;
-    }
-
-    true
 }
