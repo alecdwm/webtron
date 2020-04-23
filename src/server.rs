@@ -16,7 +16,7 @@ pub use primitives::*;
 use crate::get_error_chain;
 use messages::MessageInPayload;
 
-const UPDATE_RATE_MILLISECONDS: u64 = 25; // 1000 / 25 = 40 updates per second
+const UPDATE_RATE_MILLISECONDS: u64 = 50; // 1000 / 50 = 20 updates per second
 
 #[derive(Debug)]
 pub struct Server {
