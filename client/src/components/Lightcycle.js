@@ -1,4 +1,5 @@
 import useClassName from 'hooks/useClassName'
+import useInterpolatedLightcyclePosition from 'hooks/useInterpolatedLightcyclePosition'
 import useStore from 'hooks/useStore'
 import PropTypes from 'prop-types'
 import React from 'react'
@@ -12,9 +13,11 @@ export default function Lightcycle({ name, color, position = [0, 0], direction, 
     arena: { width, height },
   } = useStore()
 
-  const left = `${(position[0] / width) * 100}%`
-  const bottom = `${(position[1] / height) * 100}%`
-  const tagBottom = `calc(${(position[1] / height) * 100}% + 20px)`
+  const interpolatedPosition = useInterpolatedLightcyclePosition(position, direction, speed, dead)
+
+  const left = `${(interpolatedPosition[0] / width) * 100}%`
+  const bottom = `${(interpolatedPosition[1] / height) * 100}%`
+  const tagBottom = `calc(${(interpolatedPosition[1] / height) * 100}% + 20px)`
   const rotationMap = {
     up: '270deg',
     down: '90deg',

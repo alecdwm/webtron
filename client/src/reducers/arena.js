@@ -1,4 +1,5 @@
 import { RECEIVE_ARENA_JOINED, RECEIVE_ARENA_STATE, RECEIVE_ARENA_STATE_PATCH } from 'actions'
+import dayjs from 'dayjs'
 import createReducer from 'utils/createReducer'
 
 const initialState = null
@@ -50,7 +51,7 @@ function updateArena(arena, update) {
 
     Start: (startAt) => ({
       ...arena,
-      started: startAt,
+      started: dayjs(startAt),
     }),
     End: () => ({
       ...arena,
