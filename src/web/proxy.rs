@@ -29,7 +29,7 @@ const HOP_BY_HOP_HEADERS: &[&str] = &[
 
 pub fn proxy(target: &str) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     let target: Uri = target.parse().expect("Invalid proxy target");
-    let target_host = match (target.clone().host(), target.clone().port()) {
+    let target_host = match (target.host(), target.port()) {
         (Some(host), Some(port)) => HeaderValue::from_str(&format!("{}:{}", host, port)).ok(),
         (Some(host), None) => HeaderValue::from_str(host).ok(),
         _ => None,
