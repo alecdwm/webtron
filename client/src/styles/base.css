@@ -8,6 +8,8 @@ html {
   color: var(--blue);
   background-color: var(--darkaqua);
   font-family: 'Courier New', Courier, monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
