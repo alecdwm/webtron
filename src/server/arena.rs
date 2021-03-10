@@ -67,12 +67,12 @@ impl Arena {
     }
 
     pub fn apply_updates(&mut self) -> &mut Self {
-        let updates = mem::replace(&mut self.updates, Vec::new());
+        let updates = mem::take(&mut self.updates);
         for update in updates.iter().skip(self.updates_applied_so_far) {
             update.apply(self);
             self.updates_applied_so_far += 1;
         }
-        mem::replace(&mut self.updates, updates);
+        self.updates = updates;
 
         self
     }
