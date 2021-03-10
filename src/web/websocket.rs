@@ -30,7 +30,7 @@ async fn handle_websocket(
     ip_address: Option<String>,
     mut server_tx: Sender<MessageIn>,
 ) {
-    let id = ClientId::new_v4();
+    let id = ClientId::default();
 
     let (messages_tx, messages_rx) = mpsc::channel::<MessageOut>(100);
     let (ws_tx, ws_rx) = websocket.split();

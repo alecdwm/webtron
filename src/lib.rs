@@ -1,4 +1,9 @@
 ///
+/// Useful macros (for internal use).
+///
+pub mod macros;
+
+///
 /// Handles server configuration.
 ///
 pub mod config;

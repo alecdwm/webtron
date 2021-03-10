@@ -2,13 +2,13 @@ use euclid::{Point2D, Vector2D};
 use lyon_geom::LineSegment;
 use serde_derive::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
-use uuid::Uuid;
 
+use crate::new_id_type;
 use crate::server::MessageOut;
 
-pub type ClientId = Uuid;
-pub type PlayerId = Uuid;
-pub type ArenaId = Uuid;
+new_id_type!(ClientId);
+new_id_type!(PlayerId);
+new_id_type!(ArenaId);
 
 /// The euclidian space in which ArenaVectors and ArenaPoints operate.
 pub struct ArenaSpace;
@@ -29,22 +29,12 @@ pub struct Client {
     pub updates_sent_so_far: usize,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]
 pub struct Player {
-    #[serde(skip_serializing, skip_deserializing, default = "PlayerId::new_v4")]
+    #[serde(skip_serializing, skip_deserializing)]
     pub id: PlayerId,
     pub name: String,
     pub color: PlayerColor,
-}
-
-impl Default for Player {
-    fn default() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            name: Default::default(),
-            color: Default::default(),
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]

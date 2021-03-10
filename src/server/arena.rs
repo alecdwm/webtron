@@ -233,7 +233,7 @@ impl Arena {
 impl Default for Arena {
     fn default() -> Self {
         Self {
-            id: ArenaId::new_v4(),
+            id: Default::default(),
             name: Default::default(),
             width: ARENA_WIDTH,
             height: ARENA_HEIGHT,
