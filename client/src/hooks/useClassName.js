@@ -32,12 +32,21 @@ export default function useClassName(staticClassName, WrappedComponent = 'div') 
   // WithClassName wrapper component when the staticClassName changes.
   const staticClassNameRef = useRef(staticClassName)
 
+  // When staticClassName changes, update the value stored inside staticClassNameRef.
+  staticClassNameRef.current = staticClassName
+
+  // When staticClassName changes, trigger a forceUpdate in the wrapper component (if available).
+  useEffect(() => {
+    if (!forceUpdateRef.current) return
+    forceUpdateRef.current()
+  }, [staticClassName])
+
   // Store forceUpdate in a ref so we can use it outside of the
   // WithClassName wrapper component.
   const forceUpdateRef = useRef()
 
   // useCallback memoizes the WithClassName component using the `WrappedComponent` variable.
-  // (if WrappedComponent doesn't change, the callback function is only called once).
+  // (if WrappedComponent doesn't change, the callback function is only created once).
   //
   // This stops React from replacing the entire DOM structure below and including
   // the WithClassName wrapper component when the WrappedComponent hasn't changed.
@@ -55,16 +64,15 @@ export default function useClassName(staticClassName, WrappedComponent = 'div') 
 
         // ...but remove it when we unmount this component, so that the useEffect
         // hook cannot call setState on an unmounted component.
-        useEffect(
-          () => () => {
+        useEffect(() => {
+          return () => {
             // Don't do anything if the forceUpdateRef.current value has changed
             // since we set it.
             if (forceUpdateRef.current !== forceUpdate) return
 
             forceUpdateRef.current = undefined
-          },
-          [forceUpdate],
-        )
+          }
+        }, [forceUpdate])
 
         // Resolve propsClassName to a string.
         propsClassName = resolveClassName(propsClassName)
@@ -82,13 +90,6 @@ export default function useClassName(staticClassName, WrappedComponent = 'div') 
     ),
     [WrappedComponent],
   )
-
-  // When staticClassName changes, update the value stored inside the staticClassNameRef
-  // variable, then trigger a forceUpdate in the wrapper component (if available).
-  useEffect(() => {
-    staticClassNameRef.current = staticClassName
-    forceUpdateRef.current && forceUpdateRef.current()
-  }, [staticClassName])
 
   return WithClassName
 }
