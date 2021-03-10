@@ -7,7 +7,7 @@ use warp::{Filter, Rejection, Reply};
 use crate::web::errors::InternalServerError;
 
 #[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/client/dist"]
+#[folder = "$CARGO_MANIFEST_DIR/client/build"]
 struct Asset;
 
 pub fn embed() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {

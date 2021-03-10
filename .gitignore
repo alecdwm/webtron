@@ -2,8 +2,7 @@
 # Project cruft #
 #################
 **/*.rs.bk
-/client/.next
-/client/dist
+/client/build
 /client/node_modules
 /client/yarn-debug.log*
 /client/yarn-error.log*

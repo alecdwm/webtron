@@ -1,0 +1,20 @@
+{
+  "short_name": "Webtron",
+  "name": "Webtron",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "24x24",
+      "type": "image/png"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#111b1a",
+  "background_color": "#111b1a"
+}

@@ -41,6 +41,8 @@ export default function useClassName(staticClassName, WrappedComponent = 'div') 
   //
   // This stops React from replacing the entire DOM structure below and including
   // the WithClassName wrapper component when the WrappedComponent hasn't changed.
+  //
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const WithClassName = useCallback(
     // eslint-disable-next-line react/display-name
     forwardRef(

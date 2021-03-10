@@ -2,31 +2,66 @@
   "name": "webtron",
   "license": "MIT",
   "scripts": {
-    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev --port 3001",
-    "fmt": "prettier --parser json --write .eslintrc .csscombrc .importsortrc; prettier --write next.config.js src; node node_modules/csscomb/src/cli.js -c .csscombrc src",
-    "prebuild": "NEXT_TELEMETRY_DISABLED=1 NODE_ENV=production next build",
-    "build": "NEXT_TELEMETRY_DISABLED=1 NODE_ENV=production next export -o dist",
-    "postbuild": "touch dist/.gitkeep"
+    "dev": "cross-env-shell PORT=3001 BROWSER=none FORCE_COLOR=true craco start | cat",
+    "build": "craco build",
+    "postbuild": "touch build/.gitkeep"
   },
   "dependencies": {
-    "babel-eslint": "^10.1.0",
-    "csscomb": "csscomb/csscomb.js#1f27f9e4e0f6a9f0849b6fc6e8325baf9371aeaf",
-    "dayjs": "^1.8.25",
-    "eslint": "^6.8.0",
-    "eslint-config-prettier": "^6.10.1",
-    "eslint-loader": "^4.0.0",
-    "eslint-plugin-react": "^7.19.0",
-    "eslint-plugin-react-hooks": "^3.0.0",
+    "@craco/craco": "^6.1.1",
+    "cross-env": "^7.0.3",
+    "dayjs": "^1.10.4",
     "import-sort-style-module": "^6.0.0",
-    "next": "^9.3.4",
-    "next-compose-plugins": "^2.2.0",
-    "prettier": "^2.0.2",
+    "prettier": "^2.2.1",
     "prettier-loader": "^3.3.0",
-    "prettier-plugin-import-sort": "^0.0.4",
-    "prop-types": "^15.7.2",
-    "react": "^16.13.1",
-    "react-dom": "^16.13.1",
-    "url-loader": "^4.1.0",
-    "webpack": "^4.42.1"
+    "prettier-plugin-import-sort": "^0.0.6",
+    "react": "^17.0.1",
+    "react-dom": "^17.0.1",
+    "react-scripts": "4.0.3"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ],
+    "rules": {
+      "default-case": "off"
+    }
+  },
+  "prettier": {
+    "printWidth": 120,
+    "semi": false,
+    "singleQuote": true,
+    "trailingComma": "all",
+    "overrides": [
+      {
+        "files": "*.js",
+        "options": {
+          "parser": "babel"
+        }
+      },
+      {
+        "files": "*.css",
+        "options": {
+          "parser": "css"
+        }
+      }
+    ]
+  },
+  "importSort": {
+    ".js": {
+      "style": "module"
+    }
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }

@@ -6,7 +6,7 @@ import lightcyclePurple from 'img/lightcycle-purple.png'
 import lightcycleRed from 'img/lightcycle-red.png'
 import lightcycleWhite from 'img/lightcycle-white.png'
 
-export default {
+const lightcycleImages = {
   blue: lightcycleBlue,
   dark: lightcycleDark,
   green: lightcycleGreen,
@@ -15,3 +15,4 @@ export default {
   red: lightcycleRed,
   white: lightcycleWhite,
 }
+export default lightcycleImages
