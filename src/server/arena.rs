@@ -226,6 +226,10 @@ impl Arena {
     }
 
     fn test_win_condition(&mut self) -> &mut Self {
+        if self.winner.is_some() {
+            return self;
+        }
+
         if self.lightcycles.iter().count() <= 1 {
             return self;
         }
