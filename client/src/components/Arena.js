@@ -39,7 +39,7 @@ export default function Arena() {
       {Object.entries(arena.lightcycles).map(([id, { position, direction, speed, dead }]) => (
         <Lightcycle
           key={id}
-          name={arena.players[id] ? arena.players[id].name : 'NULL'}
+          name={arena.players[id] ? arena.players[id].name : 'DISCONNECTED'}
           color={arena.players[id] ? arena.players[id].color : 'white'}
           position={position}
           direction={direction}
