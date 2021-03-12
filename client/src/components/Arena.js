@@ -8,7 +8,7 @@ import usePreloadImages from 'hooks/usePreloadImages'
 import useStore from 'hooks/useStore'
 import useStoreDispatch from 'hooks/useStoreDispatch'
 import backgroundPanel from 'img/background-panel.svg'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useRef } from 'react'
 import { colorToHexString } from 'utils/colors'
 import lightcycleImages from 'utils/lightcycleImages'
 
@@ -26,7 +26,7 @@ export default function Arena() {
   useKeyControls(arena.started)
   useTouchControls(arena.started, arenaRef)
 
-  const winner = useArenaWinner(arena)
+  const winner = arena.winner && arena.players[arena.winner]
 
   const Arena = useClassName(styles.arena)
   const Background = useClassName([styles.background, arena.started !== null && styles.backgroundStarted])
@@ -164,25 +164,4 @@ function useTouchControls(started, arenaRef) {
   useEventListener('mousedown', onMouseDown, arenaRef.current)
 
   return arenaRef
-}
-
-function useArenaWinner(arena) {
-  const [winner, setWinner] = useState(false)
-
-  useEffect(() => {
-    setWinner((winner) => {
-      const totalPlayers = Object.keys(arena.players).length
-      if (totalPlayers <= 1) return false
-
-      const aliveLightcycles = Object.entries(arena.lightcycles).filter((entry) => !entry[1].dead)
-      if (aliveLightcycles.length > 1) return false
-      if (aliveLightcycles.length === 1) {
-        const playerId = aliveLightcycles[0][0]
-        return arena.players[playerId]
-      }
-      return winner
-    })
-  }, [arena])
-
-  return winner
 }

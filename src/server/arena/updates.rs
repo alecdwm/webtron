@@ -8,6 +8,7 @@ pub enum ArenaUpdate {
 
     Start(DateTime<Utc>),
     End,
+    SetWinner(Option<PlayerId>),
 
     UpdateLightcyclePosition(PlayerId, ArenaPoint),
     UpdateLightcycleDirection(PlayerId, Direction),
@@ -36,6 +37,7 @@ impl ArenaUpdate {
 
             ArenaUpdate::Start(start_at) => arena.started = Some(*start_at),
             ArenaUpdate::End => arena.started = None,
+            ArenaUpdate::SetWinner(winner) => arena.winner = *winner,
 
             ArenaUpdate::UpdateLightcyclePosition(player_id, position) => {
                 let lightcycle = match arena.lightcycles.get_mut(player_id) {

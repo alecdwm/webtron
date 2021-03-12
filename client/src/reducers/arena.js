@@ -13,6 +13,7 @@ export default createReducer(initialState, {
     max_players: 0,
 
     started: null,
+    winner: null,
 
     players: {},
     lightcycles: {},
@@ -56,6 +57,10 @@ function updateArena(arena, update) {
     End: () => ({
       ...arena,
       started: null,
+    }),
+    SetWinner: (winner) => ({
+      ...arena,
+      winner,
     }),
 
     UpdateLightcyclePosition: ([playerId, position]) => ({

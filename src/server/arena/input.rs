@@ -19,11 +19,14 @@ impl ArenaInput {
                 }
 
                 let mut updates = Vec::with_capacity(
-                    arena.lightcycles.len()
+                    1 + arena.lightcycles.len()
                         + arena.lightribbons.len()
                         + (arena.players.len() * 2)
                         + 1,
                 );
+
+                // remove existing winner
+                updates.push(ArenaUpdate::SetWinner(None));
 
                 // remove existing lightcycles
                 arena

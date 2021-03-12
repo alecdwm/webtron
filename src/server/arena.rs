@@ -34,6 +34,7 @@ pub struct Arena {
     pub max_players: usize,
 
     pub started: Option<DateTime<Utc>>,
+    pub winner: Option<PlayerId>,
 
     pub players: HashMap<PlayerId, Player>,
     pub lightcycles: HashMap<PlayerId, Lightcycle>,
@@ -103,6 +104,8 @@ impl Arena {
             .calculate_lightcycle_collisions(delta_time)
             .apply_updates()
             .update_lightribbon_positions()
+            .apply_updates()
+            .test_win_condition()
             .apply_updates()
             .test_round_end()
             .apply_updates();
@@ -222,6 +225,23 @@ impl Arena {
         self
     }
 
+    fn test_win_condition(&mut self) -> &mut Self {
+        if self.lightcycles.iter().count() <= 1 {
+            return self;
+        }
+
+        let mut alive_lightcycles = self
+            .lightcycles
+            .iter()
+            .filter(|(_, lightcycle)| !lightcycle.dead);
+
+        if let (Some((player_id, _)), None) = (alive_lightcycles.next(), alive_lightcycles.next()) {
+            self.updates.push(ArenaUpdate::SetWinner(Some(*player_id)));
+        }
+
+        self
+    }
+
     fn test_round_end(&mut self) -> &mut Self {
         if self.lightcycles.values().all(|lightcycle| lightcycle.dead) {
             self.updates.push(ArenaUpdate::End);
@@ -240,6 +260,7 @@ impl Default for Arena {
             max_players: ARENA_MAX_PLAYERS,
 
             started: None,
+            winner: None,
 
             players: Default::default(),
             lightcycles: Default::default(),
