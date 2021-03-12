@@ -26,7 +26,10 @@ export default function MainMenu() {
   const onConnect = useCallback(() => dispatch(connect()), [dispatch])
 
   const handlePlayerNameChange = useCallback(
-    (name) => dispatch(setPlayerName(name.slice(0, MAX_PLAYER_NAME_LENGTH).toLowerCase().replace(/ /g, '_'))),
+    (name) =>
+      dispatch(
+        setPlayerName(name.slice(0, MAX_PLAYER_NAME_LENGTH).toLowerCase().replace(/ /g, '_').replace(/\s/g, '')),
+      ),
     [dispatch],
   )
 

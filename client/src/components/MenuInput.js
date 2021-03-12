@@ -36,14 +36,18 @@ export default function MenuInput({ className, focusOnMount, onChange, onSubmit,
   )
 
   const handleSelect = useCallback(({ currentTarget }) => {
-    const value = currentTarget.value
-    currentTarget.setSelectionRange(value.length, value.length)
+    setTimeout(() => {
+      const value = currentTarget.value
+      currentTarget.setSelectionRange(value.length, value.length)
+    }, 0)
   }, [])
 
   const handleFocus = useCallback(
     ({ currentTarget }) => {
-      const value = currentTarget.value
-      currentTarget.setSelectionRange(value.length, value.length)
+      setTimeout(() => {
+        const value = currentTarget.value
+        currentTarget.setSelectionRange(value.length, value.length)
+      }, 0)
       resetCursorBlink()
       setFocused(true)
     },
