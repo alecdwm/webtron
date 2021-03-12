@@ -24,6 +24,22 @@
   opacity: 1;
 }
 
+.winnerText {
+  position: absolute;
+  top: 85px;
+  right: 5px;
+  left: 5px;
+  height: 150px;
+  border: 3px solid var(--blue);
+  border-radius: 15px;
+  background: var(--darkaqua-transparent);
+  font-size: 3.5rem;
+  font-weight: bold;
+  line-height: 150px;
+  text-align: center;
+  white-space: pre;
+}
+
 .startButton {
   position: absolute;
   top: 50%;

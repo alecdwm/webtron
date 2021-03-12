@@ -1,6 +1,7 @@
 :root {
   --blue: #00c2cc;
   --darkaqua: #111b1a;
+  --darkaqua-transparent: rgba(17, 27, 26, 0.95);
   --green: #2ee53d;
   --orange: #f2d91a;
   --purple: #8a2ee5;
