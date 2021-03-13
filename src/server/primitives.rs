@@ -35,6 +35,8 @@ pub struct Player {
     pub id: PlayerId,
     pub name: String,
     pub color: PlayerColor,
+    #[serde(skip_deserializing)]
+    pub ai: bool,
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]
