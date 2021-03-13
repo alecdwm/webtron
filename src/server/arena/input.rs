@@ -18,10 +18,14 @@ impl ArenaInput {
                     return vec![];
                 }
 
+                let add_ai = arena.players.iter().count() == 1;
+                let ai_player_quantity = select_ai_quantity(add_ai);
+
                 let mut updates = Vec::with_capacity(
                     1 + arena.lightcycles.len()
                         + arena.lightribbons.len()
-                        + (arena.players.len() * 2)
+                        + ai_player_quantity
+                        + ((arena.players.len() + ai_player_quantity) * 2)
                         + 1,
                 );
 
@@ -42,8 +46,16 @@ impl ArenaInput {
                     .copied()
                     .for_each(|id| updates.push(ArenaUpdate::RemoveLightribbon(id)));
 
+                // add ai players
+                let mut ai_player_ids = Vec::with_capacity(ai_player_quantity);
+                select_ai_from_pool(ai_player_quantity).for_each(|ai_player| {
+                    ai_player_ids.push(ai_player.id);
+                    updates.push(ArenaUpdate::AddPlayer(ai_player.id, ai_player));
+                });
+
                 // add new lightcycles and lightribbons
-                let player_ids = arena.players.keys().copied().collect();
+                let mut player_ids: Vec<_> = arena.players.keys().copied().collect();
+                player_ids.append(&mut ai_player_ids);
                 calculate_spawnpoints(player_ids).drain(..).for_each(
                     |(player_id, spawn_position, spawn_direction)| {
                         updates.push(ArenaUpdate::AddLightcycle(

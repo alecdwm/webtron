@@ -15,7 +15,7 @@ pub use self::input::*;
 pub use self::updates::*;
 pub use self::util::*;
 
-use crate::server::{ArenaId, ArenaLine, ArenaPoint, Direction, Player, PlayerId};
+use crate::server::{ArenaId, ArenaLine, ArenaPoint, Direction, Player, PlayerColor, PlayerId};
 
 const ARENA_WIDTH: f64 = 560.0;
 const ARENA_HEIGHT: f64 = 560.0;
@@ -249,6 +249,15 @@ impl Arena {
     fn test_round_end(&mut self) -> &mut Self {
         if self.lightcycles.values().all(|lightcycle| lightcycle.dead) {
             self.updates.push(ArenaUpdate::End);
+
+            // remove ai players
+            self.players
+                .iter()
+                .filter(|(_, player)| player.ai)
+                .map(|(player_id, _)| *player_id)
+                .collect::<Vec<_>>()
+                .iter()
+                .for_each(|player_id| self.updates.push(ArenaUpdate::RemovePlayer(*player_id)));
         }
         self
     }
