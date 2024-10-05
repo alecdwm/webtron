@@ -1,3 +1,8 @@
+@import './styles/base.css';
+@import './styles/links.css';
+@import './styles/page.css';
+@import './styles/animations.css';
+
 :root {
   --blue: #00c2cc;
   --darkaqua: #111b1a;
@@ -11,8 +16,3 @@
 :root {
   --footer-height: 4rem;
 }
-
-@import 'styles/base.css';
-@import 'styles/links.css';
-@import 'styles/page.css';
-@import 'styles/animations.css';

@@ -2,8 +2,16 @@
 # Project cruft #
 #################
 **/*.rs.bk
-/client/build
+/client/*.local
+/client/*.log
+/client/*.tsbuildinfo
+/client/dist
+/client/dist-ssr
+/client/lerna-debug.log*
+/client/logs
 /client/node_modules
+/client/npm-debug.log*
+/client/pnpm-debug.log*
 /client/yarn-debug.log*
 /client/yarn-error.log*
 /target
@@ -11,12 +19,14 @@
 ######################
 # OS generated files #
 ######################
-*.sw[mnpcod]
+._*
 .#*
 .DS_Store
-.DS_Store?
 .Spotlight-V100
 .Trashes
-._*
-Thumbs.db
+.vscode/*
+*.sw[mnpcod]
 ehthumbs.db
+Thumbs.db
+
+!.vscode/extensions.json

@@ -8,15 +8,16 @@ fn main() {
         return;
     };
 
-    let out = Command::new("yarn")
+    let out = Command::new("bun")
         .current_dir("client")
         .arg("install")
         .status()
         .expect("Failed to fetch client dependencies");
     assert!(out.success());
 
-    let out = Command::new("yarn")
+    let out = Command::new("bun")
         .current_dir("client")
+        .arg("run")
         .arg("build")
         .status()
         .expect("Failed to build client");
