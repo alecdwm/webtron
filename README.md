@@ -1,10 +1,10 @@
 <div align="center">
 
-# [![webtron](client/src/img/webtron.svg)](https://tron.owls.io)
+# [![webtron](client/src/img/webtron.svg)](https://tron.shirls.org)
 
 A browser-based multiplayer implementation of the classic Tron Lightcycles arcade game.
 
-[![a screenshot of an in-progress webtron game](screenshot.png)](https://tron.owls.io)
+[![a screenshot of an in-progress webtron game](screenshot.png)](https://tron.shirls.org)
 
 </div>
 
