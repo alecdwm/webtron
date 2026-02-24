@@ -1,14 +1,14 @@
 use bytes::{Buf, Bytes};
 use futures::sink::SinkExt;
 use futures::stream::{Stream, StreamExt};
-use hyper::header::{Entry, HeaderValue, CONNECTION, HOST, UPGRADE};
+use hyper::header::{CONNECTION, Entry, HOST, HeaderValue, UPGRADE};
 use hyper::{Body, Client, HeaderMap, Method, Request, StatusCode, Uri};
 use log::{error, warn};
 use std::error::Error as StdError;
 use std::net::SocketAddr;
 use tokio::select;
-use tokio_tungstenite::tungstenite::protocol::{Message, Role};
 use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::tungstenite::protocol::{Message, Role};
 use warp::path::Tail;
 use warp::ws::{Message as WarpMessage, Ws};
 use warp::{Filter, Rejection, Reply};
@@ -27,7 +27,9 @@ const HOP_BY_HOP_HEADERS: &[&str] = &[
     "upgrade",
 ];
 
-pub fn proxy(target: &str) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+pub fn proxy(
+    target: &str,
+) -> impl Filter<Extract = (impl Reply + use<>,), Error = Rejection> + Clone + use<> {
     let target: Uri = target.parse().expect("Invalid proxy target");
     let target_host = match (target.host(), target.port()) {
         (Some(host), Some(port)) => HeaderValue::from_str(&format!("{}:{}", host, port)).ok(),
@@ -185,18 +187,19 @@ async fn proxy_http(
 ) -> Result<impl Reply, Rejection> {
     let client = Client::new();
 
-    let body: Box<dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Send + Sync> =
-        Box::new(body.map(|result| {
-            result.map(|mut buf| buf.to_bytes()).map_err(|error| {
-                error!("Error occurred while reading request body: {}", error);
-                error.into()
-            })
-        }));
+    let body: Box<
+        dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Unpin + Send + Sync,
+    > = Box::new(body.map(|result| {
+        result.map(|mut buf| buf.to_bytes()).map_err(|error| {
+            error!("Error occurred while reading request body: {}", error);
+            error.into()
+        })
+    }));
 
     let mut request = Request::builder()
         .method(method)
         .uri(format_uri(&target, path.as_str(), query))
-        .body(Body::from(body))
+        .body(Body::wrap_stream(body))
         .map_err(|error| {
             error!("Failed to construct proxy request: {}", error);
             warp::reject::custom(InternalServerError)
@@ -239,12 +242,15 @@ fn append_x_forwarded_for_header(remote_addr: Option<SocketAddr>, headers: &mut 
                 }
                 Entry::Occupied(mut entry) => {
                     let existing = entry.get_mut();
-                    if let Ok(updated) = HeaderValue::from_bytes(
+                    match HeaderValue::from_bytes(
                         &[existing.as_bytes(), b", ", remote_addr.as_bytes()].concat(),
                     ) {
-                        *existing = updated;
-                    } else {
-                        *existing = remote_addr;
+                        Ok(updated) => {
+                            *existing = updated;
+                        }
+                        _ => {
+                            *existing = remote_addr;
+                        }
                     }
                 }
             }

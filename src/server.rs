@@ -2,7 +2,7 @@ mod arena;
 mod messages;
 mod primitives;
 
-use anyhow::{anyhow, Context as ResultContext, Error};
+use anyhow::{Context as ResultContext, Error, anyhow};
 use log::{error, info, warn};
 use std::collections::HashMap;
 use std::time::Duration;

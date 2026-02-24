@@ -25,7 +25,7 @@ async fn serve_path(path: Tail) -> Result<impl Reply, Rejection> {
     serve(path.as_str())
 }
 
-fn serve(path: &str) -> Result<impl Reply, Rejection> {
+fn serve(path: &str) -> Result<impl Reply + use<>, Rejection> {
     let asset = Asset::get(path).ok_or_else(warp::reject::not_found)?;
     let mime = mime_guess::from_path(path).first_or_octet_stream();
 
