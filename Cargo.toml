@@ -11,7 +11,7 @@ bytes = "0.5.6"
 chrono = { version = "0.4.44", features = ["serde"] }
 euclid = { version = "0.20.14", features = ["serde"] }
 futures = "0.3.32"
-hyper = "0.13.10"
+hyper = "0.14.12"
 log = "0.4.29"
 lyon_geom = "0.15.3"
 mime_guess = "2.0.5"
