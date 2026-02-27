@@ -573,7 +573,7 @@ dependencies = [
  "http",
  "indexmap 1.9.3",
  "slab",
- "tokio",
+ "tokio 0.2.25",
  "tokio-util",
  "tracing",
  "tracing-futures",
@@ -670,6 +670,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-body"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
+dependencies = [
+ "bytes 1.11.1",
+ "http",
+ "pin-project-lite 0.2.16",
+]
+
+[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -708,13 +719,35 @@ dependencies = [
  "futures-util",
  "h2",
  "http",
- "http-body",
+ "http-body 0.3.1",
  "httparse",
  "httpdate 0.3.2",
  "itoa 0.4.8",
  "pin-project 1.1.10",
  "socket2",
- "tokio",
+ "tokio 0.2.25",
+ "tower-service",
+ "tracing",
+ "want",
+]
+
+[[package]]
+name = "hyper"
+version = "0.14.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13f67199e765030fa08fe0bd581af683f0d5bc04ea09c2b1102012c5fb90e7fd"
+dependencies = [
+ "bytes 1.11.1",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "http",
+ "http-body 0.4.6",
+ "httparse",
+ "httpdate 1.0.3",
+ "itoa 0.4.8",
+ "pin-project-lite 0.2.16",
+ "tokio 1.49.0",
  "tower-service",
  "tracing",
  "want",
@@ -1774,6 +1807,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio"
+version = "1.49.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72a2903cd7736441aac9df9d7688bd0ce48edccaadf181c3b90be801e81d3d86"
+dependencies = [
+ "pin-project-lite 0.2.16",
+]
+
+[[package]]
 name = "tokio-macros"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1793,7 +1835,7 @@ dependencies = [
  "futures",
  "log",
  "pin-project 0.4.30",
- "tokio",
+ "tokio 0.2.25",
  "tungstenite 0.10.1",
 ]
 
@@ -1806,7 +1848,7 @@ dependencies = [
  "futures-util",
  "log",
  "pin-project 0.4.30",
- "tokio",
+ "tokio 0.2.25",
  "tungstenite 0.11.1",
 ]
 
@@ -1821,7 +1863,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite 0.1.12",
- "tokio",
+ "tokio 0.2.25",
 ]
 
 [[package]]
@@ -2030,7 +2072,7 @@ dependencies = [
  "futures",
  "headers",
  "http",
- "hyper",
+ "hyper 0.13.10",
  "log",
  "mime",
  "mime_guess",
@@ -2040,7 +2082,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "tokio",
+ "tokio 0.2.25",
  "tokio-tungstenite 0.11.0",
  "tower-service",
  "tracing",
@@ -2166,7 +2208,7 @@ dependencies = [
  "chrono",
  "euclid",
  "futures",
- "hyper",
+ "hyper 0.14.12",
  "log",
  "lyon_geom",
  "mime_guess",
@@ -2178,7 +2220,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "structopt",
- "tokio",
+ "tokio 0.2.25",
  "tokio-tungstenite 0.10.1",
  "uuid",
  "warp",
