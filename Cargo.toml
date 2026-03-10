@@ -7,23 +7,23 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.102"
-bytes = "0.5.6"
+bytes = "1"
 chrono = { version = "0.4.44", features = ["serde"] }
-euclid = { version = "0.20.14", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+euclid = { version = "0.22", features = ["serde"] }
 futures = "0.3.32"
-hyper = "0.13.10"
+hyper = { version = "0.14", features = ["client", "http1"] }
 log = "0.4.29"
-lyon_geom = "0.15.3"
+lyon_geom = "1"
 mime_guess = "2.0.5"
-pretty_env_logger = "0.4.0"
+pretty_env_logger = "0.5"
 quit = "1.2.0"
-rand_core = "0.5.1"
-rust-embed = { version = "5.9.0", features = ["interpolate-folder-path", "compression"] }
+rand_core = "0.6"
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 serde = "1.0.228"
 serde_derive = "1.0.228"
 serde_json = "1.0.149"
-structopt = "0.3.26"
-tokio = { version = "0.2.25", features = ["time", "macros", "sync"] }
-tokio-tungstenite = "0.10.1"
-uuid = { version = "0.8.2", features = ["v4", "serde"] }
-warp = "0.2.5"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "sync"] }
+tokio-tungstenite = "0.24"
+uuid = { version = "1", features = ["v4", "serde"] }
+warp = "0.3"

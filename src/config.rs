@@ -1,15 +1,15 @@
 use std::net::{IpAddr, SocketAddr};
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(Debug, StructOpt)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Debug, Parser)]
+#[command(rename_all = "kebab-case")]
 struct CliConfig {
     /// Sets the interface to bind to
-    #[structopt(short = "b", long, default_value = "127.0.0.1", env = "BIND_ADDRESS")]
+    #[arg(short = 'b', long, default_value = "127.0.0.1", env = "BIND_ADDRESS")]
     bind_address: IpAddr,
 
     /// Sets the port to bind to
-    #[structopt(short = "p", long, default_value = "3000", env = "PORT")]
+    #[arg(short = 'p', long, default_value = "3000", env = "PORT")]
     port: u16,
 }
 
@@ -28,7 +28,7 @@ impl Default for Config {
 
 impl Config {
     pub fn new() -> Self {
-        let cli_config = CliConfig::from_args();
+        let cli_config = CliConfig::parse();
 
         Self {
             bind_address: SocketAddr::new(cli_config.bind_address, cli_config.port),

@@ -28,7 +28,7 @@ pub fn websocket(
 async fn handle_websocket(
     websocket: WebSocket,
     ip_address: Option<String>,
-    mut server_tx: Sender<MessageIn>,
+    server_tx: Sender<MessageIn>,
 ) {
     let id = ClientId::default();
 
@@ -66,7 +66,7 @@ async fn handle_websocket(
 async fn handle_in(
     id: ClientId,
     mut rx: impl Stream<Item = Result<Message, warp::Error>> + Unpin,
-    mut tx: Sender<MessageIn>,
+    tx: Sender<MessageIn>,
 ) {
     debug!("Websocket handler (in) created");
     while let Some(message) = rx.next().await {

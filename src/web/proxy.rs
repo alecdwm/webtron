@@ -95,7 +95,7 @@ async fn proxy_ws(
         return Err(warp::reject::custom(BadGateway));
     }
 
-    let upstream_websocket = match upstream_response.into_body().on_upgrade().await {
+    let upstream_websocket = match hyper::upgrade::on(upstream_response).await {
         Ok(upgraded) => WebSocketStream::from_raw_socket(upgraded, Role::Client, None).await,
         Err(error) => {
             warn!("Failed to upgrade upstream connection: {}", error);
@@ -159,6 +159,7 @@ async fn proxy_ws(
                         continue;
                     }
                     Message::Close(_) => WarpMessage::close(),
+                    Message::Frame(_) => continue,
                 };
 
                 tx.send(message).await.unwrap_or_else(|error| {
@@ -190,7 +191,7 @@ async fn proxy_http(
     let body: Box<
         dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Unpin + Send + Sync,
     > = Box::new(body.map(|result| {
-        result.map(|mut buf| buf.to_bytes()).map_err(|error| {
+        result.map(|mut buf| buf.copy_to_bytes(buf.remaining())).map_err(|error| {
             error!("Error occurred while reading request body: {}", error);
             error.into()
         })
