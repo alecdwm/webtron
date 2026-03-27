@@ -145,7 +145,7 @@ impl Arena {
             };
 
             // test for lightribbon collisions
-            for lightribbon in self.lightribbons.values() {
+            for (ribbon_id, lightribbon) in self.lightribbons.iter() {
                 for line in lightribbon.points.windows(2) {
                     let line = ArenaLine {
                         from: line[0].to_untyped(),
@@ -166,6 +166,43 @@ impl Arena {
                         self.updates
                             .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
                         continue 'next_lightcycle;
+                    }
+                }
+
+                // Check the "live" segment for other bikes: the ribbon's last point
+                // hasn't been updated yet this frame, so there's a gap between the
+                // ribbon tip and the bike's current position. Without this check,
+                // collisions in that gap are missed.
+                if ribbon_id != id {
+                    if let Some(other_cycle) = self.lightcycles.get(ribbon_id) {
+                        if !other_cycle.dead {
+                            if let Some(last_point) = lightribbon.points.last() {
+                                let live_segment = ArenaLine {
+                                    from: last_point.to_untyped(),
+                                    to: other_cycle.position.to_untyped(),
+                                };
+
+                                if travelled.overlaps_segment(&live_segment) {
+                                    self.updates
+                                        .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                                    continue 'next_lightcycle;
+                                }
+
+                                if let Some(intersection) =
+                                    travelled.intersection(&live_segment)
+                                {
+                                    self.updates.push(
+                                        ArenaUpdate::UpdateLightcyclePosition(
+                                            *id,
+                                            ArenaPoint::from_untyped(intersection),
+                                        ),
+                                    );
+                                    self.updates
+                                        .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                                    continue 'next_lightcycle;
+                                }
+                            }
+                        }
                     }
                 }
             }
