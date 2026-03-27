@@ -36,7 +36,13 @@ impl ArenaUpdate {
             }
 
             ArenaUpdate::Start(start_at) => arena.started = Some(*start_at),
-            ArenaUpdate::End => arena.started = None,
+            ArenaUpdate::End => {
+                arena.started = None;
+                // Remove NPC players when the round ends
+                for (npc_id, _) in arena.npc_states.drain() {
+                    arena.players.remove(&npc_id);
+                }
+            }
             ArenaUpdate::SetWinner(winner) => arena.winner = *winner,
 
             ArenaUpdate::UpdateLightcyclePosition(player_id, position) => {

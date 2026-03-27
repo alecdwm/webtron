@@ -1,5 +1,6 @@
 mod entities;
 mod input;
+pub mod npc;
 mod updates;
 mod util;
 
@@ -15,7 +16,7 @@ pub use self::input::*;
 pub use self::updates::*;
 pub use self::util::*;
 
-use crate::server::{ArenaId, ArenaLine, ArenaPoint, Direction, Player, PlayerId};
+use crate::server::{ArenaId, ArenaLine, ArenaPoint, Direction, Player, PlayerColor, PlayerId};
 
 const ARENA_WIDTH: f64 = 560.0;
 const ARENA_HEIGHT: f64 = 560.0;
@@ -39,6 +40,9 @@ pub struct Arena {
     pub players: HashMap<PlayerId, Player>,
     pub lightcycles: HashMap<PlayerId, Lightcycle>,
     pub lightribbons: HashMap<PlayerId, Lightribbon>,
+
+    #[serde(skip)]
+    pub npc_states: HashMap<PlayerId, npc::NpcState>,
 
     #[serde(skip)]
     pub updates: Vec<ArenaUpdate>,
@@ -98,6 +102,13 @@ impl Arena {
         if now < started {
             return;
         }
+
+        // run NPC AI — extract npc_states so we can mutate it while reading arena immutably
+        let mut npc_states = mem::take(&mut self.npc_states);
+        let npc_updates = npc::update_npc_inputs(self, &mut npc_states, delta_time);
+        self.npc_states = npc_states;
+        self.updates.extend(npc_updates);
+        self.apply_updates();
 
         self.update_lightcycle_positions(delta_time)
             .apply_updates()
@@ -306,6 +317,8 @@ impl Default for Arena {
             players: Default::default(),
             lightcycles: Default::default(),
             lightribbons: Default::default(),
+
+            npc_states: Default::default(),
 
             updates: Default::default(),
             updates_applied_so_far: 0,

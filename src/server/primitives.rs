@@ -73,6 +73,13 @@ impl Direction {
         }
     }
 
+    pub fn perpendicular_directions(self) -> [Direction; 2] {
+        match self {
+            Direction::Up | Direction::Down => [Direction::Left, Direction::Right],
+            Direction::Left | Direction::Right => [Direction::Up, Direction::Down],
+        }
+    }
+
     pub fn is_opposite(self, to: Direction) -> bool {
         match self {
             Direction::Up => to == Direction::Down,

@@ -1,4 +1,5 @@
 use super::*;
+use super::npc;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
 pub enum ArenaInput {
@@ -7,7 +8,7 @@ pub enum ArenaInput {
 }
 
 impl ArenaInput {
-    pub fn process_into_updates(self, arena: &Arena, player_id: PlayerId) -> Vec<ArenaUpdate> {
+    pub fn process_into_updates(self, arena: &mut Arena, player_id: PlayerId) -> Vec<ArenaUpdate> {
         match self {
             ArenaInput::Start => {
                 if arena.started.is_some() {
@@ -42,8 +43,20 @@ impl ArenaInput {
                     .copied()
                     .for_each(|id| updates.push(ArenaUpdate::RemoveLightribbon(id)));
 
+                // add NPC players
+                arena.npc_states.clear();
+                let npc_count = npc::npc_count_for_arena(arena.players.len());
+                let npc_players = npc::create_npc_players(npc_count);
+                for npc_player in &npc_players {
+                    arena
+                        .npc_states
+                        .insert(npc_player.id, npc::NpcState::default());
+                    updates.push(ArenaUpdate::AddPlayer(npc_player.id, npc_player.clone()));
+                }
+
                 // add new lightcycles and lightribbons
-                let player_ids = arena.players.keys().copied().collect();
+                let mut player_ids: Vec<PlayerId> = arena.players.keys().copied().collect();
+                player_ids.extend(npc_players.iter().map(|p| p.id));
                 calculate_spawnpoints(player_ids).drain(..).for_each(
                     |(player_id, spawn_position, spawn_direction)| {
                         updates.push(ArenaUpdate::AddLightcycle(
