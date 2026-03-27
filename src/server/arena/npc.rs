@@ -7,13 +7,35 @@ const NPC_LOOK_AHEAD_DISTANCE: f64 = 40.0;
 const NPC_CRITICAL_DISTANCE: f64 = 15.0;
 const NPC_TRAP_SEGMENT_LENGTH: f64 = 30.0;
 
-const NPC_NAMES: [&str; 6] = ["SARK", "RINZLER", "CLU", "THORNE", "DYSON", "JARVIS"];
-const NPC_COLORS: [PlayerColor; 5] = [
-    PlayerColor::Red,
-    PlayerColor::Orange,
-    PlayerColor::Purple,
-    PlayerColor::Green,
-    PlayerColor::Blue,
+const NPC_PLAYER_POOL: &[(&str, PlayerColor)] = &[
+    ("ABRAXAS", PlayerColor::Green),
+    ("ANON", PlayerColor::White),
+    ("BARTOK", PlayerColor::Blue),
+    ("BECK", PlayerColor::White),
+    ("CASTOR", PlayerColor::White),
+    ("CLU", PlayerColor::Orange),
+    ("CLU_2.0", PlayerColor::Orange),
+    ("CROM", PlayerColor::Blue),
+    ("DUMONT", PlayerColor::Purple),
+    ("DYSON", PlayerColor::Red),
+    ("GEM", PlayerColor::White),
+    ("ISO_Q", PlayerColor::White),
+    ("JARVIS", PlayerColor::Red),
+    ("JET", PlayerColor::White),
+    ("MCP", PlayerColor::Orange),
+    ("MERCURY", PlayerColor::Blue),
+    ("RAM", PlayerColor::Blue),
+    ("RINZLER", PlayerColor::Red),
+    ("SARK", PlayerColor::Red),
+    ("TESLER", PlayerColor::Red),
+    ("TRON", PlayerColor::Blue),
+    ("YORI", PlayerColor::Blue),
+    ("ZUSE", PlayerColor::White),
+];
+const INCOMPATIBLE_NPC_SETS: &[&[&str]] = &[
+    &["CASTOR", "ZUSE"],
+    &["CLU", "CLU_2.0"],
+    &["RINZLER", "TRON"],
 ];
 
 /// NPC behaviour mode.
@@ -70,13 +92,36 @@ fn pick_random_behaviour() -> NpcBehaviour {
 }
 
 pub fn create_npc_players(count: usize) -> Vec<Player> {
-    (0..count)
-        .map(|i| Player {
+    let mut pool_remaining = NPC_PLAYER_POOL.to_vec();
+    let mut players = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        if pool_remaining.is_empty() {
+            break;
+        }
+
+        let index = OsRng.next_u32() as usize % pool_remaining.len();
+        let (name, color) = pool_remaining.remove(index);
+
+        // remove incompatible NPCs from the pool
+        for incompatible_set in INCOMPATIBLE_NPC_SETS {
+            if incompatible_set.iter().any(|n| *n == name) {
+                for incompatible_name in *incompatible_set {
+                    if let Some(pos) = pool_remaining.iter().position(|(n, _)| *n == *incompatible_name) {
+                        pool_remaining.remove(pos);
+                    }
+                }
+            }
+        }
+
+        players.push(Player {
             id: PlayerId::default(),
-            name: NPC_NAMES[i % NPC_NAMES.len()].to_string(),
-            color: NPC_COLORS[i % NPC_COLORS.len()],
-        })
-        .collect()
+            name: name.to_string(),
+            color,
+        });
+    }
+
+    players
 }
 
 pub fn npc_count_for_arena(human_player_count: usize) -> usize {
