@@ -1,5 +1,5 @@
-use std::net::{IpAddr, SocketAddr};
 use clap::Parser;
+use std::net::{IpAddr, SocketAddr};
 
 #[derive(Debug, Parser)]
 #[command(rename_all = "kebab-case")]

@@ -1,5 +1,5 @@
-use super::*;
 use super::npc;
+use super::*;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
 pub enum ArenaInput {

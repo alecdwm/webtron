@@ -191,10 +191,12 @@ async fn proxy_http(
     let body: Box<
         dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Unpin + Send + Sync,
     > = Box::new(body.map(|result| {
-        result.map(|mut buf| buf.copy_to_bytes(buf.remaining())).map_err(|error| {
-            error!("Error occurred while reading request body: {}", error);
-            error.into()
-        })
+        result
+            .map(|mut buf| buf.copy_to_bytes(buf.remaining()))
+            .map_err(|error| {
+                error!("Error occurred while reading request body: {}", error);
+                error.into()
+            })
     }));
 
     let mut request = Request::builder()

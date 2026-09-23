@@ -280,15 +280,11 @@ impl Arena {
                                     continue 'next_lightcycle;
                                 }
 
-                                if let Some(intersection) =
-                                    travelled.intersection(&live_segment)
-                                {
-                                    self.updates.push(
-                                        ArenaUpdate::UpdateLightcyclePosition(
-                                            *id,
-                                            ArenaPoint::from_untyped(intersection),
-                                        ),
-                                    );
+                                if let Some(intersection) = travelled.intersection(&live_segment) {
+                                    self.updates.push(ArenaUpdate::UpdateLightcyclePosition(
+                                        *id,
+                                        ArenaPoint::from_untyped(intersection),
+                                    ));
                                     self.updates
                                         .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
                                     continue 'next_lightcycle;

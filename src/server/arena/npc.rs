@@ -157,7 +157,10 @@ pub fn create_npc_players(count: usize) -> Vec<Player> {
         for incompatible_set in INCOMPATIBLE_NPC_SETS {
             if incompatible_set.iter().any(|n| *n == name) {
                 for incompatible_name in *incompatible_set {
-                    if let Some(pos) = pool_remaining.iter().position(|(n, _)| *n == *incompatible_name) {
+                    if let Some(pos) = pool_remaining
+                        .iter()
+                        .position(|(n, _)| *n == *incompatible_name)
+                    {
                         pool_remaining.remove(pos);
                     }
                 }
@@ -216,9 +219,7 @@ pub fn update_npc_inputs(
 
         // Detect slipstreamers on this NPC's trail and potentially switch to CutOff.
         state.cutoff_cooldown = (state.cutoff_cooldown - delta_time).max(0.0);
-        if !matches!(state.behaviour, NpcBehaviour::CutOff { .. })
-            && state.cutoff_cooldown <= 0.0
-        {
+        if !matches!(state.behaviour, NpcBehaviour::CutOff { .. }) && state.cutoff_cooldown <= 0.0 {
             if let Some((target_id, target_pos, target_speed)) =
                 find_slipstreamer_on_trail(arena, *npc_id, lightcycle)
             {
@@ -251,11 +252,9 @@ pub fn update_npc_inputs(
 
                         // 60% good timing, 40% turn too late.
                         let wait_time = if OsRng.next_u32() % 100 < 60 {
-                            catch_up_time
-                                * (0.5 + (OsRng.next_u32() % 25) as f64 / 100.0)
+                            catch_up_time * (0.5 + (OsRng.next_u32() % 25) as f64 / 100.0)
                         } else {
-                            catch_up_time
-                                * (1.1 + (OsRng.next_u32() % 50) as f64 / 100.0)
+                            catch_up_time * (1.1 + (OsRng.next_u32() % 50) as f64 / 100.0)
                         };
 
                         let cut_distance = perp_distance + 3.0;
@@ -350,7 +349,13 @@ fn choose_direction(
             original_direction,
             cut_distance,
             phase,
-        } => Some((*target_id, *cut_direction, *original_direction, *cut_distance, *phase)),
+        } => Some((
+            *target_id,
+            *cut_direction,
+            *original_direction,
+            *cut_distance,
+            *phase,
+        )),
         _ => None,
     };
 
@@ -361,7 +366,13 @@ fn choose_direction(
             approach_direction,
             cut_distance,
             phase,
-        } => Some((*target_id, *target_direction, *approach_direction, *cut_distance, *phase)),
+        } => Some((
+            *target_id,
+            *target_direction,
+            *approach_direction,
+            *cut_distance,
+            *phase,
+        )),
         _ => None,
     };
 
@@ -377,7 +388,15 @@ fn choose_direction(
         }
         NpcBehaviour::BuildTrap { .. } => {
             let (step, distance_in_step) = trap_info.unwrap();
-            choose_trap(arena, lightcycle, step, distance_in_step, delta_time, forward_dist, state)
+            choose_trap(
+                arena,
+                lightcycle,
+                step,
+                distance_in_step,
+                delta_time,
+                forward_dist,
+                state,
+            )
         }
         NpcBehaviour::CutOff { .. } => {
             let (target_id, cut_direction, original_direction, cut_distance, phase) =
@@ -415,11 +434,7 @@ fn choose_direction(
 }
 
 /// Original obstacle-avoidance behaviour.
-fn choose_survive(
-    arena: &Arena,
-    lightcycle: &Lightcycle,
-    forward_dist: f64,
-) -> Option<Direction> {
+fn choose_survive(arena: &Arena, lightcycle: &Lightcycle, forward_dist: f64) -> Option<Direction> {
     if forward_dist > NPC_LOOK_AHEAD_DISTANCE {
         return None;
     }
@@ -613,8 +628,7 @@ fn choose_cutoff(
             let new_remaining = remaining - delta_time;
             if new_remaining <= 0.0 {
                 // Time to turn — safety check the cut direction.
-                let cut_ahead =
-                    look_ahead_distance(arena, lightcycle.position, cut_direction);
+                let cut_ahead = look_ahead_distance(arena, lightcycle.position, cut_direction);
                 if cut_ahead < NPC_CRITICAL_DISTANCE {
                     state.behaviour = NpcBehaviour::Survive;
                     state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
@@ -713,8 +727,7 @@ fn choose_slipstream_attack(
 
             if lightcycle.direction != approach_direction {
                 // First tick: turn to approach direction.
-                let ahead =
-                    look_ahead_distance(arena, lightcycle.position, approach_direction);
+                let ahead = look_ahead_distance(arena, lightcycle.position, approach_direction);
                 if ahead < NPC_CRITICAL_DISTANCE {
                     abort(state);
                     return None;
@@ -805,8 +818,7 @@ fn choose_slipstream_attack(
 
             if ahead_of_target >= NPC_OVERTAKE_BUFFER {
                 // Far enough ahead — cut across.
-                let cut_ahead =
-                    look_ahead_distance(arena, lightcycle.position, approach_direction);
+                let cut_ahead = look_ahead_distance(arena, lightcycle.position, approach_direction);
                 if cut_ahead < NPC_CRITICAL_DISTANCE {
                     abort(state);
                     return None;
@@ -916,7 +928,13 @@ fn find_slipstream_attack_target(
             }
 
             if best.is_none() || total_dist_sq < best.as_ref().unwrap().4 {
-                best = Some((*other_id, target_dir, approach_dir, cut_distance, total_dist_sq));
+                best = Some((
+                    *other_id,
+                    target_dir,
+                    approach_dir,
+                    cut_distance,
+                    total_dist_sq,
+                ));
             }
         } else if !npc_dir.is_opposite(target_dir) {
             // Perpendicular: NPC is heading toward (or away from) the target's lane.
@@ -1079,8 +1097,7 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
 
         // Projected path check for perpendicular convergence.
         let other_vel = other_cycle.direction.as_velocity();
-        let projected_end =
-            other_cycle.position + other_vel * NPC_LOOK_AHEAD_DISTANCE;
+        let projected_end = other_cycle.position + other_vel * NPC_LOOK_AHEAD_DISTANCE;
         let projected_segment = ArenaLine {
             from: other_cycle.position.to_untyped(),
             to: projected_end.to_untyped(),
