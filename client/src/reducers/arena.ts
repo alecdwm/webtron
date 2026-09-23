@@ -84,6 +84,16 @@ function updateArena(arena, update) {
         },
       },
     }),
+    UpdateLightcycleSpeed: ([playerId, speed]) => ({
+      ...arena,
+      lightcycles: {
+        ...arena.lightcycles,
+        [playerId]: {
+          ...arena.lightcycles[playerId],
+          speed,
+        },
+      },
+    }),
     UpdateLightcycleApplyDeath: (playerId) => ({
       ...arena,
       lightcycles: {

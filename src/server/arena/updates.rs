@@ -12,6 +12,7 @@ pub enum ArenaUpdate {
 
     UpdateLightcyclePosition(PlayerId, ArenaPoint),
     UpdateLightcycleDirection(PlayerId, Direction),
+    UpdateLightcycleSpeed(PlayerId, f64),
     UpdateLightcycleApplyDeath(PlayerId),
 
     UpdateLightribbonAppendPoint(PlayerId, ArenaPoint),
@@ -66,6 +67,17 @@ impl ArenaUpdate {
                 };
 
                 lightcycle.direction = *direction;
+            }
+            ArenaUpdate::UpdateLightcycleSpeed(player_id, speed) => {
+                let lightcycle = match arena.lightcycles.get_mut(player_id) {
+                    Some(lightcycle) => lightcycle,
+                    None => {
+                        error!("Lightcycle {} not found", player_id);
+                        return arena;
+                    }
+                };
+
+                lightcycle.speed = *speed;
             }
             ArenaUpdate::UpdateLightcycleApplyDeath(player_id) => {
                 let lightcycle = match arena.lightcycles.get_mut(player_id) {

@@ -402,7 +402,7 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
 
     let mut min_dist = wall_distance(arena, position, direction);
 
-    for lightribbon in arena.lightribbons.values() {
+    for (ribbon_id, lightribbon) in arena.lightribbons.iter() {
         for line in lightribbon.points.windows(2) {
             let segment = ArenaLine {
                 from: line[0].to_untyped(),
@@ -416,6 +416,67 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
                 if d > 0.5 && d < min_dist {
                     min_dist = d;
                 }
+            }
+        }
+
+        // Check the live segment (ribbon tip → bike position) for other bikes.
+        if let Some(other_cycle) = arena.lightcycles.get(ribbon_id) {
+            if !other_cycle.dead {
+                if let Some(last_point) = lightribbon.points.last() {
+                    let live_segment = ArenaLine {
+                        from: last_point.to_untyped(),
+                        to: other_cycle.position.to_untyped(),
+                    };
+                    if let Some(intersection) = ray.intersection(&live_segment) {
+                        let d = ((intersection.x - position.x as f64).powi(2)
+                            + (intersection.y - position.y as f64).powi(2))
+                        .sqrt();
+                        if d > 0.5 && d < min_dist {
+                            min_dist = d;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check other alive bikes: both their projected paths (perpendicular
+    // convergence) and whether they sit directly in our lane (head-on).
+    for (_, other_cycle) in arena.lightcycles.iter() {
+        if other_cycle.dead || other_cycle.position == position {
+            continue;
+        }
+
+        // Direct in-lane check: is this bike ahead of us on the same axis?
+        // This catches head-on collinear cases where intersection() returns
+        // None because the segments overlap.
+        let delta = other_cycle.position - position;
+        let along = vel.x * delta.x + vel.y * delta.y; // dot product
+        if along > 0.5 {
+            // The other bike is ahead of us. Check perpendicular distance.
+            let perp_dist = (vel.x * delta.y - vel.y * delta.x).abs();
+            if perp_dist < 1.0 {
+                // Directly in our lane.
+                if along < min_dist {
+                    min_dist = along;
+                }
+            }
+        }
+
+        // Projected path check for perpendicular convergence.
+        let other_vel = other_cycle.direction.as_velocity();
+        let projected_end =
+            other_cycle.position + other_vel * NPC_LOOK_AHEAD_DISTANCE;
+        let projected_segment = ArenaLine {
+            from: other_cycle.position.to_untyped(),
+            to: projected_end.to_untyped(),
+        };
+        if let Some(intersection) = ray.intersection(&projected_segment) {
+            let d = ((intersection.x - position.x as f64).powi(2)
+                + (intersection.y - position.y as f64).powi(2))
+            .sqrt();
+            if d > 0.5 && d < min_dist {
+                min_dist = d;
             }
         }
     }
