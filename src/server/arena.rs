@@ -5,8 +5,9 @@ mod updates;
 mod util;
 
 use chrono::{DateTime, Duration as OldDuration, Utc};
+use getrandom::SysRng;
 use log::{error, trace};
-use rand_core::{OsRng, RngCore};
+use rand_core::{Rng, UnwrapErr};
 use serde_derive::Serialize;
 use std::collections::HashMap;
 use std::mem;

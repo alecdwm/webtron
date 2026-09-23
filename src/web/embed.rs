@@ -1,7 +1,9 @@
+use bytes::Bytes;
 use rust_embed::RustEmbed;
+use std::borrow::Cow;
+use warp::http::Response;
 use warp::http::header::HeaderValue;
 use warp::path::Tail;
-use warp::reply::Response;
 use warp::{Filter, Rejection, Reply};
 
 use crate::web::errors::InternalServerError;
@@ -29,7 +31,12 @@ fn serve(path: &str) -> Result<impl Reply + use<>, Rejection> {
     let asset = Asset::get(path).ok_or_else(warp::reject::not_found)?;
     let mime = mime_guess::from_path(path).first_or_octet_stream();
 
-    let mut res = Response::new(asset.data.into());
+    let body = match asset.data {
+        Cow::Borrowed(data) => Bytes::from_static(data),
+        Cow::Owned(data) => Bytes::from(data),
+    };
+
+    let mut res = Response::new(body);
     res.headers_mut().insert(
         "content-type",
         HeaderValue::from_str(mime.as_ref())

@@ -53,5 +53,5 @@ pub async fn start(server_tx: Sender<MessageIn>, config: Arc<Config>) {
     };
 
     let routes = ws.or(frontend).recover(handle_rejection);
-    warp::serve(routes).bind(config.bind_address).await;
+    warp::serve(routes).run(config.bind_address).await;
 }

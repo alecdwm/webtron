@@ -34,7 +34,12 @@ pub async fn start() -> Result<(), Error> {
 
     let (server_tx, server_rx) = mpsc::channel(100);
     let server = tokio::spawn(WebtronServer::new(server_rx).start());
-    let web = tokio::spawn(web::start(server_tx, config));
+    // The web server runs on this task rather than a spawned one: the future
+    // returned by warp's server isn't provably `Send`, so it can't be spawned.
+    let web = async {
+        web::start(server_tx, config).await;
+        Ok(())
+    };
 
     try_join!(server, web).context("Failure occurred in task")?;
 

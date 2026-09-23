@@ -1,8 +1,14 @@
 use bytes::{Buf, Bytes};
 use futures::sink::SinkExt;
 use futures::stream::{Stream, StreamExt};
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Empty, StreamBody};
+use hyper::body::Frame;
 use hyper::header::{CONNECTION, Entry, HOST, HeaderValue, UPGRADE};
-use hyper::{Body, Client, HeaderMap, Method, Request, StatusCode, Uri};
+use hyper::{HeaderMap, Method, Request, Response, StatusCode, Uri};
+use hyper_util::client::legacy::Client;
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::rt::{TokioExecutor, TokioIo};
 use log::{error, warn};
 use std::error::Error as StdError;
 use std::net::SocketAddr;
@@ -14,6 +20,8 @@ use warp::ws::{Message as WarpMessage, Ws};
 use warp::{Filter, Rejection, Reply};
 
 use crate::web::errors::{BadGateway, InternalServerError};
+
+type ProxyBody = BoxBody<Bytes, Box<dyn StdError + Send + Sync>>;
 
 const X_FORWARDED_FOR: &str = "x-forwarded-for";
 const HOP_BY_HOP_HEADERS: &[&str] = &[
@@ -69,11 +77,11 @@ async fn proxy_ws(
     remote_addr: Option<SocketAddr>,
     (target, target_host): (Uri, HeaderValue),
 ) -> Result<impl Reply, Rejection> {
-    let client = Client::new();
+    let client = client();
 
     let mut request = Request::builder()
         .uri(format_uri(&target, path.as_str(), query))
-        .body(Body::empty())
+        .body(Empty::new().map_err(|never| match never {}).boxed())
         .map_err(|error| {
             error!("Failed to construct websocket proxy request: {}", error);
             warp::reject::custom(InternalServerError)
@@ -96,7 +104,9 @@ async fn proxy_ws(
     }
 
     let upstream_websocket = match hyper::upgrade::on(upstream_response).await {
-        Ok(upgraded) => WebSocketStream::from_raw_socket(upgraded, Role::Client, None).await,
+        Ok(upgraded) => {
+            WebSocketStream::from_raw_socket(TokioIo::new(upgraded), Role::Client, None).await
+        }
         Err(error) => {
             warn!("Failed to upgrade upstream connection: {}", error);
             return Err(warp::reject::custom(BadGateway));
@@ -121,7 +131,7 @@ async fn proxy_ws(
                     Ok(message) => Message::text(message),
                     Err(()) => {
                         if message.is_binary() {
-                            Message::binary(message)
+                            Message::binary(message.into_bytes())
                         } else if message.is_ping() {
                             Message::Ping(message.into_bytes())
                         } else if message.is_pong() {
@@ -151,7 +161,7 @@ async fn proxy_ws(
                 };
 
                 let message = match message {
-                    Message::Text(text) => WarpMessage::text(text),
+                    Message::Text(text) => WarpMessage::text(text.as_str()),
                     Message::Binary(data) => WarpMessage::binary(data),
                     Message::Ping(data) => WarpMessage::ping(data),
                     Message::Pong(_) => {
@@ -186,13 +196,11 @@ async fn proxy_http(
     remote_addr: Option<SocketAddr>,
     (target, target_host): (Uri, HeaderValue),
 ) -> Result<impl Reply, Rejection> {
-    let client = Client::new();
+    let client = client();
 
-    let body: Box<
-        dyn Stream<Item = Result<Bytes, Box<dyn StdError + Send + Sync>>> + Unpin + Send + Sync,
-    > = Box::new(body.map(|result| {
+    let body = StreamBody::new(body.map(|result| {
         result
-            .map(|mut buf| buf.copy_to_bytes(buf.remaining()))
+            .map(|mut buf| Frame::data(buf.copy_to_bytes(buf.remaining())))
             .map_err(|error| {
                 error!("Error occurred while reading request body: {}", error);
                 error.into()
@@ -202,7 +210,7 @@ async fn proxy_http(
     let mut request = Request::builder()
         .method(method)
         .uri(format_uri(&target, path.as_str(), query))
-        .body(Body::wrap_stream(body))
+        .body(BodyExt::boxed(body))
         .map_err(|error| {
             error!("Failed to construct proxy request: {}", error);
             warp::reject::custom(InternalServerError)
@@ -213,14 +221,33 @@ async fn proxy_http(
     request.headers_mut().insert(HOST, target_host);
     append_x_forwarded_for_header(remote_addr, request.headers_mut());
 
-    let mut response = client.request(request).await.map_err(|error| {
+    let response = client.request(request).await.map_err(|error| {
         warn!("Error occurred while proxying request: {}", error);
         warp::reject::custom(BadGateway)
     })?;
 
-    remove_hop_by_hop_headers(response.headers_mut());
+    // warp can't reply with a streaming body built outside of warp, so the
+    // upstream response body is read in full before it is sent on.
+    let (mut parts, body) = response.into_parts();
+    let body = body
+        .collect()
+        .await
+        .map_err(|error| {
+            warn!(
+                "Error occurred while reading proxied response body: {}",
+                error
+            );
+            warp::reject::custom(BadGateway)
+        })?
+        .to_bytes();
 
-    Ok(response)
+    remove_hop_by_hop_headers(&mut parts.headers);
+
+    Ok(Response::from_parts(parts, body))
+}
+
+fn client() -> Client<HttpConnector, ProxyBody> {
+    Client::builder(TokioExecutor::new()).build_http()
 }
 
 fn format_uri(target: &Uri, path: &str, query: String) -> String {

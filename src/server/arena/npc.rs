@@ -1,5 +1,6 @@
 use super::*;
-use rand_core::{OsRng, RngCore};
+use getrandom::SysRng;
+use rand_core::{Rng, UnwrapErr};
 
 const NPC_COUNT: usize = 2;
 const NPC_LOOK_AHEAD_DISTANCE: f64 = 40.0;
@@ -119,8 +120,8 @@ impl Default for NpcState {
 
 fn random_duration_for(behaviour: &NpcBehaviour) -> f64 {
     match behaviour {
-        NpcBehaviour::Survive => 2.0 + (OsRng.next_u32() % 300) as f64 / 100.0,
-        NpcBehaviour::Chase => 1.5 + (OsRng.next_u32() % 200) as f64 / 100.0,
+        NpcBehaviour::Survive => 2.0 + (UnwrapErr(SysRng).next_u32() % 300) as f64 / 100.0,
+        NpcBehaviour::Chase => 1.5 + (UnwrapErr(SysRng).next_u32() % 200) as f64 / 100.0,
         NpcBehaviour::RandomTurn => 0.5,
         NpcBehaviour::BuildTrap { .. } => 5.0,
         NpcBehaviour::CutOff { .. } => 10.0,
@@ -129,7 +130,7 @@ fn random_duration_for(behaviour: &NpcBehaviour) -> f64 {
 }
 
 fn pick_random_behaviour() -> NpcBehaviour {
-    let roll = OsRng.next_u32() % 100;
+    let roll = UnwrapErr(SysRng).next_u32() % 100;
     match roll {
         0..=41 => NpcBehaviour::Survive,
         42..=61 => NpcBehaviour::Chase,
@@ -150,7 +151,7 @@ pub fn create_npc_players(count: usize) -> Vec<Player> {
             break;
         }
 
-        let index = OsRng.next_u32() as usize % pool_remaining.len();
+        let index = UnwrapErr(SysRng).next_u32() as usize % pool_remaining.len();
         let (name, color) = pool_remaining.remove(index);
 
         // remove incompatible NPCs from the pool
@@ -223,7 +224,7 @@ pub fn update_npc_inputs(
             if let Some((target_id, target_pos, target_speed)) =
                 find_slipstreamer_on_trail(arena, *npc_id, lightcycle)
             {
-                if OsRng.next_u32() % 100 < NPC_CUTOFF_CHANCE {
+                if UnwrapErr(SysRng).next_u32() % 100 < NPC_CUTOFF_CHANCE {
                     let npc_vel = lightcycle.direction.as_velocity();
                     let delta = lightcycle.position - target_pos;
                     let distance_behind = npc_vel.x * delta.x + npc_vel.y * delta.y;
@@ -251,10 +252,12 @@ pub fn update_npc_inputs(
                         let catch_up_time = distance_behind / closing_speed;
 
                         // 60% good timing, 40% turn too late.
-                        let wait_time = if OsRng.next_u32() % 100 < 60 {
-                            catch_up_time * (0.5 + (OsRng.next_u32() % 25) as f64 / 100.0)
+                        let wait_time = if UnwrapErr(SysRng).next_u32() % 100 < 60 {
+                            catch_up_time
+                                * (0.5 + (UnwrapErr(SysRng).next_u32() % 25) as f64 / 100.0)
                         } else {
-                            catch_up_time * (1.1 + (OsRng.next_u32() % 50) as f64 / 100.0)
+                            catch_up_time
+                                * (1.1 + (UnwrapErr(SysRng).next_u32() % 50) as f64 / 100.0)
                         };
 
                         let cut_distance = perp_distance + 3.0;
@@ -452,7 +455,7 @@ fn survival_turn(arena: &Arena, lightcycle: &Lightcycle) -> Option<Direction> {
     } else if dist_b > dist_a {
         perp[1]
     } else {
-        perp[OsRng.next_u32() as usize % 2]
+        perp[UnwrapErr(SysRng).next_u32() as usize % 2]
     };
 
     Some(chosen)
@@ -529,7 +532,7 @@ fn choose_chase(
 /// Insert a random perpendicular turn.
 fn choose_random_turn(lightcycle: &Lightcycle) -> Option<Direction> {
     let perp = lightcycle.direction.perpendicular_directions();
-    Some(perp[OsRng.next_u32() as usize % 2])
+    Some(perp[UnwrapErr(SysRng).next_u32() as usize % 2])
 }
 
 /// Build a notch/bump trap: turn perpendicular, travel a short distance, turn back.
@@ -567,7 +570,7 @@ fn choose_trap(
     match step {
         0 => {
             // First turn: pick a random perpendicular direction.
-            let idx = OsRng.next_u32() as usize % 2;
+            let idx = UnwrapErr(SysRng).next_u32() as usize % 2;
             let chosen = perp[idx];
             let alt = perp[1 - idx];
             let chosen = if look_ahead_distance(arena, lightcycle.position, chosen)
