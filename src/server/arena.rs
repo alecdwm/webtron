@@ -22,8 +22,8 @@ use crate::server::{ArenaId, ArenaLine, ArenaPoint, Direction, Player, PlayerCol
 const ARENA_WIDTH: f64 = 560.0;
 const ARENA_HEIGHT: f64 = 560.0;
 const ARENA_MAX_PLAYERS: usize = 8;
-const ARENA_START_TIMER_SECONDS: i64 = 1;
-const ARENA_WIN_TIMEOUT_SECONDS: i64 = 5;
+const ARENA_START_TIMER_SECONDS: i64 = 3;
+const ARENA_WIN_TIMEOUT_SECONDS: i64 = 3;
 const LIGHTCYCLE_SPEED: f64 = 55.0;
 const LIGHTCYCLE_BOOST_SPEED: f64 = 110.0;
 const SLIPSTREAM_DISTANCE: f64 = 15.0;
