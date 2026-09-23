@@ -7,11 +7,15 @@ main {
 }
 main.loaded {
   display: block;
-  animation: hidden 0.1s ease, canvasgrow 0.3s ease 0.1s;
+  animation:
+    hidden 0.1s ease,
+    canvasgrow 0.3s ease 0.1s;
 }
 
 footer {
-  animation: hidden 2s ease, fadein 1s ease 2s;
+  animation:
+    hidden 2s ease,
+    fadein 1s ease 2s;
 }
 
 @keyframes hidden {

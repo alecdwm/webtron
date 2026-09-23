@@ -14,7 +14,9 @@
 .colorButtonLeft,
 .colorButtonRight {
   cursor: pointer;
-  transition: color 300ms ease, border 300ms ease;
+  transition:
+    color 300ms ease,
+    border 300ms ease;
   color: var(--white);
   outline: none;
 }

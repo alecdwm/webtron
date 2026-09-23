@@ -5,7 +5,9 @@
     "dev": "vite --host 0.0.0.0 --port 3001",
     "build": "vite build",
     "build:strict": "tsc -b && vite build",
-    "lint": "eslint ."
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check"
   },
   "dependencies": {
     "dayjs": "^1.11.23",
@@ -14,44 +16,14 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "@vitejs/plugin-react": "^6.1.1",
-    "eslint": "^10.11.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.7",
-    "globals": "^17.12.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.5.1",
-    "prettier": "^3.9.9",
-    "prettier-plugin-toml": "^2.0.6",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.1",
+    "oxfmt": "^0.70.0",
+    "oxlint": "^1.85.0",
+    "typescript": "^7.0.2",
     "vite": "^8.3.0"
-  },
-  "prettier": {
-    "printWidth": 120,
-    "semi": false,
-    "singleQuote": true,
-    "plugins": [
-      "@ianvs/prettier-plugin-sort-imports"
-    ],
-    "importOrder": [
-      "<TYPES>^(node:)",
-      "<BUILT_IN_MODULES>",
-      "",
-      "<TYPES>",
-      "<THIRD_PARTY_MODULES>",
-      "",
-      "<TYPES>^@/.*$",
-      "^@/.*$",
-      "",
-      "<TYPES>^[.]",
-      "^[.]"
-    ],
-    "importOrderTypeScriptVersion": "5.5.4"
   }
 }
