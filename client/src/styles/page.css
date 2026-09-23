@@ -6,7 +6,6 @@ header img {
   max-width: 100%;
   margin: 0 auto;
   user-select: none;
-  filter: drop-shadow(0 0 3px rgba(242, 217, 26, 0.7)) drop-shadow(0 0 14px rgba(0, 194, 204, 0.45));
   animation: logoflicker 4s linear 1s 1 both;
 }
 .tagline {
