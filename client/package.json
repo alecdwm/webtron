@@ -7,7 +7,8 @@
     "build:strict": "tsc -b && vite build",
     "lint": "oxlint",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "prepare": "cd .. && husky client/.husky"
   },
   "dependencies": {
     "dayjs": "^1.11.23",
@@ -24,5 +25,13 @@
     "oxlint": "^1.85.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"
+  },
+  "lint-staged": {
+    "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}": [
+      "oxlint",
+      "oxfmt"
+    ],
+    "*.{css,json,jsonc,html,md}": "oxfmt",
+    "../**/*.rs": "rustfmt --edition 2024 --config skip_children=true"
   }
 }
