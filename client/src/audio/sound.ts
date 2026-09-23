@@ -322,7 +322,10 @@ export function playLose() {
 }
 
 // Continuous engine drone for one lightcycle: two detuned saws and a sub
-// square through a lowpass filter whose cutoff is wobbled by an LFO.
+// square through a lowpass filter whose cutoff is wobbled by an LFO. The
+// player's own engine uses the same voice pitched into the same range as the
+// others, so it stays clear; it is only louder, slightly brighter, and has a
+// quieter sub and a highpass to keep the low end from building up.
 export class Engine {
   private nodes: { stop: (t: number) => void } | null = null
   private panner: StereoPannerNode | null = null
@@ -335,7 +338,7 @@ export class Engine {
     private self: boolean,
     variant = 0,
   ) {
-    this.baseFreq = self ? 55 : 62 + variant * 6
+    this.baseFreq = self ? 70 : 62 + variant * 6
   }
 
   start(pan = 0) {
@@ -346,8 +349,13 @@ export class Engine {
 
     const filter = ctx.createBiquadFilter()
     filter.type = 'lowpass'
-    filter.frequency.value = this.self ? 520 : 380
+    filter.frequency.value = this.self ? 460 : 380
     filter.Q.value = 4
+
+    const highpass = ctx.createBiquadFilter()
+    highpass.type = 'highpass'
+    highpass.frequency.value = this.self ? 60 : 20
+    highpass.Q.value = 0.7
 
     const lfo = ctx.createOscillator()
     lfo.frequency.value = 6 + Math.random() * 2
@@ -358,19 +366,23 @@ export class Engine {
 
     const env = ctx.createGain()
     env.gain.setValueAtTime(0, t)
-    env.gain.linearRampToValueAtTime(this.self ? 0.09 : 0.03, t + 0.4)
+    env.gain.linearRampToValueAtTime(this.self ? 0.06 : 0.03, t + 0.4)
 
-    const makeOsc = (type: OscillatorType, ratio: number, detune: number) => {
+    const makeOsc = (type: OscillatorType, ratio: number, detune: number, level = 1) => {
       const osc = ctx.createOscillator()
       osc.type = type
       osc.frequency.value = this.baseFreq * ratio * this.pitch
       osc.detune.value = detune
-      osc.connect(filter)
+      const oscGain = ctx.createGain()
+      oscGain.gain.value = level
+      osc.connect(oscGain)
+      oscGain.connect(filter)
       return osc
     }
-    this.oscs = [makeOsc('sawtooth', 1, -8), makeOsc('sawtooth', 1, 8), makeOsc('square', 0.5, 0)]
+    this.oscs = [makeOsc('sawtooth', 1, -8), makeOsc('sawtooth', 1, 8), makeOsc('square', 0.5, 0, this.self ? 0.4 : 1)]
 
-    filter.connect(env)
+    filter.connect(highpass)
+    highpass.connect(env)
     if (ctx.createStereoPanner) {
       this.panner = ctx.createStereoPanner()
       this.panner.pan.value = pan
