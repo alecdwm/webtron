@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 import useRequestAnimationFrame from '@/hooks/useRequestAnimationFrame'
 import useStore from '@/hooks/useStore'
@@ -9,10 +9,12 @@ export default function useInterpolatedLightcyclePosition(position, direction, s
   } = useStore()
 
   const basePosition = useRef(position)
-  const basePositionSetAt = useRef(Date.now())
+  const basePositionSetAt = useRef<number | null>(null)
 
   const latestPosition = useRef(position)
-  latestPosition.current = position
+  useLayoutEffect(() => {
+    latestPosition.current = position
+  }, [position])
 
   const [interpolatedPosition, setInterpolatedPosition] = useState(position)
 
@@ -23,7 +25,7 @@ export default function useInterpolatedLightcyclePosition(position, direction, s
     }
     if (dead) return setInterpolatedPosition(latestPosition.current)
 
-    if (basePosition.current !== latestPosition.current) {
+    if (basePositionSetAt.current === null || basePosition.current !== latestPosition.current) {
       basePosition.current = latestPosition.current
       basePositionSetAt.current = Date.now()
     }

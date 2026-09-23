@@ -1,23 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export default function useCursorBlink() {
+export default function useCursorBlink(): [boolean, () => void] {
   const [cursorBlink, setCursorBlink] = useState(true)
-  const cursorBlinkTimeout = useRef()
+  const cursorBlinkTimeout = useRef<number | null>(null)
 
-  // avoid setState on unmounted components
-  useEffect(() => () => (cursorBlinkTimeout.current = null), [])
+  useEffect(() => () => window.clearTimeout(cursorBlinkTimeout.current ?? undefined), [])
 
   const resetCursorBlink = useCallback(() => {
-    if (cursorBlinkTimeout.current) {
-      window.clearTimeout(cursorBlinkTimeout.current)
-    }
+    window.clearTimeout(cursorBlinkTimeout.current ?? undefined)
     setCursorBlink(false)
-    cursorBlinkTimeout.current = window.setTimeout(() => {
-      // avoid setState on unmounted components
-      if (cursorBlinkTimeout.current === null) return
-
-      setCursorBlink(true)
-    }, 600)
+    cursorBlinkTimeout.current = window.setTimeout(() => setCursorBlink(true), 600)
   }, [])
 
   return [cursorBlink, resetCursorBlink]

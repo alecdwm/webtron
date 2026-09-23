@@ -1,22 +1,22 @@
-import PropTypes from 'prop-types'
-
-import useClassName from '@/hooks/useClassName'
 import useStore from '@/hooks/useStore'
 import { colorToHexString } from '@/utils/colors'
 
 import styles from './Lightribbon.module.css'
 
-export default function Lightribbon({ color, points }) {
+type LightribbonProps = {
+  color: string
+  points: [number, number][]
+}
+
+export default function Lightribbon({ color, points }: LightribbonProps) {
   const {
     arena: { width, height },
   } = useStore()
 
   const polylinePoints = points.map((point) => `${point[0]}, ${width - point[1]}`).join(' ')
 
-  const Lightribbon = useClassName(styles.lightribbon, 'svg')
-
   return (
-    <Lightribbon viewBox={`0 0 ${width} ${height}`}>
+    <svg className={styles.lightribbon} viewBox={`0 0 ${width} ${height}`}>
       <polyline
         points={polylinePoints}
         stroke={colorToHexString(color)}
@@ -25,10 +25,6 @@ export default function Lightribbon({ color, points }) {
         shapeRendering="crispEdges"
         fill="none"
       />
-    </Lightribbon>
+    </svg>
   )
-}
-Lightribbon.propTypes = {
-  color: PropTypes.string.isRequired,
-  points: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.number)),
 }

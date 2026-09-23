@@ -1,3 +1,4 @@
+import type { Store } from '@/types'
 import combineReducers from '@/utils/combineReducers'
 
 import arena from './arena'
@@ -8,7 +9,7 @@ import preloadedImages from './preloadedImages'
 import socketState from './socketState'
 import stage from './stage'
 
-export default combineReducers({
+export default combineReducers<Store>({
   arena,
   arenaList,
   config,

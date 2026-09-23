@@ -1,17 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 
 export default function useRequestAnimationFrame(callback) {
-  const callbackRef = useRef(null)
-  callbackRef.current = callback
-
   useEffect(() => {
-    const handleAnimationFrame = () => {
-      if (callbackRef.current !== callback) return
+    let frame = requestAnimationFrame(function handleAnimationFrame() {
       callback()
-      requestAnimationFrame(handleAnimationFrame)
-    }
-    requestAnimationFrame(handleAnimationFrame)
-  }, [callback])
+      frame = requestAnimationFrame(handleAnimationFrame)
+    })
 
-  useEffect(() => () => (callbackRef.current = null), [])
+    return () => cancelAnimationFrame(frame)
+  }, [callback])
 }

@@ -5,7 +5,6 @@ import CaretLeft from '@/components/CaretLeft'
 import CaretRight from '@/components/CaretRight'
 import MenuButton from '@/components/MenuButton'
 import MenuInput from '@/components/MenuInput'
-import useClassName from '@/hooks/useClassName'
 import useEventListener from '@/hooks/useEventListener'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
@@ -56,47 +55,43 @@ export default function MainMenu() {
   )
   useEventListener('keydown', onKeyDown)
 
-  const MainMenu = useClassName(styles.mainMenu)
-  const FlexSpace = useClassName(styles.flexSpace)
-  const StatusText = useClassName(styles.statusText)
-  const NameLabel = useClassName(styles.nameLabel)
-  const NameInput = useClassName(styles.nameInput, MenuInput)
-  const ColorLabel = useClassName(styles.colorLabel)
-  const ColorControl = useClassName(styles.colorControl)
-  const ColorButtonLeft = useClassName(styles.colorButtonLeft)
-  const ColorPreview = useClassName(styles.colorPreview, 'img')
-  const ColorButtonRight = useClassName(styles.colorButtonRight)
-  const ConnectButton = useClassName(styles.connectButton, MenuButton)
-
   return (
-    <MainMenu>
-      <FlexSpace />
+    <div className={styles.mainMenu}>
+      <div className={styles.flexSpace} />
 
-      <StatusText>{statusFromSocketState(socketState)}</StatusText>
+      <div className={styles.statusText}>{statusFromSocketState(socketState)}</div>
 
-      {statusFromSocketState(socketState) ? <FlexSpace /> : null}
+      {statusFromSocketState(socketState) ? <div className={styles.flexSpace} /> : null}
 
-      <NameLabel>NAME</NameLabel>
-      <NameInput focusOnMount onChange={handlePlayerNameChange} onSubmit={onConnect} value={player.name} />
+      <div className={styles.nameLabel}>NAME</div>
+      <MenuInput
+        className={styles.nameInput}
+        focusOnMount
+        onChange={handlePlayerNameChange}
+        onSubmit={onConnect}
+        value={player.name}
+      />
 
-      <FlexSpace />
+      <div className={styles.flexSpace} />
 
-      <ColorLabel>COLOR</ColorLabel>
-      <ColorControl>
-        <ColorButtonLeft onClick={setPreviousPlayerColor}>
+      <div className={styles.colorLabel}>COLOR</div>
+      <div className={styles.colorControl}>
+        <div className={styles.colorButtonLeft} onClick={setPreviousPlayerColor}>
           <CaretLeft />
-        </ColorButtonLeft>
-        <ColorPreview src={lightcycleImages[player.color]} />
-        <ColorButtonRight onClick={setNextPlayerColor}>
+        </div>
+        <img className={styles.colorPreview} src={lightcycleImages[player.color]} />
+        <div className={styles.colorButtonRight} onClick={setNextPlayerColor}>
           <CaretRight />
-        </ColorButtonRight>
-      </ColorControl>
+        </div>
+      </div>
 
-      <FlexSpace />
+      <div className={styles.flexSpace} />
 
-      <ConnectButton onClick={onConnect}>CONNECT</ConnectButton>
+      <MenuButton className={styles.connectButton} onClick={onConnect}>
+        CONNECT
+      </MenuButton>
 
-      <FlexSpace />
-    </MainMenu>
+      <div className={styles.flexSpace} />
+    </div>
   )
 }

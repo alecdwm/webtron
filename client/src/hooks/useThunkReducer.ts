@@ -1,14 +1,19 @@
-import { useCallback, useReducer, useRef } from 'react'
+import { useCallback, useLayoutEffect, useReducer, useRef } from 'react'
 
 export default function useThunkReducer(reducer, initialState) {
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const stateRef = useRef(state)
-  stateRef.current = state
+  useLayoutEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   const getState = useCallback(() => stateRef.current, [])
   const thunkDispatch = useCallback(
-    (action) => (typeof action === 'function' ? action(thunkDispatch, getState) : dispatch(action)),
+    (action) => {
+      const run = (action) => (typeof action === 'function' ? action(run, getState) : dispatch(action))
+      return run(action)
+    },
     [getState, dispatch],
   )
 

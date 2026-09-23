@@ -20,7 +20,10 @@ export default createReducer(initialState, {
     lightcycles: {},
     lightribbons: {},
   }),
-  [RECEIVE_ARENA_STATE]: (_, { state }) => ({ ...state }),
+  [RECEIVE_ARENA_STATE]: (_, { state }) => ({
+    ...state,
+    started: state.started === null ? null : dayjs(state.started),
+  }),
   [RECEIVE_ARENA_STATE_PATCH]: (arena, { statePatch = [] }) => statePatch.reduce(updateArena, arena),
 })
 

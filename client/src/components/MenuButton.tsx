@@ -1,14 +1,13 @@
-import PropTypes from 'prop-types'
+import type { ComponentProps } from 'react'
 
-import useClassName, { resolveClassName } from '@/hooks/useClassName'
+import resolveClassName, { type ClassName } from '@/utils/resolveClassName'
 
 import styles from './MenuButton.module.css'
 
-export default function MenuButton({ className, ...passProps }) {
-  const MenuButton = useClassName(styles.menuButton, 'button')
-
-  return <MenuButton className={resolveClassName(className)} {...passProps} />
+type MenuButtonProps = Omit<ComponentProps<'button'>, 'className'> & {
+  className?: ClassName
 }
-MenuButton.propTypes = {
-  className: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+
+export default function MenuButton({ className, ...passProps }: MenuButtonProps) {
+  return <button className={resolveClassName([styles.menuButton, className])} {...passProps} />
 }

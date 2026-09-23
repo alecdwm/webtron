@@ -1,8 +1,11 @@
 import { createContext, useContext } from 'react'
 
-export const StoreContext = createContext(null)
+import type { Store } from '@/types'
 
-export default function useStore() {
+export const StoreContext = createContext<Store | null>(null)
+
+export default function useStore(): Store {
   const store = useContext(StoreContext)
+  if (store === null) throw new Error('useStore must be used inside a StoreContext provider')
   return store
 }

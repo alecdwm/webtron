@@ -3,7 +3,6 @@ import { useCallback } from 'react'
 import { join } from '@/actions'
 import MenuButton from '@/components/MenuButton'
 import useArenaListPolling from '@/hooks/useArenaListPolling'
-import useClassName from '@/hooks/useClassName'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
@@ -23,38 +22,30 @@ export default function ArenaSelect() {
     [dispatch],
   )
 
-  const ArenaSelect = useClassName(styles.arenaSelect)
-  const NewArenaButton = useClassName(styles.newArenaButton, MenuButton)
-  const ArenaList = useClassName(styles.arenaList)
-  const Arena = useClassName(styles.arena)
-  const ArenaName = useClassName(styles.arenaName)
-  const ArenaSpace = useClassName(styles.arenaSpace)
-  const ArenaPlayers = useClassName(styles.arenaPlayers)
-  const ArenaPlayer = useClassName(styles.arenaPlayer, 'img')
-  const JoinButton = useClassName(styles.joinButton, MenuButton)
-
   return (
-    <ArenaSelect>
-      <NewArenaButton onClick={joinArena}>NEW ARENA</NewArenaButton>
-      <ArenaList>
+    <div className={styles.arenaSelect}>
+      <MenuButton className={styles.newArenaButton} onClick={joinArena}>
+        NEW ARENA
+      </MenuButton>
+      <div className={styles.arenaList}>
         {arenaList.map((arena) => (
-          <Arena key={arena.id}>
-            <ArenaName>{arena.name}</ArenaName>
-            <ArenaSpace />
-            <ArenaPlayers>
+          <div key={arena.id} className={styles.arena}>
+            <div className={styles.arenaName}>{arena.name}</div>
+            <div className={styles.arenaSpace} />
+            <div className={styles.arenaPlayers}>
               {Object.entries(arena.players).map(([playerId, player]) => (
-                <ArenaPlayer key={playerId} src={lightcycleImages[player.color]} />
+                <img key={playerId} className={styles.arenaPlayer} src={lightcycleImages[player.color]} />
               ))}
               {[...Array(arena.max_players - Object.keys(arena.players).length)].map((_, index) => (
-                <ArenaPlayer key={index} src={lightcycleImages['dark']} />
+                <img key={index} className={styles.arenaPlayer} src={lightcycleImages['dark']} />
               ))}
-            </ArenaPlayers>
-            <JoinButton data-id={arena.id} onClick={joinArena}>
+            </div>
+            <MenuButton className={styles.joinButton} data-id={arena.id} onClick={joinArena}>
               JOIN
-            </JoinButton>
-          </Arena>
+            </MenuButton>
+          </div>
         ))}
-      </ArenaList>
-    </ArenaSelect>
+      </div>
+    </div>
   )
 }

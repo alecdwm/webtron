@@ -4,7 +4,6 @@ import { start, turn } from '@/actions'
 import Lightcycle from '@/components/Lightcycle'
 import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
-import useClassName from '@/hooks/useClassName'
 import useEventListener from '@/hooks/useEventListener'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
@@ -12,6 +11,7 @@ import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
 import { colorToHexString } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
+import resolveClassName from '@/utils/resolveClassName'
 
 import styles from './Arena.module.css'
 
@@ -23,20 +23,18 @@ export default function Arena() {
 
   const onStart = useCallback(() => dispatch(start()), [dispatch])
 
-  const arenaRef = useRef()
+  const arenaRef = useRef<HTMLDivElement>(null)
   useKeyControls(arena.started)
   useTouchControls(arena.started, arenaRef)
 
   const winner = arena.winner && arena.players[arena.winner]
 
-  const Arena = useClassName(styles.arena)
-  const Background = useClassName([styles.background, arena.started !== null && styles.backgroundStarted])
-  const WinnerText = useClassName(styles.winnerText)
-  const StartButton = useClassName(styles.startButton, MenuButton)
-
   return (
-    <Arena ref={arenaRef}>
-      <Background style={{ backgroundImage: `url("${backgroundPanel}")` }} />
+    <div ref={arenaRef} className={styles.arena}>
+      <div
+        className={resolveClassName([styles.background, arena.started !== null && styles.backgroundStarted])}
+        style={{ backgroundImage: `url("${backgroundPanel}")` }}
+      />
 
       {Object.entries(arena.lightribbons).map(([id, { points }]) => (
         <Lightribbon key={id} color={arena.players[id] ? arena.players[id].color : 'white'} points={points} />
@@ -54,13 +52,20 @@ export default function Arena() {
       ))}
 
       {winner && (
-        <WinnerText style={{ color: colorToHexString(winner.color), borderColor: colorToHexString(winner.color) }}>
+        <div
+          className={styles.winnerText}
+          style={{ color: colorToHexString(winner.color), borderColor: colorToHexString(winner.color) }}
+        >
           {`${winner.name} wins!`.toUpperCase()}
-        </WinnerText>
+        </div>
       )}
 
-      {arena.started === null ? <StartButton onClick={onStart}>START</StartButton> : null}
-    </Arena>
+      {arena.started === null ? (
+        <MenuButton className={styles.startButton} onClick={onStart}>
+          START
+        </MenuButton>
+      ) : null}
+    </div>
   )
 }
 
@@ -161,8 +166,6 @@ function useTouchControls(started, arenaRef) {
     [started, turnFromCenterOffset],
   )
 
-  useEventListener('touchstart', onTouchStart, arenaRef.current)
-  useEventListener('mousedown', onMouseDown, arenaRef.current)
-
-  return arenaRef
+  useEventListener('touchstart', onTouchStart, arenaRef)
+  useEventListener('mousedown', onMouseDown, arenaRef)
 }

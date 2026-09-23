@@ -1,18 +1,31 @@
-import PropTypes from 'prop-types'
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { type ComponentProps, useCallback, useId, useLayoutEffect, useRef, useState } from 'react'
 
-import useClassName, { resolveClassName } from '@/hooks/useClassName'
 import useCursorBlink from '@/hooks/useCursorBlink'
-import useUniqueId from '@/hooks/useUniqueId'
+import resolveClassName, { type ClassName } from '@/utils/resolveClassName'
 
 import styles from './MenuInput.module.css'
 
-export default function MenuInput({ className, focusOnMount, onChange, onSubmit, value, ...passProps }) {
-  const inputRef = useRef(null)
+type MenuInputProps = Omit<ComponentProps<'input'>, 'className' | 'onChange' | 'onSubmit' | 'value'> & {
+  className?: ClassName
+  focusOnMount?: boolean
+  onChange?: (value: string) => void
+  onSubmit?: () => void
+  value?: string
+}
+
+export default function MenuInput({
+  className,
+  focusOnMount,
+  onChange,
+  onSubmit,
+  value,
+  ...passProps
+}: MenuInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
   useLayoutEffect(() => {
     if (!focusOnMount) return
     if (inputRef.current === null) return
-    window.setTimeout(() => inputRef.current.focus(), 10)
+    window.setTimeout(() => inputRef.current?.focus(), 10)
   }, [focusOnMount])
 
   const [cursorBlink, resetCursorBlink] = useCursorBlink()
@@ -56,21 +69,25 @@ export default function MenuInput({ className, focusOnMount, onChange, onSubmit,
   )
   const handleBlur = useCallback(() => setFocused(false), [setFocused])
 
-  const uniqueId = useUniqueId()
-
-  const MenuInput = useClassName(styles.menuInput)
-  const InputWrapper = useClassName([styles.inputWrapper, cursorBlink && styles.cursorBlink, focused && styles.focused])
-  const InvisibleText = useClassName(styles.invisibleText, 'span')
-  const Input = useClassName(styles.input, 'input')
+  const inputId = useId()
 
   return (
-    <MenuInput className={resolveClassName(className)}>
-      <InputWrapper htmlFor={uniqueId} className={value === '' && styles.noName}>
-        <InvisibleText>{value || '_'}</InvisibleText>
-        <Input
+    <div className={resolveClassName([styles.menuInput, className])}>
+      <label
+        htmlFor={inputId}
+        className={resolveClassName([
+          styles.inputWrapper,
+          cursorBlink && styles.cursorBlink,
+          focused && styles.focused,
+          value === '' && styles.noName,
+        ])}
+      >
+        <span className={styles.invisibleText}>{value || '_'}</span>
+        <input
           ref={inputRef}
+          className={styles.input}
           spellCheck={false}
-          id={uniqueId}
+          id={inputId}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
@@ -79,14 +96,7 @@ export default function MenuInput({ className, focusOnMount, onChange, onSubmit,
           onBlur={handleBlur}
           {...passProps}
         />
-      </InputWrapper>
-    </MenuInput>
+      </label>
+    </div>
   )
-}
-MenuInput.propTypes = {
-  className: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
-  focusOnMount: PropTypes.bool,
-  onChange: PropTypes.func,
-  onSubmit: PropTypes.func,
-  value: PropTypes.string,
 }
