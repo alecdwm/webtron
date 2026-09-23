@@ -1,16 +1,51 @@
-.statusText {
+.connect {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  color: var(--orange);
-  font-size: 2.5rem;
-  font-weight: bold;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7cqi;
 }
 
-@media screen and (max-width: 630px) {
-  .statusText {
-    font-size: 2rem;
+.spinner {
+  position: relative;
+  width: 22cqi;
+  height: 22cqi;
+}
+.ring {
+  position: absolute;
+  inset: 0;
+  border: 3px solid transparent;
+  border-top-color: var(--blue);
+  border-right-color: var(--blue);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 4px var(--blue)) drop-shadow(0 0 10px var(--blue));
+  animation: spin 1.1s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+}
+.ring + .ring {
+  inset: 22%;
+  border-top-color: var(--orange);
+  border-right-color: var(--orange);
+  filter: drop-shadow(0 0 4px var(--orange)) drop-shadow(0 0 10px var(--orange));
+  animation-duration: 0.8s;
+  animation-direction: reverse;
+}
+
+.statusText {
+  --glow: var(--orange);
+  letter-spacing: 0.2em;
+  color: var(--orange);
+  font-family: var(--font-display);
+  font-size: clamp(1rem, 5.5cqi, 2rem);
+  font-weight: 700;
+  text-align: center;
+  text-shadow: var(--text-glow);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }

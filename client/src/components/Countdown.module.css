@@ -1,0 +1,61 @@
+.countdown {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.number,
+.go {
+  font-family: var(--font-display);
+  font-size: 28cqi;
+  font-weight: 900;
+  line-height: 1;
+}
+.number {
+  --glow: var(--orange);
+  color: var(--orange);
+  text-shadow: var(--text-glow);
+  animation: countpop 1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.go {
+  --glow: var(--green);
+  color: var(--green);
+  text-shadow: var(--text-glow);
+  animation: gopop 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes countpop {
+  0% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+@keyframes gopop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}

@@ -1,12 +1,17 @@
 a {
-  transition: color 300ms ease;
+  transition:
+    color 300ms ease,
+    text-shadow 300ms ease;
   text-decoration: none;
   color: var(--orange);
+  --glow: var(--orange);
 }
 a:focus,
 a:hover {
   color: var(--blue);
   outline: none;
+  text-shadow: var(--text-glow);
+  --glow: var(--blue);
 }
 a:active {
   transition: none;

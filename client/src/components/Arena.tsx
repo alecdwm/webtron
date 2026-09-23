@@ -1,9 +1,11 @@
-import { useCallback, useRef } from 'react'
+import { type CSSProperties, useCallback, useRef } from 'react'
 
 import { start, turn } from '@/actions'
+import Countdown from '@/components/Countdown'
 import Lightcycle from '@/components/Lightcycle'
 import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
+import useArenaSounds from '@/hooks/useArenaSounds'
 import useEventListener from '@/hooks/useEventListener'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
@@ -18,7 +20,8 @@ import styles from './Arena.module.css'
 export default function Arena() {
   usePreloadImages([backgroundPanel, ...Object.values(lightcycleImages)])
 
-  const { arena } = useStore()
+  const { arena, player } = useStore()
+  useArenaSounds(arena, player.id)
   const dispatch = useStoreDispatch()
 
   const onStart = useCallback(() => dispatch(start()), [dispatch])
@@ -28,6 +31,7 @@ export default function Arena() {
   useTouchControls(arena.started, arenaRef)
 
   const winner = arena.winner && arena.players[arena.winner]
+  const playerCount = Object.keys(arena.players).length
 
   return (
     <div ref={arenaRef} className={styles.arena}>
@@ -48,22 +52,34 @@ export default function Arena() {
           direction={direction}
           speed={speed}
           dead={dead}
+          isSelf={id === player.id}
         />
       ))}
 
-      {winner && (
-        <div
-          className={styles.winnerText}
-          style={{ color: colorToHexString(winner.color), borderColor: colorToHexString(winner.color) }}
-        >
-          {`${winner.name} wins!`.toUpperCase()}
-        </div>
-      )}
+      {arena.started !== null ? <Countdown key={arena.started.valueOf()} startAt={arena.started.valueOf()} /> : null}
 
-      {arena.started === null ? (
-        <MenuButton className={styles.startButton} onClick={onStart}>
-          START
-        </MenuButton>
+      {winner || arena.started === null ? (
+        <div className={styles.overlay}>
+          {winner && (
+            <div className={styles.winner} style={{ '--winner': colorToHexString(winner.color) } as CSSProperties}>
+              <div className={styles.winnerLabel}>Winner</div>
+              <div className={styles.winnerName}>{winner.name.toUpperCase()}</div>
+            </div>
+          )}
+
+          {arena.started === null ? (
+            <div className={styles.lobby}>
+              {!winner && <div className={styles.arenaName}>{arena.name}</div>}
+              <MenuButton className={styles.startButton} onClick={onStart}>
+                {winner ? 'REMATCH' : 'START'}
+              </MenuButton>
+              <div className={styles.lobbyInfo}>
+                {playerCount}/{arena.max_players} players
+              </div>
+              <div className={styles.controlsHint}>Arrows / WASD / tap to steer</div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

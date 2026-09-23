@@ -1,133 +1,240 @@
-/* common attributes */
-.statusText,
-.nameLabel,
-.nameInput,
-.colorLabel,
-.colorButtonLeft,
-.colorPreview,
-.colorButtonRight,
-.connectButton {
-  position: absolute;
-  color: var(--white);
-  font-size: 2.5rem;
-}
-.colorButtonLeft,
-.colorButtonRight {
-  cursor: pointer;
-  transition:
-    color 300ms ease,
-    border 300ms ease;
-  color: var(--white);
-  outline: none;
-}
-.colorButtonLeft:hover,
-.colorButtonRight:hover {
-  color: var(--blue);
-}
-.colorButtonLeft:active,
-.colorButtonRight:active {
-  transition: none;
-  color: var(--white);
-  outline: none;
-}
-.statusText,
-.nameInput,
-.connectButton {
-  font-weight: bold;
-}
-
-/* specific attributes */
 .mainMenu {
+  --player: var(--blue);
   position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   flex-direction: column;
-  justify-content: space-evenly;
-  width: 100%;
-  height: 100%;
+  justify-content: center;
+  gap: 4.5cqi;
+  padding: 5cqi;
+  color: var(--white);
 }
 
 .statusText {
-  top: 105px;
-  left: 280px;
-  transform: translate(-50%, -50%);
-  text-align: center;
+  --glow: var(--orange);
+  padding: 0.3em 0.9em;
+  letter-spacing: 0.15em;
   color: var(--orange);
+  border: 1px solid color-mix(in srgb, var(--orange) 60%, transparent);
+  border-radius: 0.3em;
+  background: color-mix(in srgb, var(--orange) 10%, transparent);
+  font-family: var(--font-display);
+  font-size: clamp(0.75rem, 3.6cqi, 1.3rem);
+  font-weight: 700;
+  text-shadow: var(--text-glow);
+  animation: pulse 1.6s ease-in-out infinite;
 }
-.nameLabel {
-  top: 210px;
-  left: 240px;
-  transform: translate(-100%, -50%);
+
+.title {
+  --glow: var(--blue);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-size: clamp(0.8rem, 3.4cqi, 1.2rem);
+  font-weight: 500;
+  text-shadow: var(--text-glow);
+}
+.title::before,
+.title::after {
+  display: inline-block;
+  width: 2em;
+  height: 1px;
+  margin: 0 0.8em;
+  content: '';
+  vertical-align: middle;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 1.8cqi;
+}
+.label {
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--white) 55%, transparent);
+  font-family: var(--font-display);
+  font-size: clamp(0.6rem, 2.4cqi, 0.85rem);
+}
+
+.nameBox {
+  --glow: var(--player);
+  display: flex;
+  justify-content: center;
+  width: 58cqi;
+  padding: 1.6cqi 3cqi;
+  cursor: text;
+  transition:
+    border-color 300ms ease,
+    box-shadow 300ms ease;
+  border: 2px solid color-mix(in srgb, var(--player) 70%, transparent);
+  border-radius: 0.3em;
+  background: color-mix(in srgb, var(--player) 6%, rgba(0, 0, 0, 0.4));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--player) 40%, transparent);
+}
+.nameBox:focus-within {
+  border-color: var(--player);
+  box-shadow: var(--box-glow);
 }
 .nameInput {
-  top: 210px;
-  left: 280px;
-  transform: translate(0, -50%);
+  --glow: var(--player);
+  color: var(--player);
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 6.4cqi, 2.3rem);
+  font-weight: 700;
+  text-shadow: var(--text-glow);
 }
-.colorLabel {
-  top: 270px;
-  left: 240px;
-  transform: translate(-100%, -50%);
-}
-.colorButtonLeft {
-  top: 270px;
-  left: 280px;
+
+.colorControl {
   display: flex;
   align-items: center;
-  transform: translate(0, -50%);
+  gap: 2cqi;
 }
+.colorButton {
+  all: unset;
+}
+.colorButton {
+  display: flex;
+  padding: 1cqi;
+  cursor: pointer;
+  transition:
+    color 200ms ease,
+    filter 200ms ease,
+    transform 120ms ease;
+  color: color-mix(in srgb, var(--white) 70%, transparent);
+  font-size: clamp(1.2rem, 6cqi, 2.2rem);
+  -webkit-tap-highlight-color: transparent;
+}
+.colorButton:hover,
+.colorButton:focus-visible {
+  color: var(--player);
+  filter: drop-shadow(0 0 6px var(--player));
+}
+.colorButton:active {
+  transition: none;
+  transform: scale(0.85);
+  color: var(--white);
+}
+
+/* A lightcycle racing to the right, trailing its ribbon over scrolling grid. */
 .colorPreview {
-  top: 270px;
-  left: 340px;
-  transform: translate(-50%, -50%) rotate(270deg);
+  position: relative;
+  overflow: hidden;
+  width: 42cqi;
+  height: 13cqi;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
+  border-radius: 0.4em;
+  background-color: rgba(0, 0, 0, 0.35);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--blue) 30%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--blue) 30%, transparent) 1px, transparent 1px);
+  background-position: center;
+  background-size: 4cqi 4cqi;
+  animation: previewscroll 0.5s linear infinite;
 }
-.colorButtonRight {
-  top: 270px;
-  left: 400px;
+.previewTrail {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 27cqi;
+  height: 3px;
+  transform: translateY(-50%);
+  transition:
+    background 300ms ease,
+    box-shadow 300ms ease;
+  background: linear-gradient(to right, transparent, var(--player) 45%);
+  box-shadow:
+    0 0 6px var(--player),
+    0 0 14px var(--player);
+}
+.previewCycle {
+  position: absolute;
+  top: 50%;
+  left: 27cqi;
+  width: 10cqi;
+  transform: translateY(-50%);
+  filter: drop-shadow(0 0 3px var(--player)) drop-shadow(0 0 10px var(--player));
+  image-rendering: pixelated;
+  animation: previewbob 1.4s ease-in-out infinite;
+}
+
+.swatches {
   display: flex;
-  align-items: center;
-  transform: translate(-100%, -50%);
+  gap: 2.2cqi;
 }
+.swatch {
+  all: unset;
+}
+.swatch {
+  width: 4.2cqi;
+  min-width: 14px;
+  height: 4.2cqi;
+  min-height: 14px;
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+  opacity: 0.5;
+  border-radius: 50%;
+  background: var(--swatch);
+  -webkit-tap-highlight-color: transparent;
+}
+.swatch:hover,
+.swatch:focus-visible {
+  transform: scale(1.2);
+  opacity: 0.9;
+}
+.swatchSelected {
+  transform: scale(1.25);
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px var(--darkaqua),
+    0 0 0 3px var(--swatch),
+    0 0 12px var(--swatch);
+}
+
 .connectButton {
-  top: 350px;
-  left: 280px;
-  transform: translate(-50%, -50%);
-}
-.nameLabel:after,
-.colorLabel:after {
-  content: ':';
+  margin-top: 1cqi;
+  font-size: clamp(1.1rem, 6cqi, 2.2rem);
 }
 
-@media screen and (max-width: 630px) {
-  .mainMenu {
-    justify-content: center;
+.hint {
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--white) 40%, transparent);
+  font-size: clamp(0.6rem, 2.3cqi, 0.8rem);
+}
+.hint kbd {
+  display: inline-block;
+  margin: 0 0.15em;
+  padding: 0 0.4em;
+  border: 1px solid color-mix(in srgb, var(--white) 30%, transparent);
+  border-radius: 0.25em;
+  font-family: inherit;
+}
+@media (hover: none) {
+  .hint {
+    display: none;
   }
+}
 
-  .flexSpace {
-    flex-grow: 1;
+@keyframes previewscroll {
+  to {
+    background-position: calc(50% - 4cqi) center;
   }
-
-  .statusText,
-  .nameLabel,
-  .nameInput,
-  .colorLabel,
-  .colorButtonLeft,
-  .colorPreview,
-  .colorButtonRight,
-  .connectButton {
-    position: initial;
-    transform: none;
-    font-size: 2rem;
+}
+@keyframes previewbob {
+  0%,
+  100% {
+    transform: translateY(-50%);
   }
-  .colorPreview {
-    transform: rotate(270deg);
-  }
-  .nameLabel:after,
-  .colorLabel:after {
-    content: '';
-  }
-  .colorControl {
-    display: flex;
-    align-items: center;
+  50% {
+    transform: translateY(calc(-50% - 1px));
   }
 }

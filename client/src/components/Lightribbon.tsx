@@ -14,13 +14,33 @@ export default function Lightribbon({ color, points }: LightribbonProps) {
   } = useStore()
 
   const polylinePoints = points.map((point) => `${point[0]}, ${width - point[1]}`).join(' ')
+  const stroke = colorToHexString(color)
 
   return (
     <svg className={styles.lightribbon} viewBox={`0 0 ${width} ${height}`}>
+      {/* Soft halo, then the solid ribbon, then a bright core. */}
+      <polyline
+        className={styles.halo}
+        points={polylinePoints}
+        stroke={stroke}
+        strokeWidth="9"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        fill="none"
+      />
       <polyline
         points={polylinePoints}
-        stroke={colorToHexString(color)}
-        strokeWidth="2"
+        stroke={stroke}
+        strokeWidth="3"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        fill="none"
+      />
+      <polyline
+        className={styles.core}
+        points={polylinePoints}
+        strokeWidth="1"
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
         fill="none"

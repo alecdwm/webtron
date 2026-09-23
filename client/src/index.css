@@ -1,3 +1,7 @@
+@import '@fontsource/orbitron/latin-500.css';
+@import '@fontsource/orbitron/latin-700.css';
+@import '@fontsource/orbitron/latin-900.css';
+@import '@fontsource/share-tech-mono/latin-400.css';
 @import './styles/base.css';
 @import './styles/links.css';
 @import './styles/page.css';
@@ -15,4 +19,17 @@
 }
 :root {
   --footer-height: 4rem;
+
+  --black: #050b0b;
+  --panel: rgba(8, 18, 18, 0.82);
+
+  --font-display: 'Orbitron', 'Courier New', Courier, monospace;
+  --font-mono: 'Share Tech Mono', 'Courier New', Courier, monospace;
+
+  /* Layered neon glow. Set --glow on an element to pick its color. */
+  --glow: var(--blue);
+  --text-glow: 0 0 2px var(--glow), 0 0 8px var(--glow), 0 0 18px color-mix(in srgb, var(--glow) 60%, transparent);
+  --box-glow:
+    0 0 4px var(--glow), 0 0 14px color-mix(in srgb, var(--glow) 55%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--glow) 35%, transparent);
 }

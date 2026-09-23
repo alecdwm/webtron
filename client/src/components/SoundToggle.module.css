@@ -1,0 +1,35 @@
+.soundToggle {
+  all: unset;
+}
+.soundToggle {
+  --glow: var(--blue);
+  position: fixed;
+  z-index: 101;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition:
+    color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+  color: color-mix(in srgb, var(--blue) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
+  border-radius: 0.4rem;
+  background: rgba(5, 11, 11, 0.6);
+  font-size: 1.25rem;
+  animation:
+    hidden 2s ease,
+    fadein 1s ease 2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.soundToggle:hover,
+.soundToggle:focus-visible {
+  color: var(--white);
+  border-color: var(--blue);
+  box-shadow: var(--box-glow);
+}
+.soundToggle:active {
+  transform: scale(0.92);
+}

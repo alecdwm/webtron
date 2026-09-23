@@ -5,21 +5,70 @@
   all: unset;
 }
 .menuButton {
+  --glow: var(--orange);
+  position: relative;
   display: inline-block;
+  overflow: hidden;
+  padding: 0.35em 1.1em;
   cursor: pointer;
   transition:
-    color 300ms ease,
-    border 300ms ease;
+    color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    text-shadow 200ms ease,
+    transform 120ms ease;
+  text-align: center;
+  letter-spacing: 0.12em;
   color: var(--orange);
+  border: 2px solid var(--orange);
+  border-radius: 0.3em;
   outline: none;
-  font-weight: bold;
+  background: color-mix(in srgb, var(--orange) 8%, transparent);
+  box-shadow:
+    0 0 4px color-mix(in srgb, var(--glow) 60%, transparent),
+    inset 0 0 8px color-mix(in srgb, var(--glow) 20%, transparent);
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--glow) 70%, transparent);
+  -webkit-tap-highlight-color: transparent;
 }
-.menuButton:focus,
+/* Light sweep across the face on hover/focus. */
+.menuButton::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  content: '';
+  transform: skewX(-20deg);
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(229, 254, 255, 0.35), transparent);
+}
+.menuButton:focus-visible,
 .menuButton:hover {
-  color: var(--blue);
+  --glow: var(--blue);
+  color: var(--white);
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  box-shadow: var(--box-glow);
+  text-shadow: var(--text-glow);
+}
+.menuButton:focus-visible::before,
+.menuButton:hover::before {
+  animation: sweep 700ms ease;
 }
 .menuButton:active {
+  --glow: var(--white);
   transition: none;
-  color: var(--white);
-  outline: none;
+  transform: scale(0.96);
+  color: var(--darkaqua);
+  border-color: var(--white);
+  background: var(--white);
+  text-shadow: none;
+}
+
+@keyframes sweep {
+  to {
+    left: 120%;
+  }
 }

@@ -1,33 +1,62 @@
+header {
+  padding: 2rem 2rem 1.5rem;
+  text-align: center;
+}
 header img {
-  max-width: calc(100% - 4rem);
-  margin: 2rem auto;
+  max-width: 100%;
+  margin: 0 auto;
   user-select: none;
+  filter: drop-shadow(0 0 3px rgba(242, 217, 26, 0.7)) drop-shadow(0 0 14px rgba(0, 194, 204, 0.45));
+  animation: logoflicker 4s linear 1s 1 both;
+}
+.tagline {
+  margin: 0.9rem 0 0;
+  user-select: none;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--blue) 75%, var(--white));
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-shadow: var(--text-glow);
+  animation:
+    hidden 0.8s ease,
+    fadein 1.2s ease 0.8s;
 }
 
 main {
   position: relative;
   overflow: hidden;
-  box-sizing: content-box;
-  width: calc(100% - 4rem);
+  isolation: isolate;
+  container-type: inline-size;
+  width: calc(100% - 2rem);
   max-width: 560px;
+  aspect-ratio: 1;
   margin: 0 auto;
   user-select: none;
   border: 3px solid var(--blue);
   border-radius: 15px;
+  background:
+    radial-gradient(ellipse at center, color-mix(in srgb, var(--blue) 7%, transparent), transparent 75%),
+    var(--darkaqua);
+  box-shadow:
+    0 0 6px var(--blue),
+    0 0 30px color-mix(in srgb, var(--blue) 45%, transparent),
+    0 0 90px color-mix(in srgb, var(--blue) 18%, transparent),
+    inset 0 0 30px color-mix(in srgb, var(--blue) 25%, transparent);
+  -webkit-tap-highlight-color: transparent;
 
   image-rendering: pixelated;
 }
-main::before {
-  float: left;
-  width: 1px;
-  margin-left: -1px;
-  padding-top: 100%;
-  content: '';
-}
+/* Glass reflection. */
 main::after {
-  display: table;
-  clear: both;
+  position: absolute;
+  z-index: 50;
+  inset: 0;
   content: '';
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(229, 254, 255, 0.05) 0%, transparent 35%);
 }
 
 footer {
@@ -37,9 +66,19 @@ footer {
   width: 100%;
   height: var(--footer-height);
   text-align: center;
-  font-weight: bold;
+  letter-spacing: 0.15em;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
   line-height: var(--footer-height);
 }
 footer p {
   margin: 0;
+}
+
+/* Leave room for the fixed sound toggle above the logo on narrow screens. */
+@media (max-width: 600px) {
+  header {
+    padding-top: 3.75rem;
+  }
 }

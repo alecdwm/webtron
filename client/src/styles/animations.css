@@ -9,7 +9,7 @@ main.loaded {
   display: block;
   animation:
     hidden 0.1s ease,
-    canvasgrow 0.3s ease 0.1s;
+    crton 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards;
 }
 
 footer {
@@ -36,11 +36,43 @@ footer {
   }
 }
 
-@keyframes canvasgrow {
-  from {
-    transform: scale(0, 0);
+/* An old monitor warming up: a bright line that opens into the picture. */
+@keyframes crton {
+  0% {
+    transform: scale(0, 0.006);
+    filter: brightness(4);
   }
-  to {
+  40% {
+    transform: scale(1, 0.006);
+    filter: brightness(4);
+  }
+  100% {
     transform: scale(1, 1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes logoflicker {
+  0%,
+  6%,
+  9%,
+  15%,
+  100% {
+    opacity: 1;
+  }
+  5%,
+  8%,
+  14% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
   }
 }

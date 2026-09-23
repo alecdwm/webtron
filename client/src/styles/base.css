@@ -6,8 +6,13 @@ html {
   position: relative;
   min-height: 100%;
   color: var(--blue);
-  background-color: var(--darkaqua);
-  font-family: 'Courier New', Courier, monospace;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 70%),
+    radial-gradient(ellipse 120% 60% at 50% 100%, color-mix(in srgb, var(--purple) 18%, transparent), transparent 70%),
+    linear-gradient(var(--black), var(--darkaqua));
+  background-color: var(--black);
+  background-attachment: fixed;
+  font-family: var(--font-mono);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -17,6 +22,63 @@ body {
   padding: 0 0 var(--footer-height) 0;
 }
 
+/* Receding grid floor behind the page. */
+body::before {
+  position: fixed;
+  z-index: -1;
+  right: -50%;
+  bottom: 0;
+  left: -50%;
+  height: 55vh;
+  content: '';
+  transform: perspective(40vh) rotateX(60deg);
+  transform-origin: 50% 100%;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--blue) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--blue) 70%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to top, black 10%, transparent 90%);
+  animation: gridscroll 2.5s linear infinite;
+}
+
+/* CRT scanlines and vignette over everything. */
+body::after {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.55) 100%);
+}
+
 img {
   display: block;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: none;
+}
+
+@keyframes gridscroll {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }
