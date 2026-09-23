@@ -4,7 +4,7 @@
 
 A browser-based multiplayer implementation of the classic Tron Lightcycles arcade game.
 
-<a href="https://tron.shirls.org"><img src="screenshot.png" width="640" alt="a screenshot of an in-progress webtron game"></a>
+<a href="https://tron.shirls.org"><img src="screenshot.png" width="704" alt="a screenshot of an in-progress webtron game"></a>
 
 </div>
 
