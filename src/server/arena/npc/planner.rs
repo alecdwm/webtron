@@ -245,15 +245,20 @@ impl<'a> Planner<'a> {
         planner
     }
 
-    /// Evaluates going straight and turning either way.
-    pub fn options(&self, npc_id: PlayerId, lightcycle: &Lightcycle, delta_time: f64) -> Options {
+    /// Evaluates going straight and turning either way. The path ahead of
+    /// the lightcycle `ignoring` isn't treated as an obstacle.
+    pub fn options(
+        &self,
+        npc_id: PlayerId,
+        lightcycle: &Lightcycle,
+        delta_time: f64,
+        ignoring: Option<PlayerId>,
+    ) -> Options {
         let [left, right] = lightcycle.direction.perpendicular_directions();
+        let evaluate = |direction| self.evaluate(npc_id, lightcycle, direction, ignoring);
         Options {
-            straight: self.evaluate(npc_id, lightcycle, lightcycle.direction),
-            turns: [
-                self.evaluate(npc_id, lightcycle, left),
-                self.evaluate(npc_id, lightcycle, right),
-            ],
+            straight: evaluate(lightcycle.direction),
+            turns: [evaluate(left), evaluate(right)],
             // Far enough to survive the next update at the current speed.
             min_clearance: lightcycle.speed * delta_time * 1.5 + 1.0,
         }
@@ -264,8 +269,9 @@ impl<'a> Planner<'a> {
         npc_id: PlayerId,
         lightcycle: &Lightcycle,
         direction: Direction,
+        ignoring: Option<PlayerId>,
     ) -> Evaluation {
-        let ray = look_ahead_distance(self.arena, lightcycle.position, direction);
+        let ray = look_ahead_distance(self.arena, lightcycle.position, direction, ignoring);
         let velocity = direction.as_velocity();
 
         // Start from the first free cell ahead. Where a trail runs through
@@ -462,7 +468,7 @@ mod tests {
         );
 
         let planner = Planner::new(&arena);
-        let options = planner.options(npc_id, &lightcycle, 0.05);
+        let options = planner.options(npc_id, &lightcycle, 0.05, None);
         let left = options.get(Direction::Left).unwrap();
         let right = options.get(Direction::Right).unwrap();
         assert!(left.territory * 2.0 < right.territory);
@@ -483,14 +489,14 @@ mod tests {
         let npc = cycle(100.0, 280.0, Direction::Up);
         arena.lightcycles.insert(npc_id, npc);
 
-        let alone = Planner::new(&arena).options(npc_id, &npc, 0.05);
+        let alone = Planner::new(&arena).options(npc_id, &npc, 0.05, None);
 
         let other = Lightcycle {
             speed: LIGHTCYCLE_BOOST_SPEED,
             ..cycle(160.0, 280.0, Direction::Up)
         };
         arena.lightcycles.insert(PlayerId::default(), other);
-        let contested = Planner::new(&arena).options(npc_id, &npc, 0.05);
+        let contested = Planner::new(&arena).options(npc_id, &npc, 0.05, None);
 
         assert!(contested.straight.territory < alone.straight.territory * 0.75);
         let left = contested.get(Direction::Left).unwrap();

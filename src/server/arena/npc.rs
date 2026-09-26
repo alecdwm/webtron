@@ -14,8 +14,12 @@ const NPC_LOOK_AHEAD_DISTANCE: f64 = 40.0;
 const NPC_TRAP_SEGMENT_LENGTH: f64 = 30.0;
 const NPC_ZIGZAG_LEG_LENGTH: f64 = 16.0;
 const NPC_CUTOFF_COOLDOWN: f64 = 3.0;
+/// How long after turning an NPC keeps going straight, unless its way ahead
+/// is blocked or its behaviour asks to turn. Without it, an NPC next to a
+/// faster lightcycle can turn back and forth every update, as the space
+/// ahead of it changes hands from one update to the next.
+const NPC_SETTLE_TIME: f64 = 0.25;
 const NPC_ATTACK_COOLDOWN: f64 = 2.0;
-const NPC_OVERTAKE_BUFFER: f64 = 20.0;
 /// How far to the side of a trail an NPC rides when drafting it. More than a
 /// planning grid cell, so the trail doesn't block the NPC's own cells.
 const NPC_DRAFT_OFFSET: f64 = 7.0;
@@ -25,10 +29,12 @@ const NPC_TERRITORY_TURN_GAIN: f64 = 1.05;
 /// Phase within the CutOff behaviour.
 #[derive(Debug, Clone, Copy)]
 pub enum CutOffPhase {
-    /// Waiting for the right moment to turn. Value is remaining seconds.
-    Waiting(f64),
-    /// Traveling perpendicular, crossing the slipstreamer's lane. Value is distance traveled.
-    Crossing(f64),
+    /// Riding on until the slipstreamer is close enough that the NPC only
+    /// just gets across its lane first. `lead` is how many seconds before
+    /// the slipstreamer the NPC aims to cross.
+    Waiting { lead: f64 },
+    /// Crossing the slipstreamer's lane, `distance` in all.
+    Crossing { travelled: f64, distance: f64 },
 }
 
 /// Phase within the SlipstreamAttack behaviour.
@@ -251,12 +257,13 @@ pub enum NpcBehaviour {
         resume: Direction,
         remaining: f64,
     },
-    /// Cut off a detected slipstreamer by turning in front of them.
+    /// Cut off a detected slipstreamer by turning in front of them, going
+    /// `overshoot` past their lane before turning back.
     CutOff {
         target_id: PlayerId,
         cut_direction: Direction,
         original_direction: Direction,
-        cut_distance: f64,
+        overshoot: f64,
         phase: CutOffPhase,
     },
     /// Actively slipstream another bike, overtake, then cut them off.
@@ -279,6 +286,16 @@ impl NpcBehaviour {
             | NpcBehaviour::CutOff { .. }
             | NpcBehaviour::SlipstreamAttack { .. } => Caution::Bold,
             _ => Caution::Contested,
+        }
+    }
+
+    /// The lightcycle this behaviour is attacking, whose path ahead the NPC
+    /// means to cross.
+    fn target(&self) -> Option<PlayerId> {
+        match self {
+            NpcBehaviour::CutOff { target_id, .. }
+            | NpcBehaviour::SlipstreamAttack { target_id, .. } => Some(*target_id),
+            _ => None,
         }
     }
 
@@ -306,6 +323,8 @@ pub struct NpcState {
     pub cutoff_cooldown: f64,
     /// Cooldown before the NPC will consider a new slipstream attack.
     pub attack_cooldown: f64,
+    /// Seconds since the NPC last turned.
+    pub since_turn: f64,
 }
 
 impl Default for NpcState {
@@ -317,6 +336,7 @@ impl Default for NpcState {
             time_remaining: random_duration_for(&NpcBehaviour::Cruise),
             cutoff_cooldown: 0.0,
             attack_cooldown: 0.0,
+            since_turn: 0.0,
         }
     }
 }
@@ -476,7 +496,7 @@ pub fn update_npc_inputs(
         react_to_slipstreamer(arena, *npc_id, lightcycle, state);
         look_for_slipstream_attack(arena, *npc_id, lightcycle, state);
 
-        let options = planner.options(*npc_id, lightcycle, delta_time);
+        let options = planner.options(*npc_id, lightcycle, delta_time, state.behaviour.target());
         let context = Context {
             arena,
             npc_ids: &npc_ids,
@@ -488,11 +508,21 @@ pub fn update_npc_inputs(
         let request = choose_direction(&context, state);
         let (direction, overruled) =
             options.vet(request, &state.personality, state.behaviour.caution());
-        if overruled && state.behaviour.is_maneuver() {
-            state.abort();
-        }
+        let settling = request.is_none()
+            && state.since_turn < NPC_SETTLE_TIME
+            && options.is_safe(&options.straight);
+        let direction = if settling {
+            lightcycle.direction
+        } else {
+            if overruled && state.behaviour.is_maneuver() {
+                state.abort();
+            }
+            direction
+        };
 
+        state.since_turn += delta_time;
         if direction != lightcycle.direction {
+            state.since_turn = 0.0;
             updates.push(ArenaUpdate::UpdateLightribbonAppendPoint(
                 *npc_id,
                 lightcycle.position,
@@ -512,7 +542,13 @@ fn react_to_slipstreamer(
     lightcycle: &Lightcycle,
     state: &mut NpcState,
 ) {
-    if matches!(state.behaviour, NpcBehaviour::CutOff { .. }) || state.cutoff_cooldown > 0.0 {
+    // An NPC already attacking cuts across on its own terms, including when
+    // its target falls in behind it.
+    let attacking = matches!(
+        state.behaviour,
+        NpcBehaviour::CutOff { .. } | NpcBehaviour::SlipstreamAttack { .. }
+    );
+    if attacking || state.cutoff_cooldown > 0.0 {
         return;
     }
 
@@ -532,6 +568,16 @@ fn react_to_slipstreamer(
             perp[1]
         };
 
+    let distance_behind = lightcycle
+        .direction
+        .as_velocity()
+        .dot(lightcycle.position - target_pos);
+    if distance_behind <= 5.0
+        || catch_up_time(distance_behind, lightcycle.speed, target_speed).is_none()
+    {
+        return;
+    }
+
     let personality = &state.personality;
     if !percent_chance(personality.cutoff_chance) {
         state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
@@ -550,34 +596,40 @@ fn react_to_slipstreamer(
         return;
     }
 
-    let npc_vel = lightcycle.direction.as_velocity();
-    let delta = lightcycle.position - target_pos;
-    let distance_behind = npc_vel.dot(delta);
-    let perp_distance = match lightcycle.direction {
-        Direction::Up | Direction::Down => (target_pos.x - lightcycle.position.x).abs(),
-        Direction::Left | Direction::Right => (target_pos.y - lightcycle.position.y).abs(),
-    };
-
-    let closing_speed = target_speed - lightcycle.speed;
-    if closing_speed <= 1.0 || distance_behind <= 5.0 {
-        return;
-    }
-
-    let catch_up_time = distance_behind / closing_speed;
-    let wait_time = if percent_chance(personality.cutoff_accuracy) {
-        catch_up_time * random_between(0.5, 0.75)
+    let lead = if percent_chance(personality.cutoff_accuracy) {
+        random_between(0.1, 0.3)
     } else {
-        // Too late: the slipstreamer is level by the time the NPC turns.
-        catch_up_time * random_between(1.1, 1.6)
+        // Too early: the slipstreamer has time to see it coming and turn.
+        random_between(0.7, 1.1)
     };
 
     state.set_behaviour(NpcBehaviour::CutOff {
         target_id,
         cut_direction,
         original_direction: lightcycle.direction,
-        cut_distance: perp_distance + 3.0,
-        phase: CutOffPhase::Waiting(wait_time.max(0.1)),
+        overshoot: random_between(10.0, 20.0),
+        phase: CutOffPhase::Waiting { lead },
     });
+}
+
+/// Seconds until a slipstreamer `distance` behind a lightcycle moving at
+/// `speed` draws level with it, or `None` if it never will. The slipstreamer
+/// keeps gaining speed until it reaches `LIGHTCYCLE_BOOST_SPEED`.
+fn catch_up_time(distance: f64, speed: f64, slipstreamer_speed: f64) -> Option<f64> {
+    let acceleration = (LIGHTCYCLE_BOOST_SPEED - LIGHTCYCLE_SPEED) / SLIPSTREAM_RAMP_UP_SECONDS;
+    let closing_speed = slipstreamer_speed - speed;
+    let ramp_time = (LIGHTCYCLE_BOOST_SPEED - slipstreamer_speed).max(0.0) / acceleration;
+    let ramp_distance = closing_speed * ramp_time + 0.5 * acceleration * ramp_time * ramp_time;
+
+    if distance <= ramp_distance {
+        // Solve distance = closing_speed * t + acceleration * t² / 2.
+        let discriminant = closing_speed * closing_speed + 2.0 * acceleration * distance;
+        return Some((discriminant.sqrt() - closing_speed) / acceleration);
+    }
+
+    let final_closing_speed = LIGHTCYCLE_BOOST_SPEED - speed;
+    (final_closing_speed > 1.0)
+        .then(|| ramp_time + (distance - ramp_distance) / final_closing_speed)
 }
 
 /// Start slipstreaming another lightcycle when one is well placed for it.
@@ -696,14 +748,14 @@ fn choose_direction(context: &Context, state: &mut NpcState) -> Option<Direction
             target_id,
             cut_direction,
             original_direction,
-            cut_distance,
+            overshoot,
             phase,
         } => choose_cutoff(
             context,
             target_id,
             cut_direction,
             original_direction,
-            cut_distance,
+            overshoot,
             phase,
             state,
         ),
@@ -909,51 +961,87 @@ fn choose_trap(
     }
 }
 
-/// Attempt to cut off a slipstreamer by turning perpendicular in front of them,
-/// crossing their lane, then turning back. When the timing is bad the NPC ends
-/// up behind the slipstreamer and effectively follows them.
+/// Cut off a slipstreamer by turning across in front of them at the last
+/// moment the NPC can still get across their lane first, then turning back
+/// once past it. Gives up if the slipstreamer turns off, moves away, or gets
+/// too close to cross in front of.
 fn choose_cutoff(
     context: &Context,
     target_id: PlayerId,
     cut_direction: Direction,
     original_direction: Direction,
-    cut_distance: f64,
+    overshoot: f64,
     phase: CutOffPhase,
     state: &mut NpcState,
 ) -> Option<Direction> {
     let lightcycle = context.lightcycle;
 
     match phase {
-        CutOffPhase::Waiting(remaining) => {
-            let remaining = remaining - context.delta_time;
-            let phase = if remaining <= 0.0 {
-                CutOffPhase::Crossing(0.0)
-            } else {
-                CutOffPhase::Waiting(remaining)
+        CutOffPhase::Waiting { lead } => {
+            let target = context
+                .arena
+                .lightcycles
+                .get(&target_id)
+                .filter(|target| !target.dead && target.direction == original_direction)
+                .filter(|_| lightcycle.direction == original_direction);
+            let Some(target) = target else {
+                state.abort();
+                return None;
             };
-            state.behaviour = NpcBehaviour::CutOff {
-                target_id,
-                cut_direction,
-                original_direction,
-                cut_distance,
-                phase,
-            };
-            (remaining <= 0.0).then_some(cut_direction)
+
+            let behind = original_direction
+                .as_velocity()
+                .dot(lightcycle.position - target.position);
+            let aside = cut_direction
+                .as_velocity()
+                .dot(target.position - lightcycle.position);
+            // How long the slipstreamer takes to reach the line the NPC
+            // would cross on, and how long the NPC takes to get past them.
+            let target_time = catch_up_time(behind, 0.0, target.speed);
+            let cross_time = (aside + 2.0) / lightcycle.speed;
+            let in_reach = (0.0..=SLIPSTREAM_DISTANCE + 5.0).contains(&aside);
+            match target_time {
+                Some(target_time) if in_reach && target_time > cross_time + 0.05 => {
+                    if target_time > cross_time + lead {
+                        return None;
+                    }
+                    state.behaviour = NpcBehaviour::CutOff {
+                        target_id,
+                        cut_direction,
+                        original_direction,
+                        overshoot,
+                        phase: CutOffPhase::Crossing {
+                            travelled: 0.0,
+                            distance: aside + overshoot,
+                        },
+                    };
+                    Some(cut_direction)
+                }
+                _ => {
+                    state.abort();
+                    None
+                }
+            }
         }
-        CutOffPhase::Crossing(distance) => {
-            let distance = distance + lightcycle.speed * context.delta_time;
-            if distance < cut_distance {
+        CutOffPhase::Crossing {
+            travelled,
+            distance,
+        } => {
+            let travelled = travelled + lightcycle.speed * context.delta_time;
+            if travelled < distance {
                 state.behaviour = NpcBehaviour::CutOff {
                     target_id,
                     cut_direction,
                     original_direction,
-                    cut_distance,
-                    phase: CutOffPhase::Crossing(distance),
+                    overshoot,
+                    phase: CutOffPhase::Crossing {
+                        travelled,
+                        distance,
+                    },
                 };
                 return None;
             }
 
-            // Done crossing: turn back to the original direction.
             state.cruise();
             state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN + 2.0;
             Some(original_direction)
@@ -1007,11 +1095,11 @@ fn choose_slipstream_attack(
                     (target.position.y - lightcycle.position.y).abs()
                 }
             };
-            if perp_dist > SLIPSTREAM_DISTANCE * 0.8 {
+            if perp_dist > NPC_DRAFT_OFFSET {
                 return None;
             }
 
-            // Within slipstream range: fall in behind the target.
+            // Close alongside the target's trail: fall in behind the target.
             set_phase(state, SlipstreamAttackPhase::Drafting);
             Some(target_direction)
         }
@@ -1032,15 +1120,29 @@ fn choose_slipstream_attack(
         }
 
         SlipstreamAttackPhase::Overtaking => {
-            let ahead_of_target = match target {
-                Some(target) => target_direction
+            // With the target gone, just cut across.
+            if target.is_some() {
+                let Some(target) = on_course else {
+                    state.abort();
+                    return None;
+                };
+                let ahead = target_direction
                     .as_velocity()
-                    .dot(lightcycle.position - target.position),
-                // The target is gone, so just cut across.
-                None => NPC_OVERTAKE_BUFFER,
-            };
-            if ahead_of_target < NPC_OVERTAKE_BUFFER {
-                return None;
+                    .dot(lightcycle.position - target.position);
+                if ahead < 0.0 {
+                    set_phase(state, SlipstreamAttackPhase::Drafting);
+                    return None;
+                }
+                // Cut once the NPC can get across the target's lane before
+                // the target reaches it.
+                let aside = approach_direction
+                    .as_velocity()
+                    .dot(target.position - lightcycle.position)
+                    .max(0.0);
+                let cross_time = (aside + 2.0) / lightcycle.speed;
+                if ahead / target.speed < cross_time + 0.05 {
+                    return None;
+                }
             }
 
             set_phase(state, SlipstreamAttackPhase::Cutting(0.0));
@@ -1113,7 +1215,7 @@ fn find_slipstream_attack_target(
             let approach_dir = if s0 > s1 { perp[0] } else { perp[1] };
 
             // Safety: enough room to approach.
-            let approach_ahead = look_ahead_distance(arena, npc_pos, approach_dir);
+            let approach_ahead = look_ahead_distance(arena, npc_pos, approach_dir, None);
             if approach_ahead < perp_dist {
                 continue;
             }
@@ -1205,7 +1307,14 @@ fn find_slipstreamer_on_trail(
 }
 
 /// Cast a ray from `position` in `direction` and return distance to the first obstacle.
-fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction) -> f64 {
+/// The path ahead of the lightcycle `ignoring` doesn't count as an obstacle,
+/// for an NPC that means to cross it before that lightcycle gets there.
+fn look_ahead_distance(
+    arena: &Arena,
+    position: ArenaPoint,
+    direction: Direction,
+    ignoring: Option<PlayerId>,
+) -> f64 {
     let vel = direction.as_velocity();
     let max_dist = (arena.width * arena.width + arena.height * arena.height).sqrt();
     let far_point = position + vel * max_dist;
@@ -1256,7 +1365,7 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
 
     // Check other alive bikes: both their projected paths (perpendicular
     // convergence) and whether they sit directly in our lane (head-on).
-    for (_, other_cycle) in arena.lightcycles.iter() {
+    for (other_id, other_cycle) in arena.lightcycles.iter() {
         if other_cycle.dead || other_cycle.position == position {
             continue;
         }
@@ -1278,6 +1387,9 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
         }
 
         // Projected path check for perpendicular convergence.
+        if ignoring == Some(*other_id) {
+            continue;
+        }
         let other_vel = other_cycle.direction.as_velocity();
         let projected_end = other_cycle.position + other_vel * NPC_LOOK_AHEAD_DISTANCE;
         let projected_segment = ArenaLine {
@@ -1308,6 +1420,7 @@ fn wall_distance(arena: &Arena, position: ArenaPoint, direction: Direction) -> f
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::ArenaVector;
 
     #[test]
     fn rounds_have_between_two_and_eight_lightcycles() {
@@ -1329,5 +1442,105 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn slipstreamers_are_expected_to_speed_up() {
+        // Just started slipstreaming, 20 units back: about 1.9 s at 11 units/s².
+        let time = catch_up_time(20.0, LIGHTCYCLE_SPEED, LIGHTCYCLE_SPEED + 0.55).unwrap();
+        assert!((1.7..2.0).contains(&time), "{time}");
+
+        // Already at full boost.
+        let time = catch_up_time(55.0, LIGHTCYCLE_SPEED, LIGHTCYCLE_BOOST_SPEED).unwrap();
+        assert!((time - 1.0).abs() < 1e-9, "{time}");
+
+        // Never catches a boosted lightcycle.
+        assert!(catch_up_time(20.0, LIGHTCYCLE_BOOST_SPEED, LIGHTCYCLE_SPEED).is_none());
+    }
+
+    /// A running arena with an NPC and another lightcycle, both heading up
+    /// with a stretch of trail behind them.
+    fn duel(
+        npc_start: ArenaPoint,
+        other_start: ArenaPoint,
+        state: NpcState,
+    ) -> (Arena, PlayerId, PlayerId) {
+        let mut arena = Arena {
+            started: Some(Utc::now() - chrono::Duration::seconds(1)),
+            ..Default::default()
+        };
+        let npc = PlayerId::default();
+        let other = PlayerId::default();
+        for (id, start) in [(npc, npc_start), (other, other_start)] {
+            arena.lightcycles.insert(
+                id,
+                Lightcycle {
+                    position: start,
+                    ..Default::default()
+                },
+            );
+            arena.lightribbons.insert(
+                id,
+                Lightribbon {
+                    paths: vec![vec![start - ArenaVector::new(0.0, 30.0), start]],
+                },
+            );
+        }
+        arena.npc_states.insert(npc, state);
+        (arena, npc, other)
+    }
+
+    /// Runs the arena for up to `seconds`, stopping at the first death.
+    fn run_until_death(arena: &mut Arena, seconds: f64) {
+        for _ in 0..(seconds / 0.05) as usize {
+            arena.update(0.05);
+            arena.clear_updates();
+            if arena.lightcycles.values().any(|lightcycle| lightcycle.dead) {
+                return;
+            }
+        }
+    }
+
+    #[test]
+    fn npcs_cut_off_lightcycles_slipstreaming_them() {
+        let mut state = NpcState {
+            personality: Personality::new(Style::Sentinel),
+            ..Default::default()
+        };
+        state.personality.cutoff_chance = 100;
+        state.personality.cutoff_accuracy = 100;
+        state.time_remaining = f64::INFINITY;
+        let (mut arena, npc, other) = duel(
+            ArenaPoint::new(280.0, 60.0),
+            ArenaPoint::new(288.0, 30.0),
+            state,
+        );
+
+        run_until_death(&mut arena, 4.0);
+        assert_eq!(
+            arena.lightcycles[&other].death_cause,
+            Some(DeathCause::Trail(npc))
+        );
+    }
+
+    #[test]
+    fn npcs_slipstream_overtake_and_cut_in() {
+        let mut state = NpcState {
+            personality: Personality::new(Style::Racer),
+            ..Default::default()
+        };
+        state.personality.attack_chance = 100;
+        state.time_remaining = f64::INFINITY;
+        let (mut arena, npc, other) = duel(
+            ArenaPoint::new(250.0, 40.0),
+            ArenaPoint::new(280.0, 90.0),
+            state,
+        );
+
+        run_until_death(&mut arena, 9.0);
+        assert_eq!(
+            arena.lightcycles[&other].death_cause,
+            Some(DeathCause::Trail(npc))
+        );
     }
 }
