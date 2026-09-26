@@ -80,6 +80,7 @@ export type Store = {
   arenaList: ArenaOverview[] | null
   leaderboard: Leaderboard | null
   config: { debugReducers: boolean }
+  joinError: string | null
   player: { id: string | null; name: string; color: Color }
   preloadedImages: HTMLImageElement[]
   socketState: string

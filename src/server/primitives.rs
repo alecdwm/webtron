@@ -27,6 +27,8 @@ pub struct Client {
     pub player: Option<PlayerId>,
     pub arena: Option<ArenaId>,
     pub updates_sent_so_far: usize,
+    /// The player name this client has claimed, normalised.
+    pub name: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]

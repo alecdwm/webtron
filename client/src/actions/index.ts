@@ -1,4 +1,4 @@
-import { getArenaList, join } from '@/actions/socket'
+import { disconnect, getArenaList, join } from '@/actions/socket'
 import createSimpleAction from '@/utils/createSimpleAction'
 import socketStates from '@/utils/socketStates'
 
@@ -34,6 +34,7 @@ export function receiveSocketMessage(messageType, messageData) {
     const typeHandlers = {
       ArenaList: receiveArenaList,
       ArenaJoined: receiveArenaJoined,
+      NameInUse: receiveNameInUse,
       ArenaState: receiveArenaState,
       ArenaStatePatch: receiveArenaStatePatch,
       Leaderboard: receiveLeaderboard,
@@ -46,6 +47,7 @@ export function receiveSocketMessage(messageType, messageData) {
 
 export const RECEIVE_ARENA_LIST = 'RECEIVE_ARENA_LIST'
 export const RECEIVE_ARENA_JOINED = 'RECEIVE_ARENA_JOINED'
+export const RECEIVE_NAME_IN_USE = 'RECEIVE_NAME_IN_USE'
 export const RECEIVE_ARENA_STATE = 'RECEIVE_ARENA_STATE'
 export const RECEIVE_ARENA_STATE_PATCH = 'RECEIVE_ARENA_STATE_PATCH'
 export const RECEIVE_LEADERBOARD = 'RECEIVE_LEADERBOARD'
@@ -64,6 +66,14 @@ export function receiveArenaJoined([arenaId, playerId]) {
   return (dispatch) => {
     dispatch({ type: RECEIVE_ARENA_JOINED, arenaId, playerId })
     dispatch(setStage('Arena'))
+  }
+}
+// Another connected player has the player's name. Disconnecting returns to
+// the main menu, which says so.
+export function receiveNameInUse() {
+  return (dispatch) => {
+    dispatch({ type: RECEIVE_NAME_IN_USE })
+    dispatch(disconnect())
   }
 }
 export const receiveArenaState = createSimpleAction(RECEIVE_ARENA_STATE, 'state')

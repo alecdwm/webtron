@@ -17,6 +17,7 @@ pub use messages::{MessageIn, MessageOut};
 pub use primitives::*;
 
 use crate::get_error_chain;
+use leaderboard::normalize_name;
 use messages::MessageInPayload;
 
 const UPDATE_RATE_MILLISECONDS: u64 = 50; // 1000 / 50 = 20 updates per second
@@ -206,6 +207,36 @@ impl Server {
 }
 
 impl Server {
+    /// Claims `name` for the client, unless another connected client has
+    /// already claimed it, in which case the client is told so. Names are
+    /// compared the way the leaderboard compares them. Returns whether the
+    /// claim succeeded.
+    async fn claim_name(&mut self, client_id: ClientId, name: &str) -> Result<bool, Error> {
+        let name = normalize_name(name);
+        let in_use = self
+            .clients
+            .values()
+            .any(|client| client.id != client_id && client.name.as_ref() == Some(&name));
+
+        let client = self
+            .clients
+            .get_mut(&client_id)
+            .ok_or_else(|| anyhow!("Client {} not found", client_id))?;
+
+        if in_use {
+            client
+                .tx
+                .send(MessageOut::NameInUse)
+                .await
+                .with_context(|| anyhow!("Failed to send NameInUse to client {}", client_id))?;
+            info!("Client {} tried to claim a name in use", client_id);
+            return Ok(false);
+        }
+
+        client.name = Some(name);
+        Ok(true)
+    }
+
     pub fn new_arena(&mut self, name: &str) -> ArenaId {
         let arena = Arena::with_name(name);
         let id = arena.id;
@@ -284,6 +315,7 @@ impl Server {
                         player: None,
                         arena: None,
                         updates_sent_so_far: 0,
+                        name: None,
                     },
                 );
             }
@@ -299,6 +331,9 @@ impl Server {
                     .ok_or_else(|| anyhow!("Failed to remove client {}", client_id))?;
             }
 
+            MessageInPayload::ClaimName(name) => {
+                self.claim_name(client_id, &name).await?;
+            }
             MessageInPayload::GetArenaList => {
                 let arena_list: Vec<ArenaOverview> =
                     self.arenas.values().map(ArenaOverview::from).collect();
@@ -318,6 +353,10 @@ impl Server {
                 self.client_part_arena(client_id).unwrap_or_else(|error| {
                     warn!("Failed to remove client from their arena: {}", error)
                 });
+
+                if !self.claim_name(client_id, &player.name).await? {
+                    return Ok(());
+                }
 
                 let arena_id = match arena_id {
                     Some(arena_id) => {

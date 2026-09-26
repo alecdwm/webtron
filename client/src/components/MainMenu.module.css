@@ -25,6 +25,21 @@
   text-shadow: var(--text-glow);
   animation: pulse 1.6s ease-in-out infinite;
 }
+.errorText {
+  --glow: var(--red);
+  max-width: 90%;
+  padding: 0.4em 0.9em;
+  text-align: center;
+  letter-spacing: 0.08em;
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 60%, transparent);
+  border-radius: 0.3em;
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  font-family: var(--font-display);
+  font-size: clamp(0.7rem, 3cqi, 1.05rem);
+  font-weight: 700;
+  text-shadow: var(--text-glow);
+}
 
 .title {
   --glow: var(--blue);

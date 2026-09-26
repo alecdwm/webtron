@@ -22,7 +22,7 @@ const MAX_PLAYER_NAME_LENGTH = 10
 export default function MainMenu() {
   usePreloadImages(Object.values(lightcycleImages))
 
-  const { player, socketState } = useStore()
+  const { joinError, player, socketState } = useStore()
   const dispatch = useStoreDispatch()
 
   const onConnect = useCallback(() => {
@@ -75,7 +75,13 @@ export default function MainMenu() {
 
   return (
     <div className={styles.mainMenu} style={{ '--player': colorToHexString(player.color) } as CSSProperties}>
-      {status ? <div className={styles.statusText}>{status}</div> : null}
+      {joinError ? (
+        <div className={styles.errorText} role="alert">
+          {joinError}
+        </div>
+      ) : status ? (
+        <div className={styles.statusText}>{status}</div>
+      ) : null}
 
       <div className={styles.title}>Enter the grid</div>
 

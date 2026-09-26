@@ -12,19 +12,29 @@ export const START = 'START'
 export const TURN = 'TURN'
 
 export function connect() {
-  return (dispatch) => {
+  return (dispatch, getState) => {
     if (socket) return console.warn('cannot open new socket: socket already exists')
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     const socket_url = `${protocol}//${host}/ws`
 
-    socket = new WebSocket(socket_url)
+    // Events from a socket that has since been replaced or disconnected are
+    // ignored.
+    const current = new WebSocket(socket_url)
+    socket = current
     dispatch(setSocketState(socketStates.CONNECTING))
 
-    socket.addEventListener('open', () => dispatch(setSocketState(socketStates.OPEN)))
+    current.addEventListener('open', () => {
+      if (socket !== current) return
+      // Claim the player's name first, so a name already in use is refused
+      // before anything else happens.
+      dispatch(send({ ClaimName: defaultPlayer(getState().player).name }))
+      dispatch(setSocketState(socketStates.OPEN))
+    })
 
-    socket.addEventListener('message', (event) => {
+    current.addEventListener('message', (event) => {
+      if (socket !== current) return
       if (typeof event.data !== 'string') return console.warn('ignoring binary websocket message', event)
 
       const message = JSON.parse(event.data)
@@ -34,14 +44,28 @@ export function connect() {
       dispatch(receiveSocketMessage(messageType, messageData))
     })
 
-    socket.addEventListener('error', (event) => {
+    current.addEventListener('error', (event) => {
+      if (socket !== current) return
       console.error('socket error', event)
       dispatch(setSocketState(socketStates.CLOSING))
     })
-    socket.addEventListener('close', () => {
-      dispatch(setSocketState(socketStates.CLOSED))
+    current.addEventListener('close', () => {
+      if (socket !== current) return
       socket = null
+      dispatch(setSocketState(socketStates.CLOSED))
     })
+  }
+}
+
+// Closes the socket and returns to the main menu straight away, without
+// waiting for the close to complete.
+export function disconnect() {
+  return (dispatch) => {
+    if (!socket) return
+    const closing = socket
+    socket = null
+    closing.close()
+    dispatch(setSocketState(socketStates.CLOSED))
   }
 }
 

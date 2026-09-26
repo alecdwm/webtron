@@ -19,6 +19,8 @@ pub mod outgoing {
     pub enum Message {
         ArenaList(Vec<ArenaOverview>),
         ArenaJoined(ArenaId, PlayerId),
+        /// Another connected client has claimed the player's name.
+        NameInUse,
 
         ArenaState(Box<Arena>),
         ArenaStatePatch(Vec<ArenaUpdate>),
@@ -59,6 +61,8 @@ pub mod incoming {
         #[serde(skip)]
         Disconnect,
 
+        /// Claims a player name for this client, as soon as it connects.
+        ClaimName(String),
         GetArenaList,
         Join {
             player: Player,
