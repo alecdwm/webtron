@@ -18,8 +18,10 @@ import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
 import type { Arena as ArenaType, Color, ControlScheme, Direction, Side } from '@/types'
+import { serverNow } from '@/utils/clock'
 import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
+import { spawnDelayMs } from '@/utils/spawn'
 
 import styles from './Arena.module.css'
 
@@ -57,6 +59,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
   const humanAlive = Object.entries(arena.lightcycles).some(([id, { dead }]) => !dead && !arena.players[id]?.npc)
   const canCutShort = inRound && roundPlayed && !humanAlive
   const showLobby = !inRound || canCutShort
+  const spawning = arena.started !== null && serverNow(serverTimeOffset) < arena.started
   useStartKeys(showLobby, onStart)
 
   return (
@@ -88,7 +91,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
             derezzing
           />
         ))}
-        {Object.entries(arena.lightcycles).map(([id, { direction, speed, dead }]) => (
+        {Object.entries(arena.lightcycles).map(([id, { direction, speed, dead }], index) => (
           <Lightcycle
             key={id}
             id={id}
@@ -99,6 +102,8 @@ function ArenaView({ arena }: { arena: ArenaType }) {
             dead={dead}
             isSelf={id === player.id}
             inLobby={!inRound}
+            spawning={spawning}
+            spawnDelay={spawnDelayMs(index)}
           />
         ))}
 

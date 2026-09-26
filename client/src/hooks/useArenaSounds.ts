@@ -7,11 +7,13 @@ import {
   playLose,
   playPlayerJoin,
   playPlayerLeave,
+  playSpawn,
   playTurn,
   playWin,
 } from '@/audio/sound'
 import type { Arena, Point } from '@/types'
 import { serverNow } from '@/utils/clock'
+import { spawnDelayMs } from '@/utils/spawn'
 
 // Plays sounds for arena events by diffing each arena state against the
 // previous one, and keeps an engine drone running for every live lightcycle.
@@ -41,6 +43,13 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
         playTurn(self, pan)
         engines.current.get(id)?.rev()
       }
+    }
+
+    // Every lightcycle is placed afresh when a round's countdown begins.
+    if (arena.started !== null && arena.started !== before.started) {
+      Object.entries(arena.lightcycles).forEach(([id, cycle], index) =>
+        playSpawn(id === selfId, panFor(id, cycle.position), spawnDelayMs(index) / 1000),
+      )
     }
 
     for (const [id, { tip }] of Object.entries(arena.derezzing)) {

@@ -102,7 +102,7 @@
   animation: selfpulse 1.4s ease-out infinite;
 }
 
-.derez {
+.effect {
   position: absolute;
   left: 0;
   bottom: 0;
@@ -143,6 +143,74 @@
   background: var(--cycle);
   box-shadow: 0 0 6px var(--cycle);
   animation: derezshard 800ms cubic-bezier(0.1, 0.7, 0.3, 1) both;
+}
+
+/* Rezzing in at the start of a round: a ring and shards close in on the
+   lightcycle while its sprite is drawn from back to front, then a flash, then
+   its headlight and name fade in. Every part waits for --spawn-delay. */
+.spawning {
+  animation: spawncycle 500ms ease-out var(--spawn-delay) backwards;
+}
+.spawnRing {
+  animation: spawnring 450ms cubic-bezier(0.5, 0, 0.9, 0.4) var(--spawn-delay) both;
+}
+.spawnShard {
+  animation: spawnshard 450ms cubic-bezier(0.5, 0, 0.9, 0.4) var(--spawn-delay) both;
+}
+.spawnFlash {
+  animation: derezflash 400ms ease-out calc(var(--spawn-delay) + 400ms) both;
+}
+.fadeIn {
+  animation: fadein 300ms ease calc(var(--spawn-delay) + 450ms) backwards;
+}
+
+@keyframes spawncycle {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    filter: drop-shadow(0 0 2px var(--cycle)) drop-shadow(0 0 10px var(--cycle)) brightness(4);
+  }
+  60% {
+    clip-path: inset(0 0 0 0);
+    filter: drop-shadow(0 0 2px var(--cycle)) drop-shadow(0 0 10px var(--cycle)) brightness(4);
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.3;
+  }
+  90% {
+    opacity: 1;
+  }
+}
+@keyframes spawnring {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6);
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0);
+  }
+}
+@keyframes spawnshard {
+  from {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateX(48px) scaleX(0.3);
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateX(0) scaleX(1);
+  }
+}
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
 }
 
 @keyframes selfpulse {

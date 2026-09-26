@@ -279,6 +279,45 @@ export function playCountdownGo() {
   tone({ type: 'sine', freq: 1760, duration: 0.4, gain: 0.03 })
 }
 
+// A lightcycle rezzing in: a rising sweep with a trail of climbing blips, the
+// reverse of the derez. delay staggers the lightcycles of one round.
+export function playSpawn(self: boolean, pan = 0, delay = 0) {
+  const gain = self ? 1 : 0.45
+  noise({
+    duration: 0.45,
+    gain: 0.05 * gain,
+    attack: 0.3,
+    delay,
+    pan,
+    filter: { type: 'bandpass', freq: 600, freqEnd: 7000, q: 4 },
+  })
+  tone({
+    type: 'sawtooth',
+    freq: 110,
+    freqEnd: 660,
+    duration: 0.45,
+    gain: 0.05 * gain,
+    attack: 0.3,
+    delay,
+    pan,
+    filter: { type: 'lowpass', freq: 500, freqEnd: 4000, q: 5 },
+  })
+  for (let i = 0; i < 5; i++) {
+    const freq = 900 + i * 260 + Math.random() * 120
+    tone({
+      type: 'square',
+      freq,
+      freqEnd: freq * 1.5,
+      duration: 0.04,
+      gain: 0.02 * gain,
+      pan,
+      delay: delay + 0.1 + i * 0.06,
+      filter: { type: 'lowpass', freq: 4000 },
+    })
+  }
+  tone({ type: 'sine', freq: 1320, duration: 0.35, gain: 0.04 * gain, delay: delay + 0.42, pan })
+}
+
 export function playTurn(self: boolean, pan = 0) {
   const gain = self ? 0.1 : 0.035
   tone({
