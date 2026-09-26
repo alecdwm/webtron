@@ -815,9 +815,9 @@ fn find_intercept_target(context: &Context) -> Option<PlayerId> {
         .map(|(id, _)| id)
 }
 
-/// Finds a trail running the same way as the NPC, a little to one side and
-/// stretching out ahead, that it could slipstream. Returns the direction to
-/// move sideways in and how far to go.
+/// Finds a trail, its own included, running the same way as the NPC, a
+/// little to one side and stretching out ahead, that it could slipstream.
+/// Returns the direction to move sideways in and how far to go.
 fn find_draft_lane(context: &Context) -> Option<(Direction, f64)> {
     let lightcycle = context.lightcycle;
     let position = lightcycle.position;
@@ -825,11 +825,7 @@ fn find_draft_lane(context: &Context) -> Option<(Direction, f64)> {
     let is_vertical = matches!(lightcycle.direction, Direction::Up | Direction::Down);
 
     let mut best: Option<(Direction, f64)> = None;
-    for (id, lightribbon) in context.arena.lightribbons.iter() {
-        if *id == context.npc_id {
-            continue;
-        }
-
+    for lightribbon in context.arena.lightribbons.values() {
         for (from, to) in lightribbon.segments() {
             let (lateral, parallel) = if is_vertical {
                 (from.x - position.x, (from.x - to.x).abs() <= f64::EPSILON)

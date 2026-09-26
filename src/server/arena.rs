@@ -29,6 +29,8 @@ const LIGHTCYCLE_BOOST_SPEED: f64 = 110.0;
 const SLIPSTREAM_DISTANCE: f64 = 15.0;
 const SLIPSTREAM_RAMP_UP_SECONDS: f64 = 5.0;
 const SLIPSTREAM_RAMP_DOWN_SECONDS: f64 = 2.0;
+/// How far to the side a lightcycle's own trail must be to slipstream it.
+const OWN_SLIPSTREAM_MIN_DISTANCE: f64 = 1.0;
 const HOLE_RADIUS: f64 = 20.0;
 const DEAD_LIGHTRIBBON_SECONDS: i64 = 6;
 
@@ -185,17 +187,29 @@ impl Arena {
         let is_vertical = matches!(dir, Direction::Up | Direction::Down);
 
         for (ribbon_id, ribbon) in self.lightribbons.iter() {
-            if *ribbon_id == bike_id {
-                continue;
-            }
+            let own = *ribbon_id == bike_id;
 
             for (from, to) in ribbon.segments() {
+                // A lightcycle is always in line with the segment it is
+                // laying, so its own trail only counts when off to the side.
+                let lateral = if is_vertical {
+                    (pos.x - from.x).abs()
+                } else {
+                    (pos.y - from.y).abs()
+                };
+                if own && lateral < OWN_SLIPSTREAM_MIN_DISTANCE {
+                    continue;
+                }
+
                 if segment_is_parallel_slipstream(pos, is_vertical, from, to) {
                     return true;
                 }
             }
 
             // Check live segment (ribbon tip to other bike's current position)
+            if own {
+                continue;
+            }
             if let Some(other_cycle) = self.lightcycles.get(ribbon_id) {
                 if !other_cycle.dead {
                     if let Some(last_point) = ribbon.last_point() {
@@ -543,6 +557,36 @@ fn segment_is_parallel_slipstream(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lightcycles_slipstream_their_own_trail() {
+        let mut arena = Arena::default();
+        let id = PlayerId::default();
+        // Up the arena at x = 100, then a U-turn back down at x = 110.
+        let ribbon = Lightribbon {
+            paths: vec![vec![
+                ArenaPoint::new(100.0, 100.0),
+                ArenaPoint::new(100.0, 300.0),
+                ArenaPoint::new(110.0, 300.0),
+                ArenaPoint::new(110.0, 200.0),
+            ]],
+        };
+        arena.lightribbons.insert(id, ribbon);
+
+        let alongside = ArenaPoint::new(110.0, 200.0);
+        assert!(arena.is_slipstreaming(id, alongside, Direction::Down));
+
+        // On its own, a straight trail doesn't give a boost.
+        let straight = Lightribbon {
+            paths: vec![vec![
+                ArenaPoint::new(100.0, 100.0),
+                ArenaPoint::new(100.0, 300.0),
+            ]],
+        };
+        arena.lightribbons.insert(id, straight);
+        let ahead = ArenaPoint::new(100.0, 300.0);
+        assert!(!arena.is_slipstreaming(id, ahead, Direction::Up));
+    }
 
     #[test]
     fn clients_see_npc_players_replaced_each_round() {
