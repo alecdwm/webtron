@@ -52,6 +52,14 @@ export default function Arena() {
       {Object.entries(arena.lightribbons).map(([id, { paths }]) => (
         <Lightribbon key={id} color={arena.players[id] ? arena.players[id].color : 'white'} paths={paths} />
       ))}
+      {Object.entries(arena.derezzing).map(([id, { paths }]) => (
+        <Lightribbon
+          key={`derez-${id}`}
+          color={arena.players[id] ? arena.players[id].color : 'white'}
+          paths={paths}
+          derezzing
+        />
+      ))}
       {Object.entries(arena.lightcycles).map(([id, { position, direction, speed, dead }]) => (
         <Lightcycle
           key={id}

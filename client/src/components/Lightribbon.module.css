@@ -14,3 +14,46 @@
   stroke: var(--white);
   opacity: 0.75;
 }
+
+/* A dead trail flares, flickers and breaks up into fading dots. */
+.derez {
+  animation: derezribbon 1100ms ease-in both;
+}
+.derez path {
+  animation: derezdash 1100ms ease-in both;
+}
+
+@keyframes derezribbon {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  12% {
+    opacity: 1;
+    filter: brightness(3);
+  }
+  30% {
+    opacity: 0.45;
+  }
+  40% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.4;
+  }
+  65% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(1);
+  }
+}
+@keyframes derezdash {
+  from {
+    stroke-dasharray: 60 0;
+  }
+  to {
+    stroke-dasharray: 1 14;
+  }
+}

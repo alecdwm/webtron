@@ -305,6 +305,25 @@ export function playCrash(self: boolean, pan = 0) {
   }
 }
 
+export function playDerez(pan = 0) {
+  noise({ duration: 0.9, gain: 0.05, attack: 0.05, pan, filter: { type: 'bandpass', freq: 5000, freqEnd: 400, q: 4 } })
+  tone({ type: 'sine', freq: 660, freqEnd: 110, duration: 0.9, gain: 0.04, attack: 0.02, pan })
+  // Glittering blips falling away as the trail breaks up.
+  for (let i = 0; i < 10; i++) {
+    const freq = 2400 - i * 180 + Math.random() * 200
+    tone({
+      type: 'square',
+      freq,
+      freqEnd: freq * 0.5,
+      duration: 0.04,
+      gain: 0.018,
+      pan,
+      delay: i * 0.07,
+      filter: { type: 'lowpass', freq: 4000 },
+    })
+  }
+}
+
 export function playWin() {
   const notes = [523, 659, 784, 1047]
   notes.forEach((freq, i) => {

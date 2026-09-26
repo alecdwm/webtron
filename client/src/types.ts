@@ -44,6 +44,9 @@ export type Arena = {
   lightcycles: Record<string, Lightcycle>
   lightribbons: Record<string, Lightribbon>
   holes: Hole[]
+  // Client-side only: dead trails the server has removed, kept until the next
+  // round so they can be animated out.
+  derezzing: Record<string, Lightribbon>
 }
 
 export type ArenaOverview = {

@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { Engine, playCrash, playLose, playPlayerJoin, playPlayerLeave, playTurn, playWin } from '@/audio/sound'
+import {
+  Engine,
+  playCrash,
+  playDerez,
+  playLose,
+  playPlayerJoin,
+  playPlayerLeave,
+  playTurn,
+  playWin,
+} from '@/audio/sound'
 import type { Arena } from '@/types'
 
 // Plays sounds for arena events by diffing each arena state against the
@@ -31,6 +40,13 @@ export default function useArenaSounds(arena: Arena, selfId: string | null) {
         playTurn(self, pan)
         engines.current.get(id)?.rev()
       }
+    }
+
+    for (const [id, ribbon] of Object.entries(arena.derezzing)) {
+      if (id in before.derezzing) continue
+      const path = ribbon.paths[ribbon.paths.length - 1]
+      const end = path?.[path.length - 1]
+      playDerez(end ? panFor(id, end) : 0)
     }
 
     const beforeIds = Object.keys(before.players)

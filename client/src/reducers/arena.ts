@@ -20,9 +20,11 @@ export default createReducer(initialState, {
     lightcycles: {},
     lightribbons: {},
     holes: [],
+    derezzing: {},
   }),
   [RECEIVE_ARENA_STATE]: (_, { state }) => ({
     ...state,
+    derezzing: {},
     started: state.started === null ? null : dayjs(state.started),
   }),
   [RECEIVE_ARENA_STATE_PATCH]: (arena, { statePatch = [] }) => statePatch.reduce(updateArena, arena),
@@ -64,6 +66,7 @@ function updateArena(arena, update) {
       ...arena,
       started: dayjs(startAt),
       holes: [],
+      derezzing: {},
     }),
     End: () => ({
       ...arena,
@@ -147,6 +150,13 @@ function updateArena(arena, update) {
     RemoveLightribbon: (playerId) => ({
       ...arena,
       lightribbons: Object.fromEntries(Object.entries(arena.lightribbons).filter(([id]) => id !== playerId)),
+    }),
+    DerezLightribbon: (playerId) => ({
+      ...arena,
+      lightribbons: Object.fromEntries(Object.entries(arena.lightribbons).filter(([id]) => id !== playerId)),
+      derezzing: arena.lightribbons[playerId]
+        ? { ...arena.derezzing, [playerId]: arena.lightribbons[playerId] }
+        : arena.derezzing,
     }),
   }
 

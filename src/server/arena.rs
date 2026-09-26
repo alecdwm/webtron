@@ -30,6 +30,7 @@ const SLIPSTREAM_DISTANCE: f64 = 15.0;
 const SLIPSTREAM_RAMP_UP_SECONDS: f64 = 5.0;
 const SLIPSTREAM_RAMP_DOWN_SECONDS: f64 = 2.0;
 const HOLE_RADIUS: f64 = 20.0;
+const DEAD_LIGHTRIBBON_SECONDS: i64 = 6;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Arena {
@@ -128,6 +129,8 @@ impl Arena {
             .update_lightribbon_positions()
             .apply_updates()
             .create_holes()
+            .apply_updates()
+            .derez_dead_lightribbons()
             .apply_updates()
             .test_win_condition()
             .apply_updates()
@@ -363,6 +366,7 @@ impl Arena {
                 player_id: *id,
                 position: lightcycle.position,
                 radius: HOLE_RADIUS,
+                created_at: Utc::now(),
             })
             .collect();
 
@@ -389,6 +393,19 @@ impl Arena {
 
         self.updates
             .extend(new_holes.into_iter().map(ArenaUpdate::AddHole));
+        self
+    }
+
+    fn derez_dead_lightribbons(&mut self) -> &mut Self {
+        let now = Utc::now();
+        for hole in &self.holes {
+            if now >= hole.created_at + OldDuration::seconds(DEAD_LIGHTRIBBON_SECONDS)
+                && self.lightribbons.contains_key(&hole.player_id)
+            {
+                self.updates
+                    .push(ArenaUpdate::DerezLightribbon(hole.player_id));
+            }
+        }
         self
     }
 

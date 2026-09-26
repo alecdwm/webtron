@@ -106,6 +106,9 @@ pub struct Hole {
     pub player_id: PlayerId,
     pub position: ArenaPoint,
     pub radius: f64,
+    /// When the lightcycle exploded.
+    #[serde(skip)]
+    pub created_at: DateTime<Utc>,
 }
 
 /// Splits a path into the pieces that lie outside the circle.

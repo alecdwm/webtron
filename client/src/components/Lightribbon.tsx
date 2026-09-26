@@ -1,14 +1,16 @@
 import useStore from '@/hooks/useStore'
 import { colorToHexString } from '@/utils/colors'
+import resolveClassName from '@/utils/resolveClassName'
 
 import styles from './Lightribbon.module.css'
 
 type LightribbonProps = {
   color: string
   paths: [number, number][][]
+  derezzing?: boolean
 }
 
-export default function Lightribbon({ color, paths }: LightribbonProps) {
+export default function Lightribbon({ color, paths, derezzing }: LightribbonProps) {
   const {
     arena: { width, height },
   } = useStore()
@@ -17,7 +19,10 @@ export default function Lightribbon({ color, paths }: LightribbonProps) {
   const stroke = colorToHexString(color)
 
   return (
-    <svg className={styles.lightribbon} viewBox={`0 0 ${width} ${height}`}>
+    <svg
+      className={resolveClassName([styles.lightribbon, derezzing && styles.derez])}
+      viewBox={`0 0 ${width} ${height}`}
+    >
       {/* Soft halo, then the solid ribbon, then a bright core. */}
       <path
         className={styles.halo}

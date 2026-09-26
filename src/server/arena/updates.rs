@@ -22,6 +22,8 @@ pub enum ArenaUpdate {
     RemovePlayer(PlayerId),
     RemoveLightcycle(PlayerId),
     RemoveLightribbon(PlayerId),
+    /// Removes a dead lightcycle's trail. Clients animate it disappearing.
+    DerezLightribbon(PlayerId),
 }
 
 impl ArenaUpdate {
@@ -128,7 +130,8 @@ impl ArenaUpdate {
             ArenaUpdate::RemoveLightcycle(player_id) => {
                 arena.lightcycles.remove(player_id);
             }
-            ArenaUpdate::RemoveLightribbon(player_id) => {
+            ArenaUpdate::RemoveLightribbon(player_id)
+            | ArenaUpdate::DerezLightribbon(player_id) => {
                 arena.lightribbons.remove(player_id);
             }
         }
