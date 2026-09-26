@@ -6,6 +6,7 @@ pub use outgoing::Message as MessageOut;
 /// Server to client messages
 ///
 pub mod outgoing {
+    use chrono::serde::ts_milliseconds;
     use chrono::{DateTime, Utc};
     use serde_derive::Serialize;
 
@@ -23,15 +24,20 @@ pub mod outgoing {
         /// Another connected client has claimed the player's name.
         NameInUse,
 
-        ArenaState(Box<Arena>),
-        ArenaStatePatch(Vec<ArenaUpdate>),
+        /// The whole arena, as it was at `time`.
+        ArenaState {
+            #[serde(with = "ts_milliseconds")]
+            time: DateTime<Utc>,
+            state: Box<Arena>,
+        },
+        /// The arena's changes in the update that ran at `time`.
+        ArenaStatePatch {
+            #[serde(with = "ts_milliseconds")]
+            time: DateTime<Utc>,
+            updates: Vec<ArenaUpdate>,
+        },
 
         Leaderboard(LeaderboardStandings),
-
-        /// The server's clock, for the client to compare the times in the
-        /// arena's state with. Sent on connecting and before every
-        /// `ArenaState`.
-        ServerTime(DateTime<Utc>),
     }
 
     impl Message {

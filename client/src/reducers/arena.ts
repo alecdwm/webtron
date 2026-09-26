@@ -18,12 +18,12 @@ export default createReducer<Arena | null>(null, {
     holes: [],
     derezzing: {},
   }),
-  RECEIVE_ARENA_STATE: (_, { state, receivedAt }) => fromServerArena(state, receivedAt),
-  RECEIVE_ARENA_STATE_PATCH: (arena, { statePatch, receivedAt }) =>
-    arena === null ? null : statePatch.reduce((arena, update) => applyUpdate(arena, update, receivedAt), arena),
+  RECEIVE_ARENA_STATE: (_, { state, time }) => fromServerArena(state, time),
+  RECEIVE_ARENA_STATE_PATCH: (arena, { statePatch, time }) =>
+    arena === null ? null : statePatch.reduce((arena, update) => applyUpdate(arena, update, time), arena),
 })
 
-function fromServerArena(state: ServerArena, receivedAt: number): Arena {
+function fromServerArena(state: ServerArena, time: number): Arena {
   return {
     id: state.id,
     name: state.name,
@@ -36,7 +36,7 @@ function fromServerArena(state: ServerArena, receivedAt: number): Arena {
 
     players: state.players,
     lightcycles: Object.fromEntries(
-      Object.entries(state.lightcycles).map(([id, lightcycle]) => [id, { ...lightcycle, receivedAt }]),
+      Object.entries(state.lightcycles).map(([id, lightcycle]) => [id, { ...lightcycle, updatedAt: time }]),
     ),
     lightribbons: Object.fromEntries(
       Object.entries(state.lightribbons).map(([id, lightribbon]) => [id, fromServerLightribbon(lightribbon)]),
@@ -60,7 +60,7 @@ function fromServerLightribbon({ paths }: ServerLightribbon): Lightribbon {
 
 // Updates for players, lightcycles or trails the client doesn't have are
 // ignored, as the server does.
-function applyUpdate(arena: Arena, update: ArenaUpdate, receivedAt: number): Arena {
+function applyUpdate(arena: Arena, update: ArenaUpdate, time: number): Arena {
   if (update === 'End') return { ...arena, started: null }
 
   if ('AddPlayer' in update) {
@@ -69,7 +69,7 @@ function applyUpdate(arena: Arena, update: ArenaUpdate, receivedAt: number): Are
   }
   if ('AddLightcycle' in update) {
     const [id, lightcycle] = update.AddLightcycle
-    return { ...arena, lightcycles: { ...arena.lightcycles, [id]: { ...lightcycle, receivedAt } } }
+    return { ...arena, lightcycles: { ...arena.lightcycles, [id]: { ...lightcycle, updatedAt: time } } }
   }
   if ('AddLightribbon' in update) {
     const [id, lightribbon] = update.AddLightribbon
@@ -82,7 +82,7 @@ function applyUpdate(arena: Arena, update: ArenaUpdate, receivedAt: number): Are
 
   if ('UpdateLightcyclePosition' in update) {
     const [id, position] = update.UpdateLightcyclePosition
-    return updateLightcycle(arena, id, { position, receivedAt })
+    return updateLightcycle(arena, id, { position, updatedAt: time })
   }
   if ('UpdateLightcycleDirection' in update) {
     const [id, direction] = update.UpdateLightcycleDirection

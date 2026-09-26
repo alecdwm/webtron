@@ -4,7 +4,7 @@ mod messages;
 mod primitives;
 
 use anyhow::{Context as ResultContext, Error, anyhow, bail};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::mem;
@@ -64,19 +64,21 @@ impl Server {
         loop {
             interval.tick().await;
             let now = Instant::now();
+            let time = Utc::now();
             let delta_time = (now - last_update).as_secs_f64().min(MAX_UPDATE_SECONDS);
             last_update = now;
 
-            self.tick(delta_time);
+            self.tick(delta_time, time);
         }
     }
 
     /// Handles the messages that have arrived, updates every arena by
-    /// `delta_time` seconds and sends clients the changes.
-    pub fn tick(&mut self, delta_time: f64) {
+    /// `delta_time` seconds and sends clients the changes, stamped with
+    /// `time`, the time on the server's clock that the update ran at.
+    pub fn tick(&mut self, delta_time: f64, time: DateTime<Utc>) {
         self.process_messages();
         self.update(delta_time);
-        self.send_updates();
+        self.send_updates(time);
         self.disconnect_lagging_clients();
     }
 
@@ -177,7 +179,7 @@ impl Server {
 
     /// Sends each client the full state of its arena if it hasn't had it yet,
     /// otherwise the changes made this update, then clears the changes.
-    pub fn send_updates(&mut self) {
+    pub fn send_updates(&mut self, time: DateTime<Utc>) {
         let Self {
             clients,
             arenas,
@@ -191,16 +193,21 @@ impl Server {
             };
 
             if !client.synced {
-                client.synced = send(client, MessageOut::ServerTime(Utc::now()), lagging)
-                    && send(
-                        client,
-                        MessageOut::ArenaState(Box::new(arena.clone())),
-                        lagging,
-                    );
+                client.synced = send(
+                    client,
+                    MessageOut::ArenaState {
+                        time,
+                        state: Box::new(arena.clone()),
+                    },
+                    lagging,
+                );
             } else if !arena.updates.is_empty() {
                 send(
                     client,
-                    MessageOut::ArenaStatePatch(arena.updates.clone()),
+                    MessageOut::ArenaStatePatch {
+                        time,
+                        updates: arena.updates.clone(),
+                    },
                     lagging,
                 );
             }
@@ -352,11 +359,6 @@ impl Server {
                     synced: false,
                     name: None,
                 };
-                send(
-                    &client,
-                    MessageOut::ServerTime(Utc::now()),
-                    &mut self.lagging,
-                );
                 self.clients.insert(client_id, client);
             }
             MessageInPayload::Disconnect => {
@@ -624,56 +626,50 @@ mod tests {
     async fn clients_get_the_full_state_once_then_each_updates_changes() {
         let mut server = server();
         let (alec, mut alec_rx) = connect(&mut server);
-        assert!(matches!(
-            received(&mut alec_rx)[..],
-            [MessageOut::ServerTime(_)]
-        ));
+        assert!(received(&mut alec_rx).is_empty());
 
         join(&mut server, alec, "alec", None).unwrap();
         let arena_id = arena_of(&server, alec).unwrap();
-        server.tick(0.05);
+        let time = Utc::now();
+        server.tick(0.05, time);
         assert!(matches!(
-            received(&mut alec_rx)[..],
+            &received(&mut alec_rx)[..],
             [
                 MessageOut::ArenaJoined(..),
-                MessageOut::ServerTime(_),
-                MessageOut::ArenaState(_)
-            ]
+                MessageOut::ArenaState { time: sent, .. }
+            ] if *sent == time
         ));
         assert!(server.arenas[&arena_id].updates.is_empty());
 
         server
             .handle_message(alec, MessageInPayload::Start)
             .unwrap();
-        server.tick(0.05);
+        let time = Utc::now();
+        server.tick(0.05, time);
         assert!(matches!(
-            received(&mut alec_rx)[..],
-            [MessageOut::ArenaStatePatch(_)]
+            &received(&mut alec_rx)[..],
+            [MessageOut::ArenaStatePatch { time: sent, .. }] if *sent == time
         ));
         assert!(server.arenas[&arena_id].updates.is_empty());
 
         // A client joining later gets everything so far in its full state.
         let (bob, mut bob_rx) = connect(&mut server);
         join(&mut server, bob, "bob", Some(arena_id)).unwrap();
-        server.tick(0.05);
+        server.tick(0.05, Utc::now());
         let messages = received(&mut bob_rx);
-        let Some(MessageOut::ArenaState(state)) = messages.last() else {
+        let Some(MessageOut::ArenaState { state, .. }) = messages.last() else {
             panic!("no ArenaState in {:?}", messages);
         };
-        assert!(matches!(
-            messages[messages.len() - 2],
-            MessageOut::ServerTime(_)
-        ));
         let alec_player = server.clients[&alec].player.unwrap();
         assert!(state.lightcycles.contains_key(&alec_player));
         assert_eq!(state.human_player_ids().count(), 2);
-        let Some(MessageOut::ArenaStatePatch(patch)) = received(&mut alec_rx).pop() else {
+        let Some(MessageOut::ArenaStatePatch { updates, .. }) = received(&mut alec_rx).pop() else {
             panic!("alec wasn't sent bob joining");
         };
-        assert!(matches!(patch[..], [ArenaUpdate::AddPlayer(..)]));
+        assert!(matches!(updates[..], [ArenaUpdate::AddPlayer(..)]));
 
         // Nothing changes before the round starts, so nothing is sent.
-        server.tick(0.05);
+        server.tick(0.05, Utc::now());
         assert!(received(&mut alec_rx).is_empty());
         assert!(received(&mut bob_rx).is_empty());
     }
@@ -714,7 +710,7 @@ mod tests {
         server
             .handle_message(alec, MessageInPayload::Start)
             .unwrap();
-        server.tick(0.05);
+        server.tick(0.05, Utc::now());
         let old_player = server.clients[&alec].player.unwrap();
 
         // Alec moves to an arena of his own.
@@ -794,14 +790,16 @@ mod tests {
         server
             .handle_message(id, MessageInPayload::Connect(None, tx))
             .unwrap();
-        server
-            .handle_message(id, MessageInPayload::GetArenaList)
-            .unwrap();
+        for _ in 0..2 {
+            server
+                .handle_message(id, MessageInPayload::GetArenaList)
+                .unwrap();
+        }
         server.disconnect_lagging_clients();
 
         assert!(!server.clients.contains_key(&id));
         // The queued messages are still delivered before the channel closes.
-        assert!(matches!(rx.try_recv(), Ok(MessageOut::ServerTime(_))));
+        assert!(matches!(rx.try_recv(), Ok(MessageOut::ArenaList(_))));
         assert!(rx.try_recv().is_err());
     }
 

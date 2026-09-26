@@ -101,11 +101,11 @@ export type ServerMessage =
   | { ArenaList: ArenaOverview[] }
   | { ArenaJoined: [string, string] }
   | 'NameInUse'
-  | { ArenaState: ServerArena }
-  | { ArenaStatePatch: ArenaUpdate[] }
+  // time is the Unix time (ms) on the server's clock of the update the state
+  // or changes come from.
+  | { ArenaState: { time: number; state: ServerArena } }
+  | { ArenaStatePatch: { time: number; updates: ArenaUpdate[] } }
   | { Leaderboard: Leaderboard }
-  // ISO 8601 time on the server's clock when it sent the message.
-  | { ServerTime: string }
 
 export type ClientMessage =
   | { ClaimName: string }
@@ -117,9 +117,9 @@ export type ClientMessage =
 // The client's copies of the server's data.
 
 export type Lightcycle = ServerLightcycle & {
-  // When the client received the lightcycle's position, in milliseconds on
-  // the server's clock.
-  receivedAt: number
+  // The Unix time (ms) on the server's clock of the update that set the
+  // lightcycle's position.
+  updatedAt: number
 }
 
 // A trail split into the points that stay put and the one that follows the
@@ -170,7 +170,8 @@ export type Store = {
   leaderboard: Leaderboard | null
   joinError: string | null
   player: PlayerSettings
-  // The server's clock minus the client's, in milliseconds.
+  // The server's clock minus the client's (performance.now()), in
+  // milliseconds.
   serverTimeOffset: number
   socketState: SocketState
   stage: Stage
@@ -187,9 +188,10 @@ export type Action =
   | { type: 'RECEIVE_ARENA_LIST'; arenaList: ArenaOverview[] }
   | { type: 'RECEIVE_ARENA_JOINED'; arenaId: string; playerId: string }
   | { type: 'RECEIVE_NAME_IN_USE' }
-  // receivedAt is in milliseconds on the server's clock.
-  | { type: 'RECEIVE_ARENA_STATE'; state: ServerArena; receivedAt: number }
-  | { type: 'RECEIVE_ARENA_STATE_PATCH'; statePatch: ArenaUpdate[]; receivedAt: number }
+  // time is the Unix time (ms) on the server's clock of the update the state
+  // or changes come from.
+  | { type: 'RECEIVE_ARENA_STATE'; state: ServerArena; time: number }
+  | { type: 'RECEIVE_ARENA_STATE_PATCH'; statePatch: ArenaUpdate[]; time: number }
   | { type: 'RECEIVE_LEADERBOARD'; leaderboard: Leaderboard }
 
 export type Thunk = (dispatch: Dispatch, getState: () => Store) => void

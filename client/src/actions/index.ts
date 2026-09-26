@@ -7,13 +7,12 @@ import type {
   ControlScheme,
   Direction,
   Leaderboard,
-  ServerArena,
   ServerMessage,
   SocketState,
   Stage,
   Thunk,
 } from '@/types'
-import { serverNow } from '@/utils/clock'
+import { resetServerClock, sampleServerClock } from '@/utils/clock'
 import { storeControlScheme } from '@/utils/controlScheme'
 import defaultPlayer from '@/utils/defaultPlayer'
 
@@ -41,6 +40,7 @@ export function connect(): Thunk {
   return (dispatch, getState) => {
     const opened = openSocket({
       open: () => {
+        resetServerClock()
         // Claim the player's name first, so a name already in use is refused
         // before anything else happens.
         send({ ClaimName: defaultPlayer(getState().player).name })
@@ -88,31 +88,34 @@ function receiveSocketMessage(data: string): Thunk {
     } catch (error) {
       return console.error('Invalid socket message', data, error)
     }
-    const receivedAt = serverNow(getState().serverTimeOffset)
-
     if (message === 'NameInUse') return dispatch(receiveNameInUse())
     if (typeof message !== 'object' || message === null) return console.warn('Unhandled message received', message)
-    if ('ServerTime' in message) return dispatch(receiveServerTime(message.ServerTime))
     if ('ArenaList' in message) return dispatch(receiveArenaList(message.ArenaList))
     if ('ArenaJoined' in message) return dispatch(receiveArenaJoined(message.ArenaJoined))
     if ('ArenaState' in message) {
+      const { time, state } = message.ArenaState
+      dispatch(receiveServerTime(time))
       forgetSentTurns()
-      return dispatch(receiveArenaState(message.ArenaState, receivedAt))
+      return dispatch({ type: 'RECEIVE_ARENA_STATE', state, time })
     }
     if ('ArenaStatePatch' in message) {
-      trackSentTurns(message.ArenaStatePatch, getState().player.id)
-      return dispatch({ type: 'RECEIVE_ARENA_STATE_PATCH', statePatch: message.ArenaStatePatch, receivedAt })
+      const { time, updates } = message.ArenaStatePatch
+      dispatch(receiveServerTime(time))
+      trackSentTurns(updates, getState().player.id)
+      return dispatch({ type: 'RECEIVE_ARENA_STATE_PATCH', statePatch: updates, time })
     }
     if ('Leaderboard' in message) return dispatch(receiveLeaderboard(message.Leaderboard))
     console.warn('Unhandled message received', message)
   }
 }
 
-function receiveServerTime(serverTime: string): Thunk {
-  return (dispatch) => {
-    const time = Date.parse(serverTime)
-    if (Number.isNaN(time)) return console.warn('Invalid server time', serverTime)
-    dispatch({ type: 'RECEIVE_SERVER_TIME', serverTimeOffset: time - Date.now() })
+// Updates the estimate of the server's clock from a message's stamp. The
+// estimate changes only when a sample closer than the others arrives or an old
+// one expires, so most messages leave it alone.
+function receiveServerTime(time: number): Thunk {
+  return (dispatch, getState) => {
+    const serverTimeOffset = sampleServerClock(time)
+    if (serverTimeOffset !== getState().serverTimeOffset) dispatch({ type: 'RECEIVE_SERVER_TIME', serverTimeOffset })
   }
 }
 
@@ -141,10 +144,6 @@ function receiveNameInUse(): Thunk {
     dispatch({ type: 'RECEIVE_NAME_IN_USE' })
     dispatch(disconnect())
   }
-}
-
-function receiveArenaState(state: ServerArena, receivedAt: number): Action {
-  return { type: 'RECEIVE_ARENA_STATE', state, receivedAt }
 }
 
 function receiveLeaderboard(leaderboard: Leaderboard): Action {

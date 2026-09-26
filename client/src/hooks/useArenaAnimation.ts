@@ -4,10 +4,12 @@ import type { Arena, Direction, Lightcycle, Point } from '@/types'
 import { serverNow } from '@/utils/clock'
 import { liveSegmentData } from '@/utils/ribbonPath'
 
-// Extrapolation stops this long after a lightcycle's last position update,
-// a little over one server tick (50ms), so a late update leaves the
-// lightcycle waiting instead of carrying it past a turn or crash.
-const MAX_EXTRAPOLATION_MS = 60
+// Extrapolation stops this long after the server update that last set a
+// lightcycle's position, so a lost or very late update leaves the lightcycle
+// waiting instead of carrying it far past a turn or crash. Updates run every
+// 50ms and arrive with tens of milliseconds of jitter on top of that, which a
+// cap close to one update would turn into a stall and a jump forward.
+const MAX_EXTRAPOLATION_MS = 150
 
 const velocities: Record<Direction, Point> = {
   up: [0, 1],
@@ -17,11 +19,14 @@ const velocities: Record<Direction, Point> = {
 }
 
 // Where to draw a lightcycle at server time `now`: its last position from the
-// server, carried forward at its speed while the round is running.
+// server, carried forward at its speed from the time of the update that set
+// it, while the round is running. Measuring from that time rather than from
+// when the update arrived keeps an update that arrives late on the same path
+// as the rest.
 export function lightcyclePosition(lightcycle: Lightcycle, started: number | null, now: number): Point {
-  const { position, direction, speed, dead, receivedAt } = lightcycle
+  const { position, direction, speed, dead, updatedAt } = lightcycle
   if (dead || started === null || now < started) return position
-  const elapsedMs = Math.min(now - Math.max(receivedAt, started), MAX_EXTRAPOLATION_MS)
+  const elapsedMs = Math.min(now - Math.max(updatedAt, started), MAX_EXTRAPOLATION_MS)
   if (elapsedMs <= 0) return position
   const [dx, dy] = velocities[direction]
   const distance = (speed * elapsedMs) / 1000
