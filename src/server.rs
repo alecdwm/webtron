@@ -432,7 +432,7 @@ fn death_events(arena: &Arena, victim: PlayerId, cause: DeathCause) -> Vec<(Stri
                 .into_iter()
                 .collect();
         }
-        DeathCause::Lightcycle => {
+        DeathCause::Lightcycle(_) => {
             return victim_name
                 .map(|name| (name, Stat::HeadonCrash))
                 .into_iter()
@@ -529,7 +529,7 @@ mod tests {
             events(&[("alec", Stat::ArenaDeath)])
         );
         assert_eq!(
-            death_events(&arena, bob, DeathCause::Lightcycle),
+            death_events(&arena, bob, DeathCause::Lightcycle(alec)),
             events(&[("bob", Stat::HeadonCrash)])
         );
     }

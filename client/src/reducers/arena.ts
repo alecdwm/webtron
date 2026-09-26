@@ -107,13 +107,14 @@ function updateArena(arena, update) {
         },
       },
     }),
-    UpdateLightcycleApplyDeath: (playerId) => ({
+    UpdateLightcycleApplyDeath: ([playerId, deathCause]) => ({
       ...arena,
       lightcycles: {
         ...arena.lightcycles,
         [playerId]: {
           ...arena.lightcycles[playerId],
           dead: true,
+          death_cause: deathCause,
         },
       },
     }),

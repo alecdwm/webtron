@@ -14,7 +14,7 @@ pub enum ArenaUpdate {
     UpdateLightcyclePosition(PlayerId, ArenaPoint),
     UpdateLightcycleDirection(PlayerId, Direction),
     UpdateLightcycleSpeed(PlayerId, f64),
-    UpdateLightcycleApplyDeath(PlayerId),
+    UpdateLightcycleApplyDeath(PlayerId, DeathCause),
 
     UpdateLightribbonAppendPoint(PlayerId, ArenaPoint),
     UpdateLightribbonReplaceLatestPoint(PlayerId, ArenaPoint),
@@ -83,7 +83,7 @@ impl ArenaUpdate {
 
                 lightcycle.speed = *speed;
             }
-            ArenaUpdate::UpdateLightcycleApplyDeath(player_id) => {
+            ArenaUpdate::UpdateLightcycleApplyDeath(player_id, cause) => {
                 let lightcycle = match arena.lightcycles.get_mut(player_id) {
                     Some(lightcycle) => lightcycle,
                     None => {
@@ -93,6 +93,8 @@ impl ArenaUpdate {
                 };
 
                 lightcycle.dead = true;
+                lightcycle.death_cause = Some(*cause);
+                arena.unrecorded_deaths.push((*player_id, *cause));
             }
 
             ArenaUpdate::UpdateLightribbonAppendPoint(player_id, point) => {

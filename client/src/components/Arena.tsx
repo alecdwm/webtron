@@ -9,6 +9,7 @@ import Leaderboard from '@/components/Leaderboard'
 import Lightcycle from '@/components/Lightcycle'
 import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
+import Notifications from '@/components/Notifications'
 import useArenaSounds from '@/hooks/useArenaSounds'
 import useEventListener from '@/hooks/useEventListener'
 import usePreloadImages from '@/hooks/usePreloadImages'
@@ -80,6 +81,8 @@ export default function Arena() {
           isSelf={id === player.id}
         />
       ))}
+
+      <Notifications arena={arena} />
 
       {arena.started !== null ? <Countdown key={arena.started.valueOf()} startAt={arena.started.valueOf()} /> : null}
 

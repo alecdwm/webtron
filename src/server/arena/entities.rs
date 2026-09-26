@@ -6,6 +6,7 @@ pub struct Lightcycle {
     pub direction: Direction,
     pub speed: f64,
     pub dead: bool,
+    pub death_cause: Option<DeathCause>,
 }
 
 impl Default for Lightcycle {
@@ -15,6 +16,7 @@ impl Default for Lightcycle {
             direction: Direction::Up,
             speed: LIGHTCYCLE_SPEED,
             dead: Default::default(),
+            death_cause: None,
         }
     }
 }

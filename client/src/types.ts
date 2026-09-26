@@ -12,11 +12,16 @@ export type Player = {
   npc?: boolean
 }
 
+// What a lightcycle crashed into: a player's trail (possibly its own), the
+// arena boundary, or another player's lightcycle head-on.
+export type DeathCause = { Trail: string } | 'Boundary' | { Lightcycle: string }
+
 export type Lightcycle = {
   position: Point
   direction: Direction
   speed: number
   dead: boolean
+  death_cause: DeathCause | null
 }
 
 // A trail can be cut into several paths by holes. The last path is the one

@@ -1,0 +1,51 @@
+.notifications {
+  position: absolute;
+  z-index: 15;
+  top: 2%;
+  right: 2%;
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.35em;
+  max-width: 70%;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: clamp(0.6rem, 2.3cqi, 0.85rem);
+}
+
+/* Slides in, holds, then fades out; its duration is set inline. */
+.notification {
+  padding: 0.25em 0.6em;
+  text-align: right;
+  color: color-mix(in srgb, var(--notification) 65%, var(--white));
+  border-right: 2px solid var(--notification);
+  border-radius: 3px;
+  background: rgba(8, 18, 18, 0.65);
+  text-shadow: 0 0 4px color-mix(in srgb, var(--notification) 40%, transparent);
+  will-change: opacity, transform;
+  animation-name: notification;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+.name {
+  color: var(--name);
+  font-weight: bold;
+  text-shadow: 0 0 6px var(--name);
+}
+
+@keyframes notification {
+  0% {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  6% {
+    opacity: 1;
+    transform: none;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

@@ -35,13 +35,13 @@ const HOLE_RADIUS: f64 = 20.0;
 const DEAD_LIGHTRIBBON_SECONDS: i64 = 6;
 
 /// What a lightcycle crashed into.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum DeathCause {
     /// The trail of this player, which may be the lightcycle's own.
     Trail(PlayerId),
     Boundary,
-    /// Another lightcycle, head-on.
-    Lightcycle,
+    /// This player's lightcycle, head-on.
+    Lightcycle(PlayerId),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,7 +69,7 @@ pub struct Arena {
     #[serde(skip)]
     pub unrecorded_winner: Option<PlayerId>,
     /// Lightcycles that died, which the server hasn't recorded on the
-    /// leaderboard yet.
+    /// leaderboard yet. Added to as their deaths are applied.
     #[serde(skip)]
     pub unrecorded_deaths: Vec<(PlayerId, DeathCause)>,
     /// Human players who started a round, which the server hasn't recorded
@@ -298,10 +298,10 @@ impl Arena {
                     };
 
                     if travelled.overlaps_segment(&line) {
-                        self.updates
-                            .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
-                        self.unrecorded_deaths
-                            .push((*id, DeathCause::Trail(*ribbon_id)));
+                        self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+                            *id,
+                            DeathCause::Trail(*ribbon_id),
+                        ));
                         continue 'next_lightcycle;
                     }
 
@@ -310,10 +310,10 @@ impl Arena {
                             *id,
                             ArenaPoint::from_untyped(intersection),
                         ));
-                        self.updates
-                            .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
-                        self.unrecorded_deaths
-                            .push((*id, DeathCause::Trail(*ribbon_id)));
+                        self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+                            *id,
+                            DeathCause::Trail(*ribbon_id),
+                        ));
                         continue 'next_lightcycle;
                     }
                 }
@@ -332,10 +332,10 @@ impl Arena {
                                 };
 
                                 if travelled.overlaps_segment(&live_segment) {
-                                    self.updates
-                                        .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
-                                    self.unrecorded_deaths
-                                        .push((*id, DeathCause::Trail(*ribbon_id)));
+                                    self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+                                        *id,
+                                        DeathCause::Trail(*ribbon_id),
+                                    ));
                                     continue 'next_lightcycle;
                                 }
 
@@ -344,10 +344,10 @@ impl Arena {
                                         *id,
                                         ArenaPoint::from_untyped(intersection),
                                     ));
-                                    self.updates
-                                        .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
-                                    self.unrecorded_deaths
-                                        .push((*id, DeathCause::Trail(*ribbon_id)));
+                                    self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+                                        *id,
+                                        DeathCause::Trail(*ribbon_id),
+                                    ));
                                     continue 'next_lightcycle;
                                 }
                             }
@@ -362,23 +362,25 @@ impl Arena {
                 || lightcycle.position.x > self.width
                 || lightcycle.position.y > self.height
             {
-                self.updates
-                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
-                self.unrecorded_deaths.push((*id, DeathCause::Boundary));
+                self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+                    *id,
+                    DeathCause::Boundary,
+                ));
                 continue 'next_lightcycle;
             }
 
             // test for collisions with other lightcycles
-            if self
+            if let Some((other_id, _)) = self
                 .lightcycles
                 .iter()
                 .filter(|(_, other_lightcycle)| !other_lightcycle.dead)
                 .filter(|(other_id, _)| id != *other_id)
-                .any(|(_, other_lightcycle)| lightcycle.position == other_lightcycle.position)
+                .find(|(_, other_lightcycle)| lightcycle.position == other_lightcycle.position)
             {
-                self.updates
-                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
-                self.unrecorded_deaths.push((*id, DeathCause::Lightcycle));
+                self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+                    *id,
+                    DeathCause::Lightcycle(*other_id),
+                ));
                 continue 'next_lightcycle;
             }
         }
@@ -621,8 +623,12 @@ mod tests {
             },
         );
 
-        arena.calculate_lightcycle_collisions(0.05);
+        arena.calculate_lightcycle_collisions(0.05).apply_updates();
         assert_eq!(arena.unrecorded_deaths, vec![(id, DeathCause::Trail(id))]);
+        assert_eq!(
+            arena.lightcycles[&id].death_cause,
+            Some(DeathCause::Trail(id))
+        );
     }
 
     #[test]
@@ -703,9 +709,10 @@ mod tests {
         arena.apply_updates();
         assert_eq!(arena.started, first_start);
 
-        arena
-            .updates
-            .push(ArenaUpdate::UpdateLightcycleApplyDeath(human.id));
+        arena.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+            human.id,
+            DeathCause::Boundary,
+        ));
         arena.apply_updates();
         arena.winner_at = Some(Utc::now());
         arena.process_input(human.id, ArenaInput::Start);
