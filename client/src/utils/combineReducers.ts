@@ -1,9 +1,9 @@
-type Reducers<S> = { [K in keyof S]: (state: S[K] | undefined, action) => S[K] }
+import type { Action } from '@/types'
+
+type Reducers<S> = { [K in keyof S]: (state: S[K] | undefined, action: Action) => S[K] }
 
 export default function combineReducers<S extends object>(reducers: Reducers<S>) {
-  return function combinedReducer(store: S | undefined, action): S {
-    const config = store && 'config' in store ? (store.config as { debugReducers?: boolean }) : undefined
-    if (config && config.debugReducers) console.log(action)
+  return function combinedReducer(store: S | undefined, action: Action): S {
     const nextStore = {} as S
     let changed = false
     for (const key of Object.keys(reducers) as (keyof S)[]) {
@@ -11,7 +11,7 @@ export default function combineReducers<S extends object>(reducers: Reducers<S>)
       const nextState = reducers[key](prevState, action)
       if (nextState === undefined) {
         throw new Error(
-          `Given ${(action && action.type) || 'an action'}, reducer '${String(key)}' returned undefined.\n` +
+          `Given ${action.type}, reducer '${String(key)}' returned undefined.\n` +
             `To ignore an action, you must explicitly return the previous state.\n` +
             `If you want this reducer to hold no value, you can return null instead of undefined.`,
         )

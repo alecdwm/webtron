@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback, useRef } from 'react'
+import { type CSSProperties, type RefObject, useCallback, useRef } from 'react'
 
 import { start, turn } from '@/actions'
 import { playClick } from '@/audio/sound'
@@ -10,12 +10,14 @@ import Lightcycle from '@/components/Lightcycle'
 import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
 import Notifications from '@/components/Notifications'
+import useArenaAnimation, { ArenaAnimationContext } from '@/hooks/useArenaAnimation'
 import useArenaSounds from '@/hooks/useArenaSounds'
 import useEventListener from '@/hooks/useEventListener'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
+import type { Arena as ArenaType, Color, Direction } from '@/types'
 import { colorToHexString } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 
@@ -23,18 +25,28 @@ import styles from './Arena.module.css'
 
 export default function Arena() {
   usePreloadImages([backgroundPanel, ...Object.values(lightcycleImages)])
+  const arena = useStore((store) => store.arena)
+  return arena ? <ArenaView arena={arena} /> : null
+}
 
-  const { arena, leaderboard, player } = useStore()
-  useArenaSounds(arena, player.id)
+function ArenaView({ arena }: { arena: ArenaType }) {
+  const leaderboard = useStore((store) => store.leaderboard)
+  const player = useStore((store) => store.player)
+  const serverTimeOffset = useStore((store) => store.serverTimeOffset)
+  useArenaSounds(arena, player.id, serverTimeOffset)
+  const animation = useArenaAnimation(arena, serverTimeOffset)
   const dispatch = useStoreDispatch()
 
   const onStart = useCallback(() => dispatch(start()), [dispatch])
 
   const arenaRef = useRef<HTMLDivElement>(null)
-  useKeyControls(arena.started)
-  useTouchControls(arena.started, arenaRef)
+  const inRound = arena.started !== null
+  useKeyControls(inRound)
+  useTouchControls(inRound, arenaRef)
 
-  const winner = arena.winner && arena.players[arena.winner]
+  const { width, height } = arena
+  const colorOf = (id: string): Color => arena.players[id]?.color ?? 'white'
+  const winner = arena.winner ? arena.players[arena.winner] : undefined
   const playerCount = Object.keys(arena.players).length
   // The player count is only meaningful before the first round: afterwards
   // it also counts NPCs from the round that just ended.
@@ -42,83 +54,93 @@ export default function Arena() {
   // Once every human is out, anyone can start the next round without
   // waiting for the NPCs to finish this one.
   const humanAlive = Object.entries(arena.lightcycles).some(([id, { dead }]) => !dead && !arena.players[id]?.npc)
-  const canCutShort = arena.started !== null && roundPlayed && !humanAlive
-  const showLobby = arena.started === null || canCutShort
+  const canCutShort = inRound && roundPlayed && !humanAlive
+  const showLobby = !inRound || canCutShort
   useStartKeys(showLobby, onStart)
 
   return (
-    <div ref={arenaRef} className={styles.arena}>
-      <ArenaGrid startAt={arena.started === null ? null : arena.started.valueOf()} />
+    <ArenaAnimationContext.Provider value={animation}>
+      <div ref={arenaRef} className={styles.arena}>
+        <ArenaGrid startAt={arena.started} serverTimeOffset={serverTimeOffset} />
 
-      {arena.holes.map(({ player_id, position, radius }) => (
-        <Hole
-          key={player_id}
-          color={arena.players[player_id] ? arena.players[player_id].color : 'white'}
-          position={position}
-          radius={radius}
-        />
-      ))}
-      {Object.entries(arena.lightribbons).map(([id, { paths }]) => (
-        <Lightribbon key={id} color={arena.players[id] ? arena.players[id].color : 'white'} paths={paths} />
-      ))}
-      {Object.entries(arena.derezzing).map(([id, { paths }]) => (
-        <Lightribbon
-          key={`derez-${id}`}
-          color={arena.players[id] ? arena.players[id].color : 'white'}
-          paths={paths}
-          derezzing
-        />
-      ))}
-      {Object.entries(arena.lightcycles).map(([id, { position, direction, speed, dead }]) => (
-        <Lightcycle
-          key={id}
-          name={arena.players[id] ? arena.players[id].name : 'DISCONNECTED'}
-          color={arena.players[id] ? arena.players[id].color : 'white'}
-          position={position}
-          direction={direction}
-          speed={speed}
-          dead={dead}
-          isSelf={id === player.id}
-        />
-      ))}
+        {arena.holes.map(({ player_id, position, radius }) => (
+          <Hole
+            key={player_id}
+            color={colorOf(player_id)}
+            position={position}
+            radius={radius}
+            width={width}
+            height={height}
+          />
+        ))}
+        {Object.entries(arena.lightribbons).map(([id, { fixed }]) => (
+          <Lightribbon key={id} id={id} color={colorOf(id)} fixed={fixed} width={width} height={height} />
+        ))}
+        {Object.entries(arena.derezzing).map(([id, { fixed, tip }]) => (
+          <Lightribbon
+            key={`derez-${id}`}
+            color={colorOf(id)}
+            fixed={fixed}
+            tip={tip}
+            width={width}
+            height={height}
+            derezzing
+          />
+        ))}
+        {Object.entries(arena.lightcycles).map(([id, { direction, speed, dead }]) => (
+          <Lightcycle
+            key={id}
+            id={id}
+            name={arena.players[id]?.name ?? 'DISCONNECTED'}
+            color={colorOf(id)}
+            direction={direction}
+            speed={speed}
+            dead={dead}
+            isSelf={id === player.id}
+            inLobby={!inRound}
+          />
+        ))}
 
-      <Notifications arena={arena} />
+        <Notifications arena={arena} />
 
-      {arena.started !== null ? <Countdown key={arena.started.valueOf()} startAt={arena.started.valueOf()} /> : null}
+        {arena.started !== null ? (
+          <Countdown key={arena.started} startAt={arena.started} serverTimeOffset={serverTimeOffset} />
+        ) : null}
 
-      {winner || showLobby ? (
-        <div className={styles.overlay}>
-          {winner && (
-            <div className={styles.winner} style={{ '--winner': colorToHexString(winner.color) } as CSSProperties}>
-              <div className={styles.winnerLabel}>Winner</div>
-              <div className={styles.winnerName}>{winner.name.toUpperCase()}</div>
-              {leaderboard ? <Leaderboard leaderboard={leaderboard} playerColor={player.color} /> : null}
-            </div>
-          )}
+        {winner || showLobby ? (
+          <div className={styles.overlay}>
+            {winner && (
+              <div className={styles.winner} style={{ '--winner': colorToHexString(winner.color) } as CSSProperties}>
+                <div className={styles.winnerLabel}>Winner</div>
+                <div className={styles.winnerName}>{winner.name.toUpperCase()}</div>
+                {leaderboard ? <Leaderboard leaderboard={leaderboard} playerColor={player.color} /> : null}
+              </div>
+            )}
 
-          {showLobby ? (
-            <div className={styles.lobby}>
-              {!winner && !canCutShort && <div className={styles.arenaName}>{arena.name}</div>}
-              <MenuButton className={styles.startButton} onClick={onStart}>
-                {winner || canCutShort ? 'REMATCH' : 'START'}
-              </MenuButton>
-              {!roundPlayed && (
-                <div className={styles.lobbyInfo}>
-                  {playerCount}/{arena.max_players} players
-                </div>
-              )}
-              <div className={styles.controlsHint}>Arrows / WASD / tap to steer</div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+            {showLobby ? (
+              <div className={styles.lobby}>
+                {!winner && !canCutShort && <div className={styles.arenaName}>{arena.name}</div>}
+                <MenuButton className={styles.startButton} onClick={onStart}>
+                  {winner || canCutShort ? 'REMATCH' : 'START'}
+                </MenuButton>
+                {!roundPlayed && (
+                  <div className={styles.lobbyInfo}>
+                    {playerCount}/{arena.max_players} players
+                  </div>
+                )}
+                <div className={styles.controlsHint}>Arrows / WASD / tap to steer</div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </ArenaAnimationContext.Provider>
   )
 }
 
 function useTurnCallback() {
   const dispatch = useStoreDispatch()
-  return useCallback((direction) => dispatch(turn(direction)), [dispatch])
+  return useCallback((direction: Direction) => dispatch(turn(direction)), [dispatch])
 }
 
 // Enter or Space presses the START / REMATCH button while it is shown.
@@ -139,7 +161,7 @@ function useStartKeys(enabled: boolean, onStart: () => void) {
 
 // Keyed by the physical key, so WASD works with Caps Lock or Shift held and on
 // any keyboard layout.
-const turnKeys = {
+const turnKeys: Record<string, Direction> = {
   ArrowUp: 'up',
   KeyW: 'up',
   ArrowLeft: 'left',
@@ -150,12 +172,12 @@ const turnKeys = {
   KeyS: 'down',
 }
 
-function useKeyControls(started) {
+function useKeyControls(inRound: boolean) {
   const onTurn = useTurnCallback()
 
   const onKeyDown = useCallback(
-    (event) => {
-      if (!started) return
+    (event: KeyboardEvent) => {
+      if (!inRound) return
 
       const direction = turnKeys[event.code]
       if (!direction) return
@@ -164,70 +186,52 @@ function useKeyControls(started) {
       if (event.repeat) return
       onTurn(direction)
     },
-    [started, onTurn],
+    [inRound, onTurn],
   )
   useEventListener('keydown', onKeyDown)
 }
 
-function useTouchControls(started, arenaRef) {
+// Presses on a button are left to it: cancelling the touch would also cancel
+// the button's click.
+function isOnButton(target: EventTarget | null) {
+  return target instanceof Element && target.closest('button') !== null
+}
+
+// A press turns towards whichever side of the arena's centre it lands on.
+function useTouchControls(inRound: boolean, arenaRef: RefObject<HTMLDivElement | null>) {
   const onTurn = useTurnCallback()
 
-  const turnFromCenterOffset = useCallback(
-    (xFromCenter, yFromCenter) => {
-      const xDistance = Math.abs(xFromCenter)
-      const yDistance = Math.abs(yFromCenter)
+  const turnTowards = useCallback(
+    (clientX: number, clientY: number) => {
+      const arena = arenaRef.current
+      if (!arena) return
+      const rect = arena.getBoundingClientRect()
+      const xFromCenter = clientX - rect.left - rect.width / 2
+      const yFromCenter = clientY - rect.top - rect.height / 2
 
-      if (xDistance < yDistance) {
-        if (yFromCenter < 0) {
-          return onTurn('up')
-        } else {
-          return onTurn('down')
-        }
-      } else {
-        if (xFromCenter < 0) {
-          return onTurn('left')
-        } else {
-          return onTurn('right')
-        }
-      }
+      if (Math.abs(xFromCenter) < Math.abs(yFromCenter)) onTurn(yFromCenter < 0 ? 'up' : 'down')
+      else onTurn(xFromCenter < 0 ? 'left' : 'right')
     },
-    [onTurn],
+    [arenaRef, onTurn],
   )
 
   const onTouchStart = useCallback(
-    (event) => {
-      if (!started) return
-
+    (event: TouchEvent) => {
+      if (!inRound || isOnButton(event.target)) return
       const touch = event.changedTouches[0]
       if (!touch) return
-
       event.preventDefault()
-
-      const rect = event.currentTarget.getBoundingClientRect()
-      const x = touch.clientX - rect.left
-      const y = touch.clientY - rect.top
-      const xFromCenter = x - rect.width / 2
-      const yFromCenter = y - rect.height / 2
-
-      turnFromCenterOffset(xFromCenter, yFromCenter)
+      turnTowards(touch.clientX, touch.clientY)
     },
-    [started, turnFromCenterOffset],
+    [inRound, turnTowards],
   )
 
   const onMouseDown = useCallback(
-    (event) => {
-      if (!started) return
-
-      const rect = event.currentTarget.getBoundingClientRect()
-
-      const x = event.clientX - rect.left
-      const y = event.clientY - rect.top
-      const xFromCenter = x - rect.width / 2
-      const yFromCenter = y - rect.height / 2
-
-      turnFromCenterOffset(xFromCenter, yFromCenter)
+    (event: MouseEvent) => {
+      if (!inRound || isOnButton(event.target)) return
+      turnTowards(event.clientX, event.clientY)
     },
-    [started, turnFromCenterOffset],
+    [inRound, turnTowards],
   )
 
   useEventListener('touchstart', onTouchStart, arenaRef)

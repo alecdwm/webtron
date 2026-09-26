@@ -388,7 +388,7 @@ pub fn create_npc_players(count: usize) -> Vec<Player> {
 
         // remove incompatible NPCs from the pool
         for incompatible_set in INCOMPATIBLE_NPC_SETS {
-            if incompatible_set.iter().any(|n| *n == name) {
+            if incompatible_set.contains(&name) {
                 for incompatible_name in *incompatible_set {
                     if let Some(pos) = pool_remaining
                         .iter()
@@ -1087,7 +1087,7 @@ fn find_slipstream_attack_target(
         // NPC must be behind the target along the target's travel axis.
         let delta = target_pos - npc_pos;
         let ahead_dist = target_vel.x * delta.x + target_vel.y * delta.y;
-        if ahead_dist < 20.0 || ahead_dist > 150.0 {
+        if !(20.0..=150.0).contains(&ahead_dist) {
             continue;
         }
 
@@ -1140,10 +1140,8 @@ fn find_slipstream_attack_target(
                 }
             };
 
-            if heading_toward {
-                if best.is_none() || total_dist_sq < best.as_ref().unwrap().4 {
-                    best = Some((*other_id, target_dir, npc_dir, cut_distance, total_dist_sq));
-                }
+            if heading_toward && (best.is_none() || total_dist_sq < best.as_ref().unwrap().4) {
+                best = Some((*other_id, target_dir, npc_dir, cut_distance, total_dist_sq));
             }
         }
     }
@@ -1181,17 +1179,16 @@ fn find_slipstreamer_on_trail(
             }
         }
 
-        if !is_slipstreaming_us {
-            if let Some(last_point) = npc_ribbon.last_point() {
-                if segment_is_parallel_slipstream(
-                    other_lc.position,
-                    other_is_vertical,
-                    last_point,
-                    lightcycle.position,
-                ) {
-                    is_slipstreaming_us = true;
-                }
-            }
+        if !is_slipstreaming_us
+            && let Some(last_point) = npc_ribbon.last_point()
+            && segment_is_parallel_slipstream(
+                other_lc.position,
+                other_is_vertical,
+                last_point,
+                lightcycle.position,
+            )
+        {
+            is_slipstreaming_us = true;
         }
 
         if is_slipstreaming_us {
@@ -1228,8 +1225,8 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
             };
 
             if let Some(intersection) = ray.intersection(&segment) {
-                let d = ((intersection.x - position.x as f64).powi(2)
-                    + (intersection.y - position.y as f64).powi(2))
+                let d = ((intersection.x - position.x).powi(2)
+                    + (intersection.y - position.y).powi(2))
                 .sqrt();
                 if d > 0.5 && d < min_dist {
                     min_dist = d;
@@ -1238,21 +1235,20 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
         }
 
         // Check the live segment (ribbon tip → bike position) for other bikes.
-        if let Some(other_cycle) = arena.lightcycles.get(ribbon_id) {
-            if !other_cycle.dead {
-                if let Some(last_point) = lightribbon.last_point() {
-                    let live_segment = ArenaLine {
-                        from: last_point.to_untyped(),
-                        to: other_cycle.position.to_untyped(),
-                    };
-                    if let Some(intersection) = ray.intersection(&live_segment) {
-                        let d = ((intersection.x - position.x as f64).powi(2)
-                            + (intersection.y - position.y as f64).powi(2))
-                        .sqrt();
-                        if d > 0.5 && d < min_dist {
-                            min_dist = d;
-                        }
-                    }
+        if let Some(other_cycle) = arena.lightcycles.get(ribbon_id)
+            && !other_cycle.dead
+            && let Some(last_point) = lightribbon.last_point()
+        {
+            let live_segment = ArenaLine {
+                from: last_point.to_untyped(),
+                to: other_cycle.position.to_untyped(),
+            };
+            if let Some(intersection) = ray.intersection(&live_segment) {
+                let d = ((intersection.x - position.x).powi(2)
+                    + (intersection.y - position.y).powi(2))
+                .sqrt();
+                if d > 0.5 && d < min_dist {
+                    min_dist = d;
                 }
             }
         }
@@ -1289,9 +1285,8 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
             to: projected_end.to_untyped(),
         };
         if let Some(intersection) = ray.intersection(&projected_segment) {
-            let d = ((intersection.x - position.x as f64).powi(2)
-                + (intersection.y - position.y as f64).powi(2))
-            .sqrt();
+            let d = ((intersection.x - position.x).powi(2) + (intersection.y - position.y).powi(2))
+                .sqrt();
             if d > 0.5 && d < min_dist {
                 min_dist = d;
             }

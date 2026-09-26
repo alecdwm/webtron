@@ -1,12 +1,12 @@
-import { useCallback, useEffect } from 'react'
+import { useEffect } from 'react'
 
 export default function usePreventWebtronContextMenu() {
-  const preventDefault = useCallback((e) => e.preventDefault(), [])
-
   useEffect(() => {
     const webtron = document.getElementById('webtron')
+    if (!webtron) return
+    const preventDefault = (event: Event) => event.preventDefault()
     webtron.addEventListener('contextmenu', preventDefault)
 
     return () => webtron.removeEventListener('contextmenu', preventDefault)
-  }, [preventDefault])
+  }, [])
 }

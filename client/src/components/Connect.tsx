@@ -4,7 +4,7 @@ import statusFromSocketState from '@/utils/statusFromSocketState'
 import styles from './Connect.module.css'
 
 export default function Connect() {
-  const { socketState } = useStore()
+  const socketState = useStore((store) => store.socketState)
 
   return (
     <div className={styles.connect}>

@@ -19,6 +19,12 @@ export default function Notifications({ arena }: { arena: Arena }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const previousArena = useRef(arena)
   const nextId = useRef(0)
+  const timeouts = useRef(new Set<number>())
+
+  useEffect(() => {
+    const pending = timeouts.current
+    return () => pending.forEach((timeout) => window.clearTimeout(timeout))
+  }, [])
 
   useEffect(() => {
     const before = previousArena.current
@@ -35,7 +41,11 @@ export default function Notifications({ arena }: { arena: Arena }) {
 
     setNotifications((current) => [...current, ...added].slice(-MAX_NOTIFICATIONS))
     const ids = new Set(added.map(({ id }) => id))
-    window.setTimeout(() => setNotifications((current) => current.filter(({ id }) => !ids.has(id))), NOTIFICATION_MS)
+    const timeout = window.setTimeout(() => {
+      timeouts.current.delete(timeout)
+      setNotifications((current) => current.filter(({ id }) => !ids.has(id)))
+    }, NOTIFICATION_MS)
+    timeouts.current.add(timeout)
   }, [arena])
 
   return (

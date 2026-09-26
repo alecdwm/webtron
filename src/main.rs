@@ -2,14 +2,16 @@ use log::error;
 use std::env;
 use webtron::get_error_chain;
 
+/// What is logged when `RUST_LOG` isn't set.
+const DEFAULT_LOG_FILTERS: &str = "webtron=info";
+
 #[tokio::main]
 #[quit::main]
 async fn main() {
-    if env::var_os("RUST_LOG").is_none() {
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { env::set_var("RUST_LOG", "webtron=trace") };
-    }
-    pretty_env_logger::init();
+    let filters = env::var("RUST_LOG").unwrap_or_else(|_| DEFAULT_LOG_FILTERS.to_string());
+    pretty_env_logger::formatted_builder()
+        .parse_filters(&filters)
+        .init();
 
     webtron::start().await.unwrap_or_else(|error| {
         error!("{}", get_error_chain(error));

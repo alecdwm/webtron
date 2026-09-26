@@ -15,7 +15,7 @@ export default function SoundToggle() {
   }, [])
 
   const onKeyDown = useCallback(
-    (event) => {
+    (event: KeyboardEvent) => {
       if (event.key !== 'm' || event.target instanceof HTMLInputElement) return
       toggle()
     },

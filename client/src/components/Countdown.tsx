@@ -1,25 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { playCountdownBeep, playCountdownGo } from '@/audio/sound'
+import { serverNow } from '@/utils/clock'
 
 import styles from './Countdown.module.css'
 
 const GO_DURATION_MS = 900
 
 type CountdownProps = {
-  // Unix timestamp (ms) at which the round starts.
+  // Unix time (ms) on the server's clock at which the round starts.
   startAt: number
+  serverTimeOffset: number
 }
 
-export default function Countdown({ startAt }: CountdownProps) {
-  const [now, setNow] = useState(() => Date.now())
+export default function Countdown({ startAt, serverTimeOffset }: CountdownProps) {
+  const [now, setNow] = useState(() => serverNow(serverTimeOffset))
 
   const finished = now >= startAt + GO_DURATION_MS
   useEffect(() => {
     if (finished) return
-    const interval = window.setInterval(() => setNow(Date.now()), 50)
+    const interval = window.setInterval(() => setNow(serverNow(serverTimeOffset)), 50)
     return () => window.clearInterval(interval)
-  }, [finished])
+  }, [finished, serverTimeOffset])
 
   const remaining = Math.ceil((startAt - now) / 1000)
   const text = remaining > 0 ? String(remaining) : 'GO!'

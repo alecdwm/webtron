@@ -1,81 +1,136 @@
-import { disconnect, getArenaList, join } from '@/actions/socket'
-import createSimpleAction from '@/utils/createSimpleAction'
-import socketStates from '@/utils/socketStates'
+import { closeSocket, openSocket, send } from '@/actions/socket'
+import type {
+  Action,
+  ArenaOverview,
+  Color,
+  Direction,
+  Leaderboard,
+  ServerArena,
+  ServerMessage,
+  SocketState,
+  Stage,
+  Thunk,
+} from '@/types'
+import { serverNow } from '@/utils/clock'
+import defaultPlayer from '@/utils/defaultPlayer'
 
-export * from '@/actions/socket'
+export const setStage = (stage: Stage): Action => ({ type: 'SET_STAGE', stage })
+export const setPlayerName = (name: string): Action => ({ type: 'SET_PLAYER_NAME', name })
+export const setPlayerColor = (color: Color): Action => ({ type: 'SET_PLAYER_COLOR', color })
 
-export const SET_CONFIG = 'SET_CONFIG'
-export const SET_STAGE = 'SET_STAGE'
-export const PRELOAD_IMAGES = 'PRELOAD_IMAGES'
-
-export const setConfig = createSimpleAction(SET_CONFIG, 'config')
-export const setStage = createSimpleAction(SET_STAGE, 'stage')
-export const preloadImages = createSimpleAction(PRELOAD_IMAGES, 'urls')
-
-export const SET_PLAYER_NAME = 'SET_PLAYER_NAME'
-export const SET_PLAYER_COLOR = 'SET_PLAYER_COLOR'
-
-export const setPlayerName = createSimpleAction(SET_PLAYER_NAME, 'name')
-export const setPlayerColor = createSimpleAction(SET_PLAYER_COLOR, 'color')
-
-export const SET_SOCKET_STATE = 'SET_SOCKET_STATE'
-export const RECEIVE_SOCKET_MESSAGE = 'RECEIVE_SOCKET_MESSAGE'
-
-export function setSocketState(socketState) {
+export function setSocketState(socketState: SocketState): Thunk {
   return (dispatch) => {
-    dispatch({ type: SET_SOCKET_STATE, socketState })
-    if (socketState === socketStates.CONNECTING) dispatch(setStage('Connect'))
-    if (socketState === socketStates.OPEN) dispatch(getArenaList())
-    if (socketState === socketStates.CLOSED) dispatch(setStage('MainMenu'))
+    dispatch({ type: 'SET_SOCKET_STATE', socketState })
+    if (socketState === 'CONNECTING') dispatch(setStage('Connect'))
+    if (socketState === 'OPEN') dispatch(getArenaList())
+    if (socketState === 'CLOSED') dispatch(setStage('MainMenu'))
   }
 }
-export function receiveSocketMessage(messageType, messageData) {
+
+export function connect(): Thunk {
+  return (dispatch, getState) => {
+    const opened = openSocket({
+      open: () => {
+        // Claim the player's name first, so a name already in use is refused
+        // before anything else happens.
+        send({ ClaimName: defaultPlayer(getState().player).name })
+        dispatch(setSocketState('OPEN'))
+      },
+      message: (data) => dispatch(receiveSocketMessage(data)),
+      error: () => dispatch(setSocketState('CLOSING')),
+      close: () => dispatch(setSocketState('CLOSED')),
+    })
+    if (opened) dispatch(setSocketState('CONNECTING'))
+  }
+}
+
+// Closes the socket and returns to the main menu straight away, without
+// waiting for the close to complete.
+export function disconnect(): Thunk {
   return (dispatch) => {
-    const typeHandlers = {
-      ArenaList: receiveArenaList,
-      ArenaJoined: receiveArenaJoined,
-      NameInUse: receiveNameInUse,
-      ArenaState: receiveArenaState,
-      ArenaStatePatch: receiveArenaStatePatch,
-      Leaderboard: receiveLeaderboard,
+    if (closeSocket()) dispatch(setSocketState('CLOSED'))
+  }
+}
+
+export function getArenaList(): Thunk {
+  return () => send({ GetArenaList: null })
+}
+
+export function join(arenaId: string | null = null): Thunk {
+  return (_, getState) => send({ Join: { player: defaultPlayer(getState().player), arena_id: arenaId } })
+}
+
+export function start(): Thunk {
+  return () => send({ Start: null })
+}
+
+export function turn(direction: Direction): Thunk {
+  return () => send({ Turn: direction })
+}
+
+function receiveSocketMessage(data: string): Thunk {
+  return (dispatch, getState) => {
+    let message: ServerMessage
+    try {
+      message = JSON.parse(data)
+    } catch (error) {
+      return console.error('Invalid socket message', data, error)
     }
+    const receivedAt = serverNow(getState().serverTimeOffset)
 
-    if (typeHandlers[messageType]) return dispatch(typeHandlers[messageType](messageData))
-    console.warn('Unhandled message received', messageType, messageData)
+    if (message === 'NameInUse') return dispatch(receiveNameInUse())
+    if (typeof message !== 'object' || message === null) return console.warn('Unhandled message received', message)
+    if ('ServerTime' in message) return dispatch(receiveServerTime(message.ServerTime))
+    if ('ArenaList' in message) return dispatch(receiveArenaList(message.ArenaList))
+    if ('ArenaJoined' in message) return dispatch(receiveArenaJoined(message.ArenaJoined))
+    if ('ArenaState' in message) return dispatch(receiveArenaState(message.ArenaState, receivedAt))
+    if ('ArenaStatePatch' in message) {
+      return dispatch({ type: 'RECEIVE_ARENA_STATE_PATCH', statePatch: message.ArenaStatePatch, receivedAt })
+    }
+    if ('Leaderboard' in message) return dispatch(receiveLeaderboard(message.Leaderboard))
+    console.warn('Unhandled message received', message)
   }
 }
 
-export const RECEIVE_ARENA_LIST = 'RECEIVE_ARENA_LIST'
-export const RECEIVE_ARENA_JOINED = 'RECEIVE_ARENA_JOINED'
-export const RECEIVE_NAME_IN_USE = 'RECEIVE_NAME_IN_USE'
-export const RECEIVE_ARENA_STATE = 'RECEIVE_ARENA_STATE'
-export const RECEIVE_ARENA_STATE_PATCH = 'RECEIVE_ARENA_STATE_PATCH'
-export const RECEIVE_LEADERBOARD = 'RECEIVE_LEADERBOARD'
+function receiveServerTime(serverTime: string): Thunk {
+  return (dispatch) => {
+    const time = Date.parse(serverTime)
+    if (Number.isNaN(time)) return console.warn('Invalid server time', serverTime)
+    dispatch({ type: 'RECEIVE_SERVER_TIME', serverTimeOffset: time - Date.now() })
+  }
+}
 
-export function receiveArenaList(arenaList) {
+function receiveArenaList(arenaList: ArenaOverview[]): Thunk {
   return (dispatch, getState) => {
     const prevArenaList = getState().arenaList
-    dispatch({ type: RECEIVE_ARENA_LIST, arenaList })
+    dispatch({ type: 'RECEIVE_ARENA_LIST', arenaList })
     if (prevArenaList === null) {
       if (arenaList.length < 1) dispatch(join())
       else dispatch(setStage('ArenaSelect'))
     }
   }
 }
-export function receiveArenaJoined([arenaId, playerId]) {
+
+function receiveArenaJoined([arenaId, playerId]: [string, string]): Thunk {
   return (dispatch) => {
-    dispatch({ type: RECEIVE_ARENA_JOINED, arenaId, playerId })
+    dispatch({ type: 'RECEIVE_ARENA_JOINED', arenaId, playerId })
     dispatch(setStage('Arena'))
   }
 }
+
 // Another connected player has the player's name. Disconnecting returns to
 // the main menu, which says so.
-export function receiveNameInUse() {
+function receiveNameInUse(): Thunk {
   return (dispatch) => {
-    dispatch({ type: RECEIVE_NAME_IN_USE })
+    dispatch({ type: 'RECEIVE_NAME_IN_USE' })
     dispatch(disconnect())
   }
 }
-export const receiveArenaState = createSimpleAction(RECEIVE_ARENA_STATE, 'state')
-export const receiveArenaStatePatch = createSimpleAction(RECEIVE_ARENA_STATE_PATCH, 'statePatch')
-export const receiveLeaderboard = createSimpleAction(RECEIVE_LEADERBOARD, 'leaderboard')
+
+function receiveArenaState(state: ServerArena, receivedAt: number): Action {
+  return { type: 'RECEIVE_ARENA_STATE', state, receivedAt }
+}
+
+function receiveLeaderboard(leaderboard: Leaderboard): Action {
+  return { type: 'RECEIVE_LEADERBOARD', leaderboard }
+}

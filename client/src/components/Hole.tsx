@@ -1,24 +1,22 @@
-import type { CSSProperties } from 'react'
+import { type CSSProperties, memo } from 'react'
 
-import useStore from '@/hooks/useStore'
+import type { Color, Point } from '@/types'
 import { colorToHexString } from '@/utils/colors'
 
 import styles from './Hole.module.css'
 
 type HoleProps = {
-  color: string
-  position: [number, number]
+  color: Color
+  position: Point
   radius: number
+  width: number
+  height: number
 }
 
 // The blast that clears the trails around an exploding lightcycle. It fades
 // out after the explosion, and sits beneath the ribbons meanwhile so trails
 // laid across it show on top.
-export default function Hole({ color, position, radius }: HoleProps) {
-  const {
-    arena: { width, height },
-  } = useStore()
-
+function Hole({ color, position, radius, width, height }: HoleProps) {
   const style = {
     '--hole': colorToHexString(color),
     left: `${(position[0] / width) * 100}%`,
@@ -32,3 +30,5 @@ export default function Hole({ color, position, radius }: HoleProps) {
     </div>
   )
 }
+
+export default memo(Hole)

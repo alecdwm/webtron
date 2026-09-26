@@ -74,10 +74,10 @@ impl Lightribbon {
             .flat_map(|path| cut_path(path, center, radius))
             .collect();
 
-        if let Some(end) = live_end {
-            if paths.last().and_then(|path| path.last()) != Some(&end) {
-                paths.push(vec![end, end]);
-            }
+        if let Some(end) = live_end
+            && paths.last().and_then(|path| path.last()) != Some(&end)
+        {
+            paths.push(vec![end, end]);
         }
 
         self.paths = paths;

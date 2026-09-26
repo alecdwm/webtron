@@ -1,8 +1,6 @@
-import { createContext, useContext } from 'react'
+import { useStoreApi } from '@/hooks/useStore'
+import type { Dispatch } from '@/types'
 
-export const StoreDispatchContext = createContext(null)
-
-export default function useStoreDispatch() {
-  const dispatch = useContext(StoreDispatchContext)
-  return dispatch
+export default function useStoreDispatch(): Dispatch {
+  return useStoreApi().dispatch
 }

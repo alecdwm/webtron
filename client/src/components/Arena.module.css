@@ -4,6 +4,8 @@
   left: 0;
   width: 100%;
   height: 100%;
+  /* Touches steer, so they mustn't scroll or zoom the page. */
+  touch-action: none;
   animation: fadein 1s ease;
 }
 

@@ -64,10 +64,7 @@ pub fn calculate_spawnpoints(player_ids: Vec<PlayerId>) -> Vec<(PlayerId, ArenaP
 
         // randomly select an available spawnpoint
         let mut selected_spawnpoint = UnwrapErr(SysRng).next_u32() as usize % SPAWNPOINTS.len();
-        while spawnpoints_used
-            .iter()
-            .any(|spawnpoint| *spawnpoint == selected_spawnpoint)
-        {
+        while spawnpoints_used.contains(&selected_spawnpoint) {
             selected_spawnpoint = UnwrapErr(SysRng).next_u32() as usize % SPAWNPOINTS.len();
         }
         spawnpoints_used.push(selected_spawnpoint);

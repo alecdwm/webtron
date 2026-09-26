@@ -1,7 +1,6 @@
-import { randomColor } from '@/utils/colors'
+import type { Player, PlayerSettings } from '@/types'
 
-export default function defaultPlayer(player) {
-  if (!player.name) player.name = 'clu'
-  if (!player.color) player.color = randomColor()
-  return player
+// The player as sent to the server, named "clu" if they left the name blank.
+export default function defaultPlayer({ name, color }: PlayerSettings): Player {
+  return { name: name || 'clu', color }
 }

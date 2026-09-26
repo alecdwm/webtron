@@ -151,7 +151,7 @@ pub struct PlayerStats {
 
 impl PlayerStats {
     fn kills(&self) -> u32 {
-        self.player_kills + self.npc_kills
+        self.player_kills.saturating_add(self.npc_kills)
     }
 }
 
@@ -252,17 +252,19 @@ impl Leaderboard {
             record.name = key;
             match stat {
                 Stat::Win(color) => {
-                    record.wins += 1;
+                    record.wins = record.wins.saturating_add(1);
                     record.color = Some(*color);
                 }
-                Stat::RoundPlayed => record.rounds_played += 1,
-                Stat::PlayerKill => record.player_kills += 1,
-                Stat::NpcKill => record.npc_kills += 1,
-                Stat::PlayerDeath => record.player_deaths += 1,
-                Stat::NpcDeath => record.npc_deaths += 1,
-                Stat::Suicide => record.suicides += 1,
-                Stat::ArenaDeath => record.arena_deaths += 1,
-                Stat::HeadonCrash => record.headon_crashes += 1,
+                Stat::RoundPlayed => record.rounds_played = record.rounds_played.saturating_add(1),
+                Stat::PlayerKill => record.player_kills = record.player_kills.saturating_add(1),
+                Stat::NpcKill => record.npc_kills = record.npc_kills.saturating_add(1),
+                Stat::PlayerDeath => record.player_deaths = record.player_deaths.saturating_add(1),
+                Stat::NpcDeath => record.npc_deaths = record.npc_deaths.saturating_add(1),
+                Stat::Suicide => record.suicides = record.suicides.saturating_add(1),
+                Stat::ArenaDeath => record.arena_deaths = record.arena_deaths.saturating_add(1),
+                Stat::HeadonCrash => {
+                    record.headon_crashes = record.headon_crashes.saturating_add(1)
+                }
             }
             *text = None;
             changed = true;
@@ -331,30 +333,29 @@ fn parse_line(line: &str) -> Line {
 
 fn stats(lines: &[Line]) -> Stats {
     let mut stats: Vec<PlayerStats> = Vec::new();
+    let mut indices: HashMap<&str, usize> = HashMap::new();
     for line in lines {
         let Line::Record { key, record, .. } = line else {
             continue;
         };
-        let index = match stats.iter().position(|player| player.name == *key) {
-            Some(index) => index,
-            None => {
-                stats.push(PlayerStats {
-                    name: key.clone(),
-                    ..Default::default()
-                });
-                stats.len() - 1
-            }
-        };
+        let index = *indices.entry(key).or_insert_with(|| {
+            stats.push(PlayerStats {
+                name: key.clone(),
+                ..Default::default()
+            });
+            stats.len() - 1
+        });
         let player = &mut stats[index];
-        player.wins += record.wins;
-        player.player_kills += record.player_kills;
-        player.npc_kills += record.npc_kills;
-        player.suicides += record.suicides;
-        player.arena_deaths += record.arena_deaths;
-        player.rounds_played += record.rounds_played;
-        player.player_deaths += record.player_deaths;
-        player.npc_deaths += record.npc_deaths;
-        player.headon_crashes += record.headon_crashes;
+        // Counts saturate, so a huge count typed into the file can't overflow.
+        player.wins = player.wins.saturating_add(record.wins);
+        player.player_kills = player.player_kills.saturating_add(record.player_kills);
+        player.npc_kills = player.npc_kills.saturating_add(record.npc_kills);
+        player.suicides = player.suicides.saturating_add(record.suicides);
+        player.arena_deaths = player.arena_deaths.saturating_add(record.arena_deaths);
+        player.rounds_played = player.rounds_played.saturating_add(record.rounds_played);
+        player.player_deaths = player.player_deaths.saturating_add(record.player_deaths);
+        player.npc_deaths = player.npc_deaths.saturating_add(record.npc_deaths);
+        player.headon_crashes = player.headon_crashes.saturating_add(record.headon_crashes);
         // The first line with a colour gives the player's colour.
         player.color = player.color.or(record.color);
     }

@@ -22,11 +22,12 @@ pub type ArenaLine = LineSegment<f64>;
 #[derive(Debug)]
 pub struct Client {
     pub id: ClientId,
-    pub ip_address: Option<String>,
     pub tx: Sender<MessageOut>,
     pub player: Option<PlayerId>,
     pub arena: Option<ArenaId>,
-    pub updates_sent_so_far: usize,
+    /// Whether the client has been sent its arena's full state, after which
+    /// it is only sent each update's changes.
+    pub synced: bool,
     /// The player name this client has claimed, normalised.
     pub name: Option<String>,
 }
@@ -42,7 +43,7 @@ pub struct Player {
     pub npc: bool,
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PlayerColor {
     Blue,
@@ -50,13 +51,8 @@ pub enum PlayerColor {
     Orange,
     Purple,
     Red,
+    #[default]
     White,
-}
-
-impl Default for PlayerColor {
-    fn default() -> Self {
-        PlayerColor::White
-    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]

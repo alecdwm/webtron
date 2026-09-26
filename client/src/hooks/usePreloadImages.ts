@@ -1,15 +1,15 @@
 import { useEffect, useRef } from 'react'
 
-import { preloadImages } from '@/actions'
-import useStoreDispatch from '@/hooks/useStoreDispatch'
-
-export default function usePreloadImages(urls = []) {
-  const dispatch = useStoreDispatch()
-
-  // only want to preload on first render
-  const urlsRef = useRef(urls)
+// Starts loading the images on mount, and holds them while mounted.
+export default function usePreloadImages(urls: string[]) {
+  const initialUrls = useRef(urls)
+  const images = useRef<HTMLImageElement[]>([])
 
   useEffect(() => {
-    dispatch(preloadImages(urlsRef.current))
-  }, [dispatch])
+    images.current = initialUrls.current.map((url) => {
+      const image = new Image()
+      image.src = url
+      return image
+    })
+  }, [])
 }

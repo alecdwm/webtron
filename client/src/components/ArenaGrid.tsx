@@ -1,6 +1,7 @@
-import { type CSSProperties, useState } from 'react'
+import { type CSSProperties, memo, useState } from 'react'
 
 import backgroundPanel from '@/img/background-panel.svg'
+import { serverNow } from '@/utils/clock'
 
 import styles from './ArenaGrid.module.css'
 
@@ -12,24 +13,28 @@ const SWEEP_MS = 900
 const MIN_POWER_UP_MS = 300
 
 type ArenaGridProps = {
-  // Unix timestamp (ms) at which the round starts, or null between rounds.
+  // Unix time (ms) on the server's clock at which the round starts, or null
+  // between rounds.
   startAt: number | null
+  serverTimeOffset: number
 }
 
-export default function ArenaGrid({ startAt }: ArenaGridProps) {
+function ArenaGrid({ startAt, serverTimeOffset }: ArenaGridProps) {
   if (startAt === null) {
     return <div className={styles.idle} style={{ backgroundImage: `url("${backgroundPanel}")` }} />
   }
-  return <PoweredGrid key={startAt} startAt={startAt} />
+  return <PoweredGrid key={startAt} startAt={startAt} serverTimeOffset={serverTimeOffset} />
 }
+
+export default memo(ArenaGrid)
 
 // The grid during a round. Over the countdown each square flickers on in
 // turn, in an order seeded by the start time so every player sees the same
 // one; then the grid dims to its in-play level as a scanline sweeps down it,
 // finishing as the round starts. A countdown already partly over is played
 // in the time left.
-function PoweredGrid({ startAt }: { startAt: number }) {
-  const [timings] = useState(() => powerUpTimings(startAt, startAt - Date.now()))
+function PoweredGrid({ startAt, serverTimeOffset }: { startAt: number; serverTimeOffset: number }) {
+  const [timings] = useState(() => powerUpTimings(startAt, startAt - serverNow(serverTimeOffset)))
 
   const squares = Array.from({ length: GRID_SIZE * GRID_SIZE }, (_, index) => {
     const style = {

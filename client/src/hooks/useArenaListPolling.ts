@@ -7,7 +7,7 @@ export default function useArenaListPolling() {
   const dispatch = useStoreDispatch()
 
   useEffect(() => {
-    let timeout = null
+    let timeout: number | undefined
     const getArenaListTimeout = () => {
       dispatch(getArenaList())
       timeout = window.setTimeout(getArenaListTimeout, 2000)

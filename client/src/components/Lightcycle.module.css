@@ -1,6 +1,20 @@
+/* A zero-size box at the lightcycle's position, which the arena animation
+   moves by setting its left and bottom. The lightcycle's elements are placed
+   relative to it. It has no z-index, so their z-indexes still stack them
+   among the arena's other elements. */
+.anchor {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  height: 0;
+}
+
 .nameTag {
   --glow: var(--cycle);
   position: absolute;
+  left: 0;
+  bottom: 20px;
   z-index: 2;
   transform: translate(-50%, 50%);
   white-space: nowrap;
@@ -22,6 +36,8 @@
 
 .lightcycle {
   position: absolute;
+  left: 0;
+  bottom: 0;
   z-index: 1;
   filter: drop-shadow(0 0 2px var(--cycle)) drop-shadow(0 0 6px var(--cycle));
   image-rendering: pixelated;
@@ -36,6 +52,8 @@
    beam can be placed relative to the sprite's front. */
 .headlight {
   position: absolute;
+  left: 0;
+  bottom: 0;
   z-index: 1;
   width: 0;
   height: 0;
@@ -70,6 +88,8 @@
 /* Pulsing ring around your own cycle while waiting in the lobby. */
 .selfMarker {
   position: absolute;
+  left: 0;
+  bottom: 0;
   width: 34px;
   height: 34px;
   transform: translate(-50%, 50%);
@@ -84,6 +104,8 @@
 
 .derez {
   position: absolute;
+  left: 0;
+  bottom: 0;
   z-index: 3;
   width: 0;
   height: 0;

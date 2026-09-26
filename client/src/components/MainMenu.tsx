@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback } from 'react'
+import { type CSSProperties, type MouseEvent, useCallback } from 'react'
 
 import { connect, setPlayerColor, setPlayerName } from '@/actions'
 import { playConnect, playHover, playSelect, playType } from '@/audio/sound'
@@ -10,6 +10,7 @@ import useEventListener from '@/hooks/useEventListener'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
+import type { Color } from '@/types'
 import colors, { colorToHexString } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 import resolveClassName from '@/utils/resolveClassName'
@@ -22,7 +23,9 @@ const MAX_PLAYER_NAME_LENGTH = 10
 export default function MainMenu() {
   usePreloadImages(Object.values(lightcycleImages))
 
-  const { joinError, player, socketState } = useStore()
+  const joinError = useStore((store) => store.joinError)
+  const player = useStore((store) => store.player)
+  const socketState = useStore((store) => store.socketState)
   const dispatch = useStoreDispatch()
 
   const onConnect = useCallback(() => {
@@ -31,7 +34,7 @@ export default function MainMenu() {
   }, [dispatch])
 
   const selectColor = useCallback(
-    (color) => {
+    (color: Color) => {
       playSelect(colors.indexOf(color))
       dispatch(setPlayerColor(color))
     },
@@ -39,7 +42,7 @@ export default function MainMenu() {
   )
 
   const handlePlayerNameChange = useCallback(
-    (name) => {
+    (name: string) => {
       const playerName = name.slice(0, MAX_PLAYER_NAME_LENGTH).toLowerCase().replace(/ /g, '_').replace(/\s/g, '')
       if (playerName !== player.name) playType()
       dispatch(setPlayerName(playerName))
@@ -57,7 +60,7 @@ export default function MainMenu() {
   )
 
   const onKeyDown = useCallback(
-    ({ key }) => {
+    ({ key }: KeyboardEvent) => {
       switch (key) {
         case 'ArrowLeft':
           return setPreviousPlayerColor()
@@ -69,7 +72,10 @@ export default function MainMenu() {
   )
   useEventListener('keydown', onKeyDown)
 
-  const focusNameInput = useCallback(({ currentTarget }) => currentTarget.querySelector('input')?.focus(), [])
+  const focusNameInput = useCallback(
+    ({ currentTarget }: MouseEvent<HTMLElement>) => currentTarget.querySelector('input')?.focus(),
+    [],
+  )
 
   const status = statusFromSocketState(socketState)
 
@@ -90,6 +96,7 @@ export default function MainMenu() {
         <div className={styles.nameBox} onClick={focusNameInput}>
           <MenuInput
             className={styles.nameInput}
+            aria-label="Name"
             focusOnMount
             onChange={handlePlayerNameChange}
             onSubmit={onConnect}

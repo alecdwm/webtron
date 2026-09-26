@@ -1,5 +1,7 @@
 import '@/index.css'
 
+import { useState } from 'react'
+
 import { unlockAudio } from '@/audio/sound'
 import SoundToggle from '@/components/SoundToggle'
 import Webtron from '@/components/Webtron'
@@ -7,11 +9,8 @@ import useAddWebtronLoadedClass from '@/hooks/useAddWebtronLoadedClass'
 import useEventListener from '@/hooks/useEventListener'
 import usePreventWebtronContextMenu from '@/hooks/usePreventWebtronContextMenu'
 import { StoreContext } from '@/hooks/useStore'
-import { StoreDispatchContext } from '@/hooks/useStoreDispatch'
-import useThunkReducer from '@/hooks/useThunkReducer'
 import reducers from '@/reducers'
-
-const initialStore = reducers(undefined, { type: 'INIT_STORE' })
+import createStore from '@/store/createStore'
 
 export default function App() {
   usePreventWebtronContextMenu()
@@ -22,14 +21,12 @@ export default function App() {
   useEventListener('click', unlockAudio)
   useEventListener('keydown', unlockAudio)
 
-  const [store, dispatch] = useThunkReducer(reducers, initialStore)
+  const [store] = useState(() => createStore(reducers))
 
   return (
     <StoreContext.Provider value={store}>
-      <StoreDispatchContext.Provider value={dispatch}>
-        <Webtron />
-        <SoundToggle />
-      </StoreDispatchContext.Provider>
+      <Webtron />
+      <SoundToggle />
     </StoreContext.Provider>
   )
 }

@@ -60,3 +60,17 @@ pub fn get_error_chain(error: Error) -> String {
         .collect::<Vec<_>>()
         .join(": ")
 }
+
+/// Longest client-supplied text written to the log, in characters.
+const MAX_LOGGED_CHARACTERS: usize = 200;
+
+///
+/// Returns `text` cut to at most `MAX_LOGGED_CHARACTERS` characters, for
+/// writing text that came from a client to the log.
+///
+pub fn truncate_for_log(text: &str) -> String {
+    match text.char_indices().nth(MAX_LOGGED_CHARACTERS) {
+        Some((end, _)) => format!("{}... ({} bytes)", &text[..end], text.len()),
+        None => text.to_string(),
+    }
+}

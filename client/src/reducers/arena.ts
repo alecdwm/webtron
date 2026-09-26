@@ -1,12 +1,8 @@
-import dayjs from 'dayjs'
-
-import { RECEIVE_ARENA_JOINED, RECEIVE_ARENA_STATE, RECEIVE_ARENA_STATE_PATCH } from '@/actions'
+import type { Arena, ArenaUpdate, Lightcycle, Lightribbon, Point, ServerArena, ServerLightribbon } from '@/types'
 import createReducer from '@/utils/createReducer'
 
-const initialState = null
-
-export default createReducer(initialState, {
-  [RECEIVE_ARENA_JOINED]: (_, { arenaId }) => ({
+export default createReducer<Arena | null>(null, {
+  RECEIVE_ARENA_JOINED: (_, { arenaId }) => ({
     id: arenaId,
     name: '',
     width: 0,
@@ -22,148 +18,136 @@ export default createReducer(initialState, {
     holes: [],
     derezzing: {},
   }),
-  [RECEIVE_ARENA_STATE]: (_, { state }) => ({
-    ...state,
-    derezzing: {},
-    started: state.started === null ? null : dayjs(state.started),
-  }),
-  [RECEIVE_ARENA_STATE_PATCH]: (arena, { statePatch = [] }) => statePatch.reduce(updateArena, arena),
+  RECEIVE_ARENA_STATE: (_, { state, receivedAt }) => fromServerArena(state, receivedAt),
+  RECEIVE_ARENA_STATE_PATCH: (arena, { statePatch, receivedAt }) =>
+    arena === null ? null : statePatch.reduce((arena, update) => applyUpdate(arena, update, receivedAt), arena),
 })
 
-function updateArena(arena, update) {
-  const updateType = typeof update === 'object' ? Object.keys(update).pop() : update
-  const updateData = typeof update === 'object' ? update[updateType] : null
+function fromServerArena(state: ServerArena, receivedAt: number): Arena {
+  return {
+    id: state.id,
+    name: state.name,
+    width: state.width,
+    height: state.height,
+    max_players: state.max_players,
 
-  const updateHandlers = {
-    AddPlayer: ([playerId, player]) => ({
-      ...arena,
-      players: {
-        ...arena.players,
-        [playerId]: player,
-      },
-    }),
-    AddLightcycle: ([playerId, lightcycle]) => ({
-      ...arena,
-      lightcycles: {
-        ...arena.lightcycles,
-        [playerId]: lightcycle,
-      },
-    }),
-    AddLightribbon: ([playerId, lightribbon]) => ({
-      ...arena,
-      lightribbons: {
-        ...arena.lightribbons,
-        [playerId]: lightribbon,
-      },
-    }),
+    started: parseTime(state.started),
+    winner: state.winner,
 
-    AddHole: (hole) => ({
-      ...arena,
-      holes: [...arena.holes, hole],
-    }),
-
-    Start: (startAt) => ({
-      ...arena,
-      started: dayjs(startAt),
-      holes: [],
-      derezzing: {},
-    }),
-    End: () => ({
-      ...arena,
-      started: null,
-    }),
-    SetWinner: (winner) => ({
-      ...arena,
-      winner,
-    }),
-
-    UpdateLightcyclePosition: ([playerId, position]) => ({
-      ...arena,
-      lightcycles: {
-        ...arena.lightcycles,
-        [playerId]: {
-          ...arena.lightcycles[playerId],
-          position,
-        },
-      },
-    }),
-    UpdateLightcycleDirection: ([playerId, direction]) => ({
-      ...arena,
-      lightcycles: {
-        ...arena.lightcycles,
-        [playerId]: {
-          ...arena.lightcycles[playerId],
-          direction,
-        },
-      },
-    }),
-    UpdateLightcycleSpeed: ([playerId, speed]) => ({
-      ...arena,
-      lightcycles: {
-        ...arena.lightcycles,
-        [playerId]: {
-          ...arena.lightcycles[playerId],
-          speed,
-        },
-      },
-    }),
-    UpdateLightcycleApplyDeath: ([playerId, deathCause]) => ({
-      ...arena,
-      lightcycles: {
-        ...arena.lightcycles,
-        [playerId]: {
-          ...arena.lightcycles[playerId],
-          dead: true,
-          death_cause: deathCause,
-        },
-      },
-    }),
-
-    UpdateLightribbonAppendPoint: ([playerId, point]) => ({
-      ...arena,
-      lightribbons: {
-        ...arena.lightribbons,
-        [playerId]: {
-          ...arena.lightribbons[playerId],
-          paths: updateLivePath(arena.lightribbons[playerId].paths, (path) => [...path, point]),
-        },
-      },
-    }),
-    UpdateLightribbonReplaceLatestPoint: ([playerId, latestPoint]) => ({
-      ...arena,
-      lightribbons: {
-        ...arena.lightribbons,
-        [playerId]: {
-          ...arena.lightribbons[playerId],
-          paths: updateLivePath(arena.lightribbons[playerId].paths, (path) => [...path.slice(0, -1), latestPoint]),
-        },
-      },
-    }),
-
-    RemovePlayer: (playerId) => ({
-      ...arena,
-      players: Object.fromEntries(Object.entries(arena.players).filter(([id]) => id !== playerId)),
-    }),
-    RemoveLightcycle: (playerId) => ({
-      ...arena,
-      lightcycles: Object.fromEntries(Object.entries(arena.lightcycles).filter(([id]) => id !== playerId)),
-    }),
-    RemoveLightribbon: (playerId) => ({
-      ...arena,
-      lightribbons: Object.fromEntries(Object.entries(arena.lightribbons).filter(([id]) => id !== playerId)),
-    }),
-    DerezLightribbon: (playerId) => ({
-      ...arena,
-      lightribbons: Object.fromEntries(Object.entries(arena.lightribbons).filter(([id]) => id !== playerId)),
-      derezzing: arena.lightribbons[playerId]
-        ? { ...arena.derezzing, [playerId]: arena.lightribbons[playerId] }
-        : arena.derezzing,
-    }),
+    players: state.players,
+    lightcycles: Object.fromEntries(
+      Object.entries(state.lightcycles).map(([id, lightcycle]) => [id, { ...lightcycle, receivedAt }]),
+    ),
+    lightribbons: Object.fromEntries(
+      Object.entries(state.lightribbons).map(([id, lightribbon]) => [id, fromServerLightribbon(lightribbon)]),
+    ),
+    holes: state.holes,
+    derezzing: {},
   }
-
-  return updateHandlers[updateType] ? updateHandlers[updateType](updateData) : arena
 }
 
-function updateLivePath(paths, update) {
-  return paths.length === 0 ? [update([])] : [...paths.slice(0, -1), update(paths[paths.length - 1])]
+function parseTime(time: string | null): number | null {
+  if (time === null) return null
+  const parsed = Date.parse(time)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function fromServerLightribbon({ paths }: ServerLightribbon): Lightribbon {
+  const last = paths.length > 0 ? paths[paths.length - 1] : []
+  if (last.length === 0) return { fixed: paths, tip: null }
+  return { fixed: [...paths.slice(0, -1), last.slice(0, -1)], tip: last[last.length - 1] }
+}
+
+// Updates for players, lightcycles or trails the client doesn't have are
+// ignored, as the server does.
+function applyUpdate(arena: Arena, update: ArenaUpdate, receivedAt: number): Arena {
+  if (update === 'End') return { ...arena, started: null }
+
+  if ('AddPlayer' in update) {
+    const [id, player] = update.AddPlayer
+    return { ...arena, players: { ...arena.players, [id]: player } }
+  }
+  if ('AddLightcycle' in update) {
+    const [id, lightcycle] = update.AddLightcycle
+    return { ...arena, lightcycles: { ...arena.lightcycles, [id]: { ...lightcycle, receivedAt } } }
+  }
+  if ('AddLightribbon' in update) {
+    const [id, lightribbon] = update.AddLightribbon
+    return { ...arena, lightribbons: { ...arena.lightribbons, [id]: fromServerLightribbon(lightribbon) } }
+  }
+  if ('AddHole' in update) return { ...arena, holes: [...arena.holes, update.AddHole] }
+
+  if ('Start' in update) return { ...arena, started: parseTime(update.Start), holes: [], derezzing: {} }
+  if ('SetWinner' in update) return { ...arena, winner: update.SetWinner }
+
+  if ('UpdateLightcyclePosition' in update) {
+    const [id, position] = update.UpdateLightcyclePosition
+    return updateLightcycle(arena, id, { position, receivedAt })
+  }
+  if ('UpdateLightcycleDirection' in update) {
+    const [id, direction] = update.UpdateLightcycleDirection
+    return updateLightcycle(arena, id, { direction })
+  }
+  if ('UpdateLightcycleSpeed' in update) {
+    const [id, speed] = update.UpdateLightcycleSpeed
+    return updateLightcycle(arena, id, { speed })
+  }
+  if ('UpdateLightcycleApplyDeath' in update) {
+    const [id, deathCause] = update.UpdateLightcycleApplyDeath
+    return updateLightcycle(arena, id, { dead: true, death_cause: deathCause })
+  }
+
+  if ('UpdateLightribbonAppendPoint' in update) {
+    const [id, point] = update.UpdateLightribbonAppendPoint
+    return updateLightribbon(arena, id, (lightribbon) => appendPoint(lightribbon, point))
+  }
+  if ('UpdateLightribbonReplaceLatestPoint' in update) {
+    const [id, point] = update.UpdateLightribbonReplaceLatestPoint
+    return updateLightribbon(arena, id, ({ fixed }) => ({ fixed: fixed.length > 0 ? fixed : [[]], tip: point }))
+  }
+
+  if ('RemovePlayer' in update) return { ...arena, players: without(arena.players, update.RemovePlayer) }
+  if ('RemoveLightcycle' in update)
+    return { ...arena, lightcycles: without(arena.lightcycles, update.RemoveLightcycle) }
+  if ('RemoveLightribbon' in update) {
+    return { ...arena, lightribbons: without(arena.lightribbons, update.RemoveLightribbon) }
+  }
+  if ('DerezLightribbon' in update) {
+    const id = update.DerezLightribbon
+    const lightribbon = arena.lightribbons[id]
+    if (!lightribbon) return arena
+    return {
+      ...arena,
+      lightribbons: without(arena.lightribbons, id),
+      derezzing: { ...arena.derezzing, [id]: lightribbon },
+    }
+  }
+
+  return arena
+}
+
+function updateLightcycle(arena: Arena, id: string, change: Partial<Lightcycle>): Arena {
+  const lightcycle = arena.lightcycles[id]
+  if (!lightcycle) return arena
+  return { ...arena, lightcycles: { ...arena.lightcycles, [id]: { ...lightcycle, ...change } } }
+}
+
+function updateLightribbon(arena: Arena, id: string, update: (lightribbon: Lightribbon) => Lightribbon): Arena {
+  const lightribbon = arena.lightribbons[id]
+  if (!lightribbon) return arena
+  return { ...arena, lightribbons: { ...arena.lightribbons, [id]: update(lightribbon) } }
+}
+
+// The tip stays where it is as a fixed point, and the new point becomes the
+// tip. Only the last fixed path is copied, so the rest keep their identity.
+function appendPoint({ fixed, tip }: Lightribbon, point: Point): Lightribbon {
+  if (tip === null) return { fixed: fixed.length > 0 ? fixed : [[]], tip: point }
+  const last = fixed.length > 0 ? fixed[fixed.length - 1] : []
+  return { fixed: [...fixed.slice(0, -1), [...last, tip]], tip: point }
+}
+
+function without<T>(record: Record<string, T>, id: string): Record<string, T> {
+  if (!(id in record)) return record
+  const { [id]: _removed, ...rest } = record
+  return rest
 }

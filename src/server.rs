@@ -3,24 +3,37 @@ mod leaderboard;
 mod messages;
 mod primitives;
 
-use anyhow::{Context as ResultContext, Error, anyhow};
-use log::{error, info, warn};
+use anyhow::{Context as ResultContext, Error, anyhow, bail};
+use chrono::Utc;
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::mem;
 use std::time::Duration;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time;
+use tokio::time::{self, Instant, MissedTickBehavior};
 
 pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate, DeathCause};
 pub use leaderboard::{Leaderboard, LeaderboardStandings, Stat};
 pub use messages::{MessageIn, MessageOut};
 pub use primitives::*;
 
-use crate::get_error_chain;
+use crate::{get_error_chain, truncate_for_log};
 use leaderboard::normalize_name;
 use messages::MessageInPayload;
 
 const UPDATE_RATE_MILLISECONDS: u64 = 50; // 1000 / 50 = 20 updates per second
+/// Longest time one update covers, in seconds, however long it has been
+/// since the last one, so that a late update doesn't move lightcycles
+/// unusually far in one step.
+const MAX_UPDATE_SECONDS: f64 = 0.1;
+/// Most messages from clients handled in one update. The rest wait for the
+/// next update.
+const MAX_MESSAGES_PER_UPDATE: usize = 512;
+/// Most arenas open at once.
+const MAX_ARENAS: usize = 64;
+/// Longest player name, in characters, the same as the client's name input.
+const MAX_PLAYER_NAME_LENGTH: usize = 10;
 
 #[derive(Debug)]
 pub struct Server {
@@ -28,6 +41,9 @@ pub struct Server {
     clients: HashMap<ClientId, Client>,
     arenas: HashMap<ArenaId, Arena>,
     leaderboard: Leaderboard,
+    /// Clients whose queue of outgoing messages is full, to be disconnected
+    /// at the end of the update.
+    lagging: Vec<ClientId>,
 }
 
 impl Server {
@@ -37,25 +53,41 @@ impl Server {
             clients: Default::default(),
             arenas: Default::default(),
             leaderboard,
+            lagging: Default::default(),
         }
     }
 
     pub async fn start(mut self) {
         let mut interval = time::interval(Duration::from_millis(UPDATE_RATE_MILLISECONDS));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut last_update = Instant::now();
         loop {
             interval.tick().await;
-            self.process_messages().await;
-            self.update(UPDATE_RATE_MILLISECONDS as f64 / 1000.0);
-            self.send_updates().await;
+            let now = Instant::now();
+            let delta_time = (now - last_update).as_secs_f64().min(MAX_UPDATE_SECONDS);
+            last_update = now;
+
+            self.tick(delta_time);
         }
     }
 
-    pub async fn process_messages(&mut self) {
-        while let Ok(message) = self.message_queue.try_recv() {
+    /// Handles the messages that have arrived, updates every arena by
+    /// `delta_time` seconds and sends clients the changes.
+    pub fn tick(&mut self, delta_time: f64) {
+        self.process_messages();
+        self.update(delta_time);
+        self.send_updates();
+        self.disconnect_lagging_clients();
+    }
+
+    pub fn process_messages(&mut self) {
+        for _ in 0..MAX_MESSAGES_PER_UPDATE {
+            let Ok(message) = self.message_queue.try_recv() else {
+                break;
+            };
             self.handle_message(message.client_id, message.payload)
-                .await
                 .unwrap_or_else(|error| {
-                    error!(
+                    warn!(
                         "Failed to process incoming message: {}",
                         get_error_chain(error)
                     )
@@ -89,21 +121,19 @@ impl Server {
         let round_players = mem::take(&mut arena.unrecorded_round_players);
         let arena = &*arena;
 
-        let human_name = |id: &PlayerId| human_name(arena, id);
+        let human = |id: &PlayerId| human_player(arena, id);
 
         let mut events: Vec<(String, Stat)> = Vec::new();
         for player in round_players {
-            if let Some(name) = human_name(&player) {
-                events.push((name, Stat::RoundPlayed));
+            if let Some(player) = human(&player) {
+                events.push((player.name.clone(), Stat::RoundPlayed));
             }
         }
         for (victim, cause) in deaths {
             events.extend(death_events(arena, victim, cause));
         }
-        if let Some(winner) = winner {
-            if let (Some(name), Some(player)) = (human_name(&winner), arena.players.get(&winner)) {
-                events.push((name, Stat::Win(player.color)));
-            }
+        if let Some(player) = winner.and_then(|winner| human(&winner)) {
+            events.push((player.name.clone(), Stat::Win(player.color)));
         }
 
         if events.is_empty() && winner.is_none() {
@@ -128,95 +158,115 @@ impl Server {
         };
 
         let leaderboard = self.leaderboard.clone();
-        tokio::spawn(async move {
-            let standings = tokio::task::spawn_blocking(move || {
-                let stats = leaderboard.record(&events)?;
-                Ok::<_, Error>(
-                    recipients
-                        .into_iter()
-                        .map(|(tx, name)| (tx, stats.standings(name.as_deref())))
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .await;
-
-            let standings = match standings {
-                Ok(Ok(standings)) => standings,
-                Ok(Err(error)) => {
+        tokio::task::spawn_blocking(move || {
+            let stats = match leaderboard.record(&events) {
+                Ok(stats) => stats,
+                Err(error) => {
                     return error!("Failed to update leaderboard: {}", get_error_chain(error));
                 }
-                Err(error) => return error!("Failed to update leaderboard: {}", error),
             };
 
-            for (tx, standings) in standings {
-                if let Err(error) = tx.send(MessageOut::Leaderboard(standings)).await {
+            for (tx, name) in recipients {
+                let standings = stats.standings(name.as_deref());
+                if let Err(error) = tx.try_send(MessageOut::Leaderboard(standings)) {
                     warn!("Failed to send Leaderboard to client: {}", error);
                 }
             }
         });
     }
 
-    pub async fn send_updates(&mut self) {
-        let clients = &mut self.clients;
-        let arenas = &self.arenas;
+    /// Sends each client the full state of its arena if it hasn't had it yet,
+    /// otherwise the changes made this update, then clears the changes.
+    pub fn send_updates(&mut self) {
+        let Self {
+            clients,
+            arenas,
+            lagging,
+            ..
+        } = self;
 
         for client in clients.values_mut() {
-            let arena = match client.arena {
-                Some(arena) => arena,
-                None => continue,
-            };
-
-            let arena = match arenas.get(&arena) {
-                Some(arena) => arena,
-                None => continue,
-            };
-
-            if client.updates_sent_so_far == 0 {
-                if let Err(error) = client
-                    .tx
-                    .send(MessageOut::ArenaState(Box::from(arena.clone())))
-                    .await
-                {
-                    error!("Failed to send ArenaState to client: {}", error);
-                    continue;
-                }
-                client.updates_sent_so_far = arena.updates.len();
+            let Some(arena) = client.arena.and_then(|id| arenas.get(&id)) else {
                 continue;
-            }
+            };
 
-            if client.updates_sent_so_far < arena.updates.len() {
-                if let Err(error) = client
-                    .tx
-                    .send(MessageOut::ArenaStatePatch(
-                        arena
-                            .updates
-                            .iter()
-                            .skip(client.updates_sent_so_far)
-                            .cloned()
-                            .collect(),
-                    ))
-                    .await
-                {
-                    error!("Failed to send ArenaStatePatch to client: {}", error);
-                    continue;
-                }
-                client.updates_sent_so_far = arena.updates.len();
+            if !client.synced {
+                client.synced = send(client, MessageOut::ServerTime(Utc::now()), lagging)
+                    && send(
+                        client,
+                        MessageOut::ArenaState(Box::new(arena.clone())),
+                        lagging,
+                    );
+            } else if !arena.updates.is_empty() {
+                send(
+                    client,
+                    MessageOut::ArenaStatePatch(arena.updates.clone()),
+                    lagging,
+                );
             }
         }
+
+        for arena in arenas.values_mut() {
+            arena.clear_updates();
+        }
     }
+
+    /// Disconnects the clients that aren't keeping up with their messages.
+    /// Dropping a client's sender closes its websocket.
+    fn disconnect_lagging_clients(&mut self) {
+        for client_id in mem::take(&mut self.lagging) {
+            warn!(
+                "Disconnecting client {} that isn't keeping up with its messages",
+                client_id
+            );
+            self.remove_client(client_id);
+        }
+    }
+
+    fn remove_client(&mut self, client_id: ClientId) {
+        self.client_part_arena(client_id);
+        self.clients.remove(&client_id);
+    }
+}
+
+/// Queues a message for a client, noting a client whose queue is full as
+/// lagging. Returns whether the message was queued.
+fn send(client: &Client, message: MessageOut, lagging: &mut Vec<ClientId>) -> bool {
+    match client.tx.try_send(message) {
+        Ok(()) => true,
+        Err(TrySendError::Full(_)) => {
+            if !lagging.contains(&client.id) {
+                lagging.push(client.id);
+            }
+            false
+        }
+        // The websocket has closed, and its disconnect message is queued.
+        Err(TrySendError::Closed(_)) => false,
+    }
+}
+
+/// Puts a player's name in the form the client's name input produces,
+/// refusing a name that is then empty, longer than `MAX_PLAYER_NAME_LENGTH`
+/// characters or has control characters in it.
+fn validate_name(name: &str) -> Result<String, Error> {
+    let normalized = normalize_name(name);
+    let length = normalized.chars().count();
+    if length == 0 || length > MAX_PLAYER_NAME_LENGTH || normalized.chars().any(char::is_control) {
+        bail!("Invalid player name {:?}", truncate_for_log(name));
+    }
+    Ok(normalized)
 }
 
 impl Server {
     /// Claims `name` for the client, unless another connected client has
-    /// already claimed it, in which case the client is told so. Names are
-    /// compared the way the leaderboard compares them. Returns whether the
-    /// claim succeeded.
-    async fn claim_name(&mut self, client_id: ClientId, name: &str) -> Result<bool, Error> {
-        let name = normalize_name(name);
+    /// already claimed it, in which case the client is told so. `name` must
+    /// be in the form `validate_name` gives. Returns whether the claim
+    /// succeeded.
+    fn claim_name(&mut self, client_id: ClientId, name: &str) -> Result<bool, Error> {
         let in_use = self
             .clients
             .values()
-            .any(|client| client.id != client_id && client.name.as_ref() == Some(&name));
+            .any(|client| client.id != client_id && client.name.as_deref() == Some(name));
 
         let client = self
             .clients
@@ -224,16 +274,12 @@ impl Server {
             .ok_or_else(|| anyhow!("Client {} not found", client_id))?;
 
         if in_use {
-            client
-                .tx
-                .send(MessageOut::NameInUse)
-                .await
-                .with_context(|| anyhow!("Failed to send NameInUse to client {}", client_id))?;
+            send(client, MessageOut::NameInUse, &mut self.lagging);
             info!("Client {} tried to claim a name in use", client_id);
             return Ok(false);
         }
 
-        client.name = Some(name);
+        client.name = Some(name.to_string());
         Ok(true)
     }
 
@@ -270,69 +316,70 @@ impl Server {
         Ok(())
     }
 
-    pub fn client_part_arena(&mut self, client_id: ClientId) -> Result<(), Error> {
-        let client = self
-            .clients
-            .get_mut(&client_id)
-            .with_context(|| anyhow!("Client {} not found", client_id))?;
-
-        client.updates_sent_so_far = 0;
-
-        let arena_id = client
-            .arena
-            .with_context(|| anyhow!("Client {} not in an arena", client_id))?;
-
-        let arena = self
-            .arenas
-            .get_mut(&arena_id)
-            .with_context(|| anyhow!("Arena {} not found", arena_id))?;
-
-        let player_id = client
-            .player
-            .with_context(|| anyhow!("Client {} has no player", client_id))?;
-
-        arena.remove_player(player_id);
-
-        Ok(())
+    /// Takes the client out of its arena, if it is in one.
+    pub fn client_part_arena(&mut self, client_id: ClientId) {
+        let Some(client) = self.clients.get_mut(&client_id) else {
+            return;
+        };
+        client.synced = false;
+        let (Some(arena_id), Some(player_id)) = (client.arena.take(), client.player.take()) else {
+            return;
+        };
+        if let Some(arena) = self.arenas.get_mut(&arena_id) {
+            arena.remove_player(player_id);
+        }
     }
 }
 
 impl Server {
-    pub async fn handle_message(
+    pub fn handle_message(
         &mut self,
         client_id: ClientId,
         payload: MessageInPayload,
     ) -> Result<(), Error> {
         match payload {
             MessageInPayload::Connect(ip_address, tx) => {
-                info!("Client connected: {}", client_id);
-                self.clients.insert(
+                info!(
+                    "Client {} connected from {}",
                     client_id,
-                    Client {
-                        id: client_id,
-                        ip_address,
-                        tx,
-                        player: None,
-                        arena: None,
-                        updates_sent_so_far: 0,
-                        name: None,
-                    },
+                    ip_address.as_deref().unwrap_or("an unknown address")
                 );
+                let client = Client {
+                    id: client_id,
+                    tx,
+                    player: None,
+                    arena: None,
+                    synced: false,
+                    name: None,
+                };
+                send(
+                    &client,
+                    MessageOut::ServerTime(Utc::now()),
+                    &mut self.lagging,
+                );
+                self.clients.insert(client_id, client);
             }
             MessageInPayload::Disconnect => {
-                info!("Client disconnected: {}", client_id);
-
-                self.client_part_arena(client_id).unwrap_or_else(|error| {
-                    warn!("Failed to remove client from their arena: {}", error)
-                });
-
-                self.clients
-                    .remove(&client_id)
-                    .ok_or_else(|| anyhow!("Failed to remove client {}", client_id))?;
+                // A client that fell behind has been removed already.
+                if self.clients.contains_key(&client_id) {
+                    info!("Client disconnected: {}", client_id);
+                    self.remove_client(client_id);
+                } else {
+                    debug!("Client disconnected after removal: {}", client_id);
+                }
             }
 
             MessageInPayload::ClaimName(name) => {
-                self.claim_name(client_id, &name).await?;
+                let client = self
+                    .clients
+                    .get(&client_id)
+                    .ok_or_else(|| anyhow!("Client {} not found", client_id))?;
+                // The name stays the player's name until they leave the arena.
+                if client.player.is_some() {
+                    bail!("Client {} can't claim a name while in an arena", client_id);
+                }
+                let name = validate_name(&name)?;
+                self.claim_name(client_id, &name)?;
             }
             MessageInPayload::GetArenaList => {
                 let arena_list: Vec<ArenaOverview> =
@@ -340,32 +387,47 @@ impl Server {
 
                 let client = self
                     .clients
-                    .get_mut(&client_id)
+                    .get(&client_id)
                     .ok_or_else(|| anyhow!("Client {} not found", client_id))?;
 
-                client
-                    .tx
-                    .send(MessageOut::ArenaList(arena_list))
-                    .await
-                    .with_context(|| anyhow!("Failed to send ArenaList to client {}", client_id))?;
+                send(client, MessageOut::ArenaList(arena_list), &mut self.lagging);
             }
-            MessageInPayload::Join { player, arena_id } => {
-                self.client_part_arena(client_id).unwrap_or_else(|error| {
-                    warn!("Failed to remove client from their arena: {}", error)
-                });
-
-                if !self.claim_name(client_id, &player.name).await? {
+            MessageInPayload::Join {
+                mut player,
+                arena_id,
+            } => {
+                player.name = validate_name(&player.name)?;
+                if !self.claim_name(client_id, &player.name)? {
                     return Ok(());
                 }
 
-                let arena_id = match arena_id {
-                    Some(arena_id) => {
-                        if self.arenas.contains_key(&arena_id) {
-                            arena_id
-                        } else {
-                            self.new_arena(&player.name)
+                let current_arena = self.clients.get(&client_id).and_then(|client| client.arena);
+                let arena_id = arena_id.filter(|id| self.arenas.contains_key(id));
+                match arena_id.and_then(|id| self.arenas.get(&id)) {
+                    Some(arena) => {
+                        // The client's own place is free once it leaves.
+                        let leaving = usize::from(current_arena == Some(arena.id));
+                        if arena.human_player_ids().count().saturating_sub(leaving)
+                            >= arena.max_players
+                        {
+                            bail!("Arena {} is full", arena.id);
                         }
                     }
+                    None => {
+                        if self.arenas.len() >= MAX_ARENAS {
+                            bail!(
+                                "Client {} can't open an arena: {} are open already",
+                                client_id,
+                                self.arenas.len()
+                            );
+                        }
+                    }
+                }
+
+                self.client_part_arena(client_id);
+
+                let arena_id = match arena_id {
+                    Some(arena_id) => arena_id,
                     None => self.new_arena(&player.name),
                 };
 
@@ -373,10 +435,6 @@ impl Server {
                     .arenas
                     .get_mut(&arena_id)
                     .ok_or_else(|| anyhow!("Arena {} not found", arena_id))?;
-
-                if arena.human_player_ids().count() >= arena.max_players {
-                    return Err(anyhow!("Arena {} is full", arena_id));
-                }
 
                 let player_id = player.id;
 
@@ -389,13 +447,11 @@ impl Server {
                 client.player = Some(player_id);
                 client.arena = Some(arena_id);
 
-                client
-                    .tx
-                    .send(MessageOut::ArenaJoined(arena.id, player_id))
-                    .await
-                    .with_context(|| {
-                        anyhow!("Failed to send ArenaJoined to client {}", client_id)
-                    })?;
+                send(
+                    client,
+                    MessageOut::ArenaJoined(arena.id, player_id),
+                    &mut self.lagging,
+                );
 
                 info!("Player {} joined arena {}", player_id, arena_id);
             }
@@ -411,14 +467,20 @@ impl Server {
     }
 }
 
-/// The name of a human player in the arena, or `None` for an NPC or a player
-/// who has left.
-fn human_name(arena: &Arena, id: &PlayerId) -> Option<String> {
+/// A human player in the arena, or one who left during the round, or `None`
+/// for an NPC.
+fn human_player<'a>(arena: &'a Arena, id: &PlayerId) -> Option<&'a Player> {
     arena
         .players
         .get(id)
         .filter(|_| !arena.npc_states.contains_key(id))
-        .map(|player| player.name.clone())
+        .or_else(|| arena.departed.get(id))
+}
+
+/// The name of a human player in the arena, or one who left during the
+/// round, or `None` for an NPC.
+fn human_name(arena: &Arena, id: &PlayerId) -> Option<String> {
+    human_player(arena, id).map(|player| player.name.clone())
 }
 
 /// The leaderboard events for a lightcycle's death: a kill for the human
@@ -470,6 +532,8 @@ fn death_events(arena: &Arena, victim: PlayerId, cause: DeathCause) -> Vec<(Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arena::Lightcycle;
+    use tokio::sync::mpsc;
 
     fn player(arena: &mut Arena, name: &str, npc: bool) -> PlayerId {
         let id = PlayerId::default();
@@ -492,6 +556,253 @@ mod tests {
         list.iter()
             .map(|(name, stat)| (name.to_string(), *stat))
             .collect()
+    }
+
+    #[test]
+    fn a_player_who_leaves_mid_round_still_has_their_crash_counted() {
+        let mut arena = Arena::default();
+        let alec = player(&mut arena, "alec", false);
+        let clu = player(&mut arena, "CLU", true);
+        for id in [alec, clu] {
+            arena.lightcycles.insert(id, Lightcycle::default());
+        }
+
+        arena.remove_player(alec);
+        assert!(!arena.players.contains_key(&alec));
+        // The riderless lightcycle doesn't hold up the next round.
+        assert!(!arena.any_human_alive());
+        assert_eq!(
+            death_events(&arena, alec, DeathCause::Trail(clu)),
+            events(&[("alec", Stat::NpcDeath)])
+        );
+    }
+
+    /// A server with no clients, whose leaderboard file is never written.
+    fn server() -> Server {
+        let (_, message_queue) = mpsc::channel(1);
+        let path =
+            std::env::temp_dir().join(format!("webtron-server-{}.jsonl", ClientId::default()));
+        Server::new(message_queue, Leaderboard::open(&path).unwrap())
+    }
+
+    /// Connects a client, returning its id and the messages it is sent.
+    fn connect(server: &mut Server) -> (ClientId, mpsc::Receiver<MessageOut>) {
+        let id = ClientId::default();
+        let (tx, rx) = mpsc::channel(100);
+        server
+            .handle_message(id, MessageInPayload::Connect(None, tx))
+            .unwrap();
+        (id, rx)
+    }
+
+    fn join(
+        server: &mut Server,
+        client_id: ClientId,
+        name: &str,
+        arena_id: Option<ArenaId>,
+    ) -> Result<(), Error> {
+        let player = Player {
+            name: name.to_string(),
+            ..Default::default()
+        };
+        server.handle_message(client_id, MessageInPayload::Join { player, arena_id })
+    }
+
+    fn received(rx: &mut mpsc::Receiver<MessageOut>) -> Vec<MessageOut> {
+        let mut messages = Vec::new();
+        while let Ok(message) = rx.try_recv() {
+            messages.push(message);
+        }
+        messages
+    }
+
+    fn arena_of(server: &Server, client_id: ClientId) -> Option<ArenaId> {
+        server.clients[&client_id].arena
+    }
+
+    #[tokio::test]
+    async fn clients_get_the_full_state_once_then_each_updates_changes() {
+        let mut server = server();
+        let (alec, mut alec_rx) = connect(&mut server);
+        assert!(matches!(
+            received(&mut alec_rx)[..],
+            [MessageOut::ServerTime(_)]
+        ));
+
+        join(&mut server, alec, "alec", None).unwrap();
+        let arena_id = arena_of(&server, alec).unwrap();
+        server.tick(0.05);
+        assert!(matches!(
+            received(&mut alec_rx)[..],
+            [
+                MessageOut::ArenaJoined(..),
+                MessageOut::ServerTime(_),
+                MessageOut::ArenaState(_)
+            ]
+        ));
+        assert!(server.arenas[&arena_id].updates.is_empty());
+
+        server
+            .handle_message(alec, MessageInPayload::Start)
+            .unwrap();
+        server.tick(0.05);
+        assert!(matches!(
+            received(&mut alec_rx)[..],
+            [MessageOut::ArenaStatePatch(_)]
+        ));
+        assert!(server.arenas[&arena_id].updates.is_empty());
+
+        // A client joining later gets everything so far in its full state.
+        let (bob, mut bob_rx) = connect(&mut server);
+        join(&mut server, bob, "bob", Some(arena_id)).unwrap();
+        server.tick(0.05);
+        let messages = received(&mut bob_rx);
+        let Some(MessageOut::ArenaState(state)) = messages.last() else {
+            panic!("no ArenaState in {:?}", messages);
+        };
+        assert!(matches!(
+            messages[messages.len() - 2],
+            MessageOut::ServerTime(_)
+        ));
+        let alec_player = server.clients[&alec].player.unwrap();
+        assert!(state.lightcycles.contains_key(&alec_player));
+        assert_eq!(state.human_player_ids().count(), 2);
+        let Some(MessageOut::ArenaStatePatch(patch)) = received(&mut alec_rx).pop() else {
+            panic!("alec wasn't sent bob joining");
+        };
+        assert!(matches!(patch[..], [ArenaUpdate::AddPlayer(..)]));
+
+        // Nothing changes before the round starts, so nothing is sent.
+        server.tick(0.05);
+        assert!(received(&mut alec_rx).is_empty());
+        assert!(received(&mut bob_rx).is_empty());
+    }
+
+    #[test]
+    fn arenas_take_no_more_than_their_players_joining_at_once() {
+        let mut server = server();
+        let (first, _first_rx) = connect(&mut server);
+        join(&mut server, first, "p0", None).unwrap();
+        let arena_id = arena_of(&server, first).unwrap();
+        let max_players = server.arenas[&arena_id].max_players;
+
+        let mut receivers = Vec::new();
+        let mut joined = 1;
+        for index in 1..max_players + 2 {
+            let (client, rx) = connect(&mut server);
+            receivers.push(rx);
+            if join(&mut server, client, &format!("p{index}"), Some(arena_id)).is_ok() {
+                joined += 1;
+            }
+        }
+
+        assert_eq!(joined, max_players);
+        assert_eq!(
+            server.arenas[&arena_id].human_player_ids().count(),
+            max_players
+        );
+    }
+
+    #[tokio::test]
+    async fn leaving_an_arena_detaches_the_client_from_it() {
+        let mut server = server();
+        let (alec, _alec_rx) = connect(&mut server);
+        let (bob, _bob_rx) = connect(&mut server);
+        join(&mut server, alec, "alec", None).unwrap();
+        let first_arena = arena_of(&server, alec).unwrap();
+        join(&mut server, bob, "bob", Some(first_arena)).unwrap();
+        server
+            .handle_message(alec, MessageInPayload::Start)
+            .unwrap();
+        server.tick(0.05);
+        let old_player = server.clients[&alec].player.unwrap();
+
+        // Alec moves to an arena of his own.
+        join(&mut server, alec, "alec", None).unwrap();
+        let second_arena = arena_of(&server, alec).unwrap();
+        assert_ne!(second_arena, first_arena);
+        let arena = &server.arenas[&first_arena];
+        assert!(!arena.players.contains_key(&old_player));
+        assert!(arena.departed.contains_key(&old_player));
+        assert!(!arena.lightcycles[&old_player].dead);
+
+        // Leaving altogether detaches the client, and its turns go nowhere.
+        server.client_part_arena(alec);
+        assert_eq!(server.clients[&alec].arena, None);
+        assert_eq!(server.clients[&alec].player, None);
+        assert!(
+            server
+                .handle_message(alec, MessageInPayload::Turn(Direction::Left))
+                .is_err()
+        );
+
+        // A full arena is refused before the client leaves its own.
+        join(&mut server, alec, "alec", None).unwrap();
+        let own_arena = arena_of(&server, alec).unwrap();
+        let full = server.arenas.get_mut(&first_arena).unwrap();
+        for index in 0..full.max_players {
+            full.add_player(Player {
+                id: PlayerId::default(),
+                name: format!("p{index}"),
+                ..Default::default()
+            });
+        }
+        assert!(join(&mut server, alec, "alec", Some(first_arena)).is_err());
+        assert_eq!(arena_of(&server, alec), Some(own_arena));
+    }
+
+    #[test]
+    fn names_cant_be_claimed_while_in_an_arena() {
+        let mut server = server();
+        let (alec, _alec_rx) = connect(&mut server);
+        server
+            .handle_message(alec, MessageInPayload::ClaimName("alec".to_string()))
+            .unwrap();
+        join(&mut server, alec, "alec", None).unwrap();
+
+        assert!(
+            server
+                .handle_message(alec, MessageInPayload::ClaimName("x".to_string()))
+                .is_err()
+        );
+        assert_eq!(server.clients[&alec].name.as_deref(), Some("alec"));
+
+        // Someone else still can't take it.
+        let (bob, mut bob_rx) = connect(&mut server);
+        join(&mut server, bob, "Alec", None).unwrap();
+        assert!(matches!(
+            received(&mut bob_rx).last(),
+            Some(MessageOut::NameInUse)
+        ));
+        assert_eq!(arena_of(&server, bob), None);
+    }
+
+    #[test]
+    fn names_are_checked() {
+        assert_eq!(validate_name("  Big Al ").unwrap(), "big_al");
+        assert!(validate_name("").is_err());
+        assert!(validate_name(" \t ").is_err());
+        assert!(validate_name("elevenchars").is_err());
+        assert!(validate_name("nul\u{0}").is_err());
+    }
+
+    #[test]
+    fn clients_that_fall_behind_are_disconnected() {
+        let mut server = server();
+        let id = ClientId::default();
+        let (tx, mut rx) = mpsc::channel(1);
+        server
+            .handle_message(id, MessageInPayload::Connect(None, tx))
+            .unwrap();
+        server
+            .handle_message(id, MessageInPayload::GetArenaList)
+            .unwrap();
+        server.disconnect_lagging_clients();
+
+        assert!(!server.clients.contains_key(&id));
+        // The queued messages are still delivered before the channel closes.
+        assert!(matches!(rx.try_recv(), Ok(MessageOut::ServerTime(_))));
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]

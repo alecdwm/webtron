@@ -86,7 +86,14 @@ pub struct Arena {
     /// on the leaderboard yet.
     #[serde(skip)]
     pub unrecorded_round_players: Vec<PlayerId>,
+    /// Human players who left while they had a lightcycle in the round,
+    /// until the next round starts. Their lightcycles ride on without them,
+    /// and still count for them on the leaderboard.
+    #[serde(skip)]
+    pub departed: HashMap<PlayerId, Player>,
 
+    /// Changes not yet sent to clients. The server clears them once they
+    /// have been sent.
     #[serde(skip)]
     pub updates: Vec<ArenaUpdate>,
     #[serde(skip)]
@@ -101,12 +108,18 @@ impl Arena {
         }
     }
 
+    /// Adds a player straight away, so that the next player to join sees
+    /// them when checking whether the arena is full.
     pub fn add_player(&mut self, player: Player) {
         self.updates.push(ArenaUpdate::AddPlayer(player.id, player));
+        self.apply_updates();
     }
 
+    /// Removes a player straight away. A human player's lightcycle stays in
+    /// the round (see `departed`).
     pub fn remove_player(&mut self, player_id: PlayerId) {
         self.updates.push(ArenaUpdate::RemovePlayer(player_id));
+        self.apply_updates();
     }
 
     pub fn human_player_ids(&self) -> impl Iterator<Item = PlayerId> + '_ {
@@ -116,11 +129,12 @@ impl Arena {
             .filter(|id| !self.npc_states.contains_key(id))
     }
 
-    /// Whether any human player's lightcycle is still in the round.
+    /// Whether the lightcycle of any human player still in the arena is
+    /// still in the round.
     pub fn any_human_alive(&self) -> bool {
-        self.lightcycles
-            .iter()
-            .any(|(id, lightcycle)| !lightcycle.dead && !self.npc_states.contains_key(id))
+        self.lightcycles.iter().any(|(id, lightcycle)| {
+            !lightcycle.dead && self.players.contains_key(id) && !self.npc_states.contains_key(id)
+        })
     }
 
     pub fn clear_updates(&mut self) {
@@ -281,19 +295,17 @@ impl Arena {
             if own {
                 continue;
             }
-            if let Some(other_cycle) = self.lightcycles.get(ribbon_id) {
-                if !other_cycle.dead {
-                    if let Some(last_point) = ribbon.last_point() {
-                        if segment_is_parallel_slipstream(
-                            pos,
-                            is_vertical,
-                            last_point,
-                            other_cycle.position,
-                        ) {
-                            return true;
-                        }
-                    }
-                }
+            if let Some(other_cycle) = self.lightcycles.get(ribbon_id)
+                && !other_cycle.dead
+                && let Some(last_point) = ribbon.last_point()
+                && segment_is_parallel_slipstream(
+                    pos,
+                    is_vertical,
+                    last_point,
+                    other_cycle.position,
+                )
+            {
+                return true;
             }
         }
 
@@ -331,18 +343,44 @@ impl Arena {
             let to = lightcycle.position;
             let from = starts.get(id).copied().unwrap_or(to);
 
-            // test for lightribbon collisions, stopping the lightcycle at the
-            // first trail it touches
-            let mut crash: Option<(f64, ArenaPoint, PlayerId)> = None;
+            // test for head-on collisions with lightcycles coming the other
+            // way along the same line, which meet between where the two were
+            let head_on = self
+                .lightcycles
+                .iter()
+                .filter(|(other_id, other)| {
+                    *other_id != id
+                        && !other.dead
+                        && other.direction.is_opposite(lightcycle.direction)
+                })
+                .filter_map(|(other_id, other)| {
+                    let other_from = starts.get(other_id).copied().unwrap_or(other.position);
+                    first_contact(from, to, other_from, other.position)?;
+                    let meeting = from.lerp(
+                        other_from,
+                        lightcycle.speed / (lightcycle.speed + other.speed),
+                    );
+                    Some(((meeting - from).length(), meeting, *other_id))
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+
+            // test for lightribbon collisions, stopping the lightcycle at
+            // whichever it touches first, a trail or a lightcycle head-on
+            let mut crash: Option<(f64, ArenaPoint, DeathCause)> =
+                head_on.map(|(distance, meeting, other_id)| {
+                    (distance, meeting, DeathCause::Lightcycle(other_id))
+                });
             for (ribbon_id, lightribbon) in self.lightribbons.iter() {
                 // Another lightcycle's ribbon doesn't reach where that
                 // lightcycle moved this update until the ribbon positions are
                 // updated, so the stretch in between is checked as well. A
-                // lightcycle's own stretch is the one it just travelled.
+                // lightcycle's own stretch is the one it just travelled, and
+                // that of one met head-on is where the two meet.
                 let live_segment = self
                     .lightcycles
                     .get(ribbon_id)
                     .filter(|other| ribbon_id != id && !other.dead)
+                    .filter(|_| head_on.is_none_or(|(.., other_id)| other_id != *ribbon_id))
                     .zip(lightribbon.last_point())
                     .map(|(other, last_point)| (last_point, other.position));
 
@@ -350,19 +388,17 @@ impl Arena {
                     if let Some(contact) = first_contact(from, to, a, b) {
                         let distance = (contact - from).length();
                         if crash.is_none_or(|(nearest, ..)| distance < nearest) {
-                            crash = Some((distance, contact, *ribbon_id));
+                            crash = Some((distance, contact, DeathCause::Trail(*ribbon_id)));
                         }
                     }
                 }
             }
 
-            if let Some((_, contact, ribbon_id)) = crash {
+            if let Some((_, contact, cause)) = crash {
                 self.updates
                     .push(ArenaUpdate::UpdateLightcyclePosition(*id, contact));
-                self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
-                    *id,
-                    DeathCause::Trail(ribbon_id),
-                ));
+                self.updates
+                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id, cause));
                 continue 'next_lightcycle;
             }
 
@@ -379,7 +415,7 @@ impl Arena {
                 continue 'next_lightcycle;
             }
 
-            // test for collisions with other lightcycles
+            // test for lightcycles arriving at the same point from the side
             if let Some((other_id, _)) = self
                 .lightcycles
                 .iter()
@@ -485,7 +521,7 @@ impl Arena {
             return self;
         }
 
-        if self.lightcycles.iter().count() <= 1 {
+        if self.lightcycles.len() <= 1 {
             return self;
         }
 
@@ -507,11 +543,11 @@ impl Arena {
         if self.lightcycles.values().all(|lightcycle| lightcycle.dead) {
             self.updates.push(ArenaUpdate::End);
             self.winner_at = None;
-        } else if let Some(winner_at) = self.winner_at {
-            if Utc::now() >= winner_at + OldDuration::seconds(ARENA_WIN_TIMEOUT_SECONDS) {
-                self.updates.push(ArenaUpdate::End);
-                self.winner_at = None;
-            }
+        } else if let Some(winner_at) = self.winner_at
+            && Utc::now() >= winner_at + OldDuration::seconds(ARENA_WIN_TIMEOUT_SECONDS)
+        {
+            self.updates.push(ArenaUpdate::End);
+            self.winner_at = None;
         }
         self
     }
@@ -541,6 +577,7 @@ impl Default for Arena {
             unrecorded_winner: None,
             unrecorded_deaths: Default::default(),
             unrecorded_round_players: Default::default(),
+            departed: Default::default(),
 
             updates: Default::default(),
             updates_applied_so_far: 0,
@@ -778,6 +815,53 @@ mod tests {
             arena.lightcycles[&id].position,
             ArenaPoint::new(100.0, 50.0)
         );
+    }
+
+    #[test]
+    fn lightcycles_meeting_head_on_crash_into_each_other() {
+        let id = PlayerId::default();
+        let other = PlayerId::default();
+        // On the same line, heading for each other 6 apart.
+        let mut arena = arena_with_lightcycle(
+            id,
+            ArenaPoint::new(100.0, 50.0),
+            Direction::Right,
+            vec![ArenaPoint::new(90.0, 50.0), ArenaPoint::new(100.0, 50.0)],
+        );
+        arena.lightcycles.insert(
+            other,
+            Lightcycle {
+                position: ArenaPoint::new(106.0, 50.0),
+                direction: Direction::Left,
+                ..Default::default()
+            },
+        );
+        arena.lightribbons.insert(
+            other,
+            Lightribbon {
+                paths: vec![vec![
+                    ArenaPoint::new(116.0, 50.0),
+                    ArenaPoint::new(106.0, 50.0),
+                ]],
+            },
+        );
+
+        arena.update(0.05);
+        assert!(!arena.lightcycles[&id].dead);
+        arena.update(0.05);
+
+        assert_eq!(
+            arena.lightcycles[&id].death_cause,
+            Some(DeathCause::Lightcycle(other))
+        );
+        assert_eq!(
+            arena.lightcycles[&other].death_cause,
+            Some(DeathCause::Lightcycle(id))
+        );
+        // They meet halfway between where they were.
+        for lightcycle in [&arena.lightcycles[&id], &arena.lightcycles[&other]] {
+            assert!((lightcycle.position - ArenaPoint::new(103.0, 50.0)).length() < 1e-9);
+        }
     }
 
     /// A running arena with one lightcycle at (100, 110) going up, and a trail

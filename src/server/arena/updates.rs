@@ -27,7 +27,7 @@ pub enum ArenaUpdate {
 }
 
 impl ArenaUpdate {
-    pub fn apply<'s, 'arena>(&'s self, arena: &'arena mut Arena) -> &'arena mut Arena {
+    pub fn apply<'arena>(&self, arena: &'arena mut Arena) -> &'arena mut Arena {
         match self {
             ArenaUpdate::AddPlayer(player_id, player) => {
                 arena.players.insert(*player_id, player.clone());
@@ -46,6 +46,7 @@ impl ArenaUpdate {
             ArenaUpdate::Start(start_at) => {
                 arena.started = Some(*start_at);
                 arena.holes.clear();
+                arena.departed.clear();
             }
             ArenaUpdate::End => arena.started = None,
             ArenaUpdate::SetWinner(winner) => arena.winner = *winner,
@@ -121,7 +122,12 @@ impl ArenaUpdate {
             }
 
             ArenaUpdate::RemovePlayer(player_id) => {
-                arena.players.remove(player_id);
+                if let Some(player) = arena.players.remove(player_id)
+                    && !player.npc
+                    && arena.lightcycles.contains_key(player_id)
+                {
+                    arena.departed.insert(*player_id, player);
+                }
             }
             ArenaUpdate::RemoveLightcycle(player_id) => {
                 arena.lightcycles.remove(player_id);

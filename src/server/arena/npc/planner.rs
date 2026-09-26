@@ -1,4 +1,5 @@
 use super::*;
+use std::cell::RefCell;
 
 /// Side length of a planning grid cell, in arena units.
 const CELL_SIZE: f64 = 4.0;
@@ -17,6 +18,18 @@ struct Grid {
     columns: usize,
     rows: usize,
     blocked: Vec<bool>,
+    /// Working space for `distances`, kept between searches.
+    search: RefCell<Search>,
+}
+
+/// The cells a breadth-first search has entered. A cell has been entered by
+/// the current search when its entry in `entered` is `generation`, so the
+/// cells don't need clearing between searches.
+#[derive(Default)]
+struct Search {
+    entered: Vec<u32>,
+    generation: u32,
+    queue: Vec<(usize, u16)>,
 }
 
 impl Grid {
@@ -38,6 +51,10 @@ impl Grid {
             stride,
             columns,
             rows,
+            search: RefCell::new(Search {
+                entered: vec![0; blocked.len()],
+                ..Default::default()
+            }),
             blocked,
         };
 
@@ -47,10 +64,9 @@ impl Grid {
             }
             if let (Some(last_point), Some(lightcycle)) =
                 (lightribbon.last_point(), arena.lightcycles.get(id))
+                && !lightcycle.dead
             {
-                if !lightcycle.dead {
-                    grid.block_segment(last_point, lightcycle.position);
-                }
+                grid.block_segment(last_point, lightcycle.position);
             }
         }
 
@@ -96,22 +112,34 @@ impl Grid {
     /// each cell that `enter` accepts at its distance from `start`. The start
     /// cell itself is always entered.
     fn distances(&self, start: usize, mut enter: impl FnMut(usize, u16) -> bool) {
-        let mut distances = vec![u16::MAX; self.blocked.len()];
-        let mut queue = Vec::new();
-        distances[start] = 0;
-        queue.push(start);
+        let mut search = self.search.borrow_mut();
+        let Search {
+            entered,
+            generation,
+            queue,
+        } = &mut *search;
+        *generation = generation.wrapping_add(1);
+        if *generation == 0 {
+            entered.fill(0);
+            *generation = 1;
+        }
+        let generation = *generation;
+
+        queue.clear();
+        entered[start] = generation;
+        queue.push((start, 0));
 
         let mut next = 0;
-        while let Some(&cell) = queue.get(next) {
+        while let Some(&(cell, distance)) = queue.get(next) {
             next += 1;
-            let distance = distances[cell] + 1;
+            let distance = distance + 1;
             for neighbour in self.neighbours(cell) {
                 if !self.blocked[neighbour]
-                    && distances[neighbour] == u16::MAX
+                    && entered[neighbour] != generation
                     && enter(neighbour, distance)
                 {
-                    distances[neighbour] = distance;
-                    queue.push(neighbour);
+                    entered[neighbour] = generation;
+                    queue.push((neighbour, distance));
                 }
             }
         }

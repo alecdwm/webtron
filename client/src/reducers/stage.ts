@@ -1,8 +1,6 @@
-import { SET_STAGE } from '@/actions'
+import type { Stage } from '@/types'
 import createReducer from '@/utils/createReducer'
 
-const initialState = 'MainMenu'
-
-export default createReducer(initialState, {
-  [SET_STAGE]: (_, action) => action.stage,
+export default createReducer<Stage>('MainMenu', {
+  SET_STAGE: (_, { stage }) => stage,
 })

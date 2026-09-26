@@ -1,5 +1,3 @@
-import type { Dayjs } from 'dayjs'
-
 // Shapes of the data sent by the server (see src/server in the repo root).
 
 export type Color = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'white'
@@ -16,7 +14,7 @@ export type Player = {
 // arena boundary, or another player's lightcycle head-on.
 export type DeathCause = { Trail: string } | 'Boundary' | { Lightcycle: string }
 
-export type Lightcycle = {
+export type ServerLightcycle = {
   position: Point
   direction: Direction
   speed: number
@@ -25,8 +23,9 @@ export type Lightcycle = {
 }
 
 // A trail can be cut into several paths by holes. The last path is the one
-// its lightcycle is still laying down.
-export type Lightribbon = {
+// its lightcycle is still laying down, and its last point follows the
+// lightcycle.
+export type ServerLightribbon = {
   paths: Point[][]
 }
 
@@ -36,24 +35,42 @@ export type Hole = {
   radius: number
 }
 
-export type Arena = {
+export type ServerArena = {
   id: string
   name: string
   width: number
   height: number
   max_players: number
 
-  started: Dayjs | null
+  // ISO 8601 time on the server's clock.
+  started: string | null
   winner: string | null
 
   players: Record<string, Player>
-  lightcycles: Record<string, Lightcycle>
-  lightribbons: Record<string, Lightribbon>
+  lightcycles: Record<string, ServerLightcycle>
+  lightribbons: Record<string, ServerLightribbon>
   holes: Hole[]
-  // Client-side only: dead trails the server has removed, kept until the next
-  // round so they can be animated out.
-  derezzing: Record<string, Lightribbon>
 }
+
+// One change to an arena, in serde's externally tagged enum format.
+export type ArenaUpdate =
+  | { AddPlayer: [string, Player] }
+  | { AddLightcycle: [string, ServerLightcycle] }
+  | { AddLightribbon: [string, ServerLightribbon] }
+  | { AddHole: Hole }
+  | { Start: string }
+  | 'End'
+  | { SetWinner: string | null }
+  | { UpdateLightcyclePosition: [string, Point] }
+  | { UpdateLightcycleDirection: [string, Direction] }
+  | { UpdateLightcycleSpeed: [string, number] }
+  | { UpdateLightcycleApplyDeath: [string, DeathCause] }
+  | { UpdateLightribbonAppendPoint: [string, Point] }
+  | { UpdateLightribbonReplaceLatestPoint: [string, Point] }
+  | { RemovePlayer: string }
+  | { RemoveLightcycle: string }
+  | { RemoveLightribbon: string }
+  | { DerezLightribbon: string }
 
 export type ArenaOverview = {
   id: string
@@ -80,14 +97,93 @@ export type Leaderboard = {
   player: LeaderboardEntry | null
 }
 
+export type ServerMessage =
+  | { ArenaList: ArenaOverview[] }
+  | { ArenaJoined: [string, string] }
+  | 'NameInUse'
+  | { ArenaState: ServerArena }
+  | { ArenaStatePatch: ArenaUpdate[] }
+  | { Leaderboard: Leaderboard }
+  // ISO 8601 time on the server's clock when it sent the message.
+  | { ServerTime: string }
+
+export type ClientMessage =
+  | { ClaimName: string }
+  | { GetArenaList: null }
+  | { Join: { player: Player; arena_id: string | null } }
+  | { Start: null }
+  | { Turn: Direction }
+
+// The client's copies of the server's data.
+
+export type Lightcycle = ServerLightcycle & {
+  // When the client received the lightcycle's position, in milliseconds on
+  // the server's clock.
+  receivedAt: number
+}
+
+// A trail split into the points that stay put and the one that follows the
+// lightcycle, so the settled part can be drawn once and only the end redrawn
+// as it moves.
+export type Lightribbon = {
+  // Every path of the trail, less the last point of the last path.
+  fixed: Point[][]
+  // The last point of the last path, or null for a trail with no points.
+  tip: Point | null
+}
+
+export type Arena = {
+  id: string
+  name: string
+  width: number
+  height: number
+  max_players: number
+
+  // Unix time (ms) on the server's clock at which the round starts, or null
+  // between rounds.
+  started: number | null
+  winner: string | null
+
+  players: Record<string, Player>
+  lightcycles: Record<string, Lightcycle>
+  lightribbons: Record<string, Lightribbon>
+  holes: Hole[]
+  // Dead trails the server has removed, kept until the next round so they can
+  // be animated out.
+  derezzing: Record<string, Lightribbon>
+}
+
+export type Stage = 'MainMenu' | 'Connect' | 'ArenaSelect' | 'Arena'
+export type SocketState = 'NOT_CONNECTED' | 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED'
+
+export type PlayerSettings = { id: string | null; name: string; color: Color }
+
 export type Store = {
   arena: Arena | null
   arenaList: ArenaOverview[] | null
   leaderboard: Leaderboard | null
-  config: { debugReducers: boolean }
   joinError: string | null
-  player: { id: string | null; name: string; color: Color }
-  preloadedImages: HTMLImageElement[]
-  socketState: string
-  stage: string
+  player: PlayerSettings
+  // The server's clock minus the client's, in milliseconds.
+  serverTimeOffset: number
+  socketState: SocketState
+  stage: Stage
 }
+
+export type Action =
+  | { type: 'INIT_STORE' }
+  | { type: 'SET_STAGE'; stage: Stage }
+  | { type: 'SET_PLAYER_NAME'; name: string }
+  | { type: 'SET_PLAYER_COLOR'; color: Color }
+  | { type: 'SET_SOCKET_STATE'; socketState: SocketState }
+  | { type: 'RECEIVE_SERVER_TIME'; serverTimeOffset: number }
+  | { type: 'RECEIVE_ARENA_LIST'; arenaList: ArenaOverview[] }
+  | { type: 'RECEIVE_ARENA_JOINED'; arenaId: string; playerId: string }
+  | { type: 'RECEIVE_NAME_IN_USE' }
+  // receivedAt is in milliseconds on the server's clock.
+  | { type: 'RECEIVE_ARENA_STATE'; state: ServerArena; receivedAt: number }
+  | { type: 'RECEIVE_ARENA_STATE_PATCH'; statePatch: ArenaUpdate[]; receivedAt: number }
+  | { type: 'RECEIVE_LEADERBOARD'; leaderboard: Leaderboard }
+
+export type Thunk = (dispatch: Dispatch, getState: () => Store) => void
+export type Dispatch = (action: Action | Thunk) => void

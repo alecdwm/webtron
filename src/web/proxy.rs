@@ -4,8 +4,8 @@ use futures::stream::{Stream, StreamExt};
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Empty, StreamBody};
 use hyper::body::Frame;
-use hyper::header::{CONNECTION, Entry, HOST, HeaderValue, UPGRADE};
-use hyper::{HeaderMap, Method, Request, Response, StatusCode, Uri};
+use hyper::header::{CONNECTION, Entry, HOST, HeaderName, HeaderValue, UPGRADE};
+use hyper::{HeaderMap, Method, Request, StatusCode, Uri};
 use hyper_util::client::legacy::Client;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::{TokioExecutor, TokioIo};
@@ -22,6 +22,7 @@ use warp::{Filter, Rejection, Reply};
 use crate::web::errors::{BadGateway, InternalServerError};
 
 type ProxyBody = BoxBody<Bytes, Box<dyn StdError + Send + Sync>>;
+type ProxyClient = Client<HttpConnector, ProxyBody>;
 
 const X_FORWARDED_FOR: &str = "x-forwarded-for";
 const HOP_BY_HOP_HEADERS: &[&str] = &[
@@ -46,7 +47,8 @@ pub fn proxy(
     }
     .expect("Failed to parse target host");
 
-    let target = warp::any().map(move || (target.clone(), target_host.clone()));
+    let client = Client::builder(TokioExecutor::new()).build_http();
+    let target = warp::any().map(move || (client.clone(), target.clone(), target_host.clone()));
     let empty_query = warp::any().map(move || "".to_owned());
 
     let ws = warp::ws()
@@ -75,10 +77,8 @@ async fn proxy_ws(
     query: String,
     headers: HeaderMap,
     remote_addr: Option<SocketAddr>,
-    (target, target_host): (Uri, HeaderValue),
+    (client, target, target_host): (ProxyClient, Uri, HeaderValue),
 ) -> Result<impl Reply, Rejection> {
-    let client = client();
-
     let mut request = Request::builder()
         .uri(format_uri(&target, path.as_str(), query))
         .body(Empty::new().map_err(|never| match never {}).boxed())
@@ -145,9 +145,10 @@ async fn proxy_ws(
                     }
                 };
 
-                upstream_tx.send(message).await.unwrap_or_else(|error| {
-                    error!("Failed to proxy incoming websocket message: {}", error)
-                });
+                if let Err(error) = upstream_tx.send(message).await {
+                    error!("Failed to proxy incoming websocket message: {}", error);
+                    break;
+                }
             }
         });
         let out_task = tokio::spawn(async move {
@@ -172,18 +173,23 @@ async fn proxy_ws(
                     Message::Frame(_) => continue,
                 };
 
-                tx.send(message).await.unwrap_or_else(|error| {
-                    error!("Failed to proxy outgoing websocket message: {}", error)
-                });
+                if let Err(error) = tx.send(message).await {
+                    error!("Failed to proxy outgoing websocket message: {}", error);
+                    break;
+                }
             }
         });
 
+        let (mut in_task, mut out_task) = (in_task, out_task);
         if let Err(error) = select! {
-            out = in_task => out,
-            out = out_task => out,
+            out = &mut in_task => out,
+            out = &mut out_task => out,
         } {
             error!("Failure occurred while handling websocket: {}", error);
         }
+        // Once either side has closed, stop forwarding the other.
+        in_task.abort();
+        out_task.abort();
     }))
 }
 
@@ -194,10 +200,8 @@ async fn proxy_http(
     headers: HeaderMap,
     method: Method,
     remote_addr: Option<SocketAddr>,
-    (target, target_host): (Uri, HeaderValue),
+    (client, target, target_host): (ProxyClient, Uri, HeaderValue),
 ) -> Result<impl Reply, Rejection> {
-    let client = client();
-
     let body = StreamBody::new(body.map(|result| {
         result
             .map(|mut buf| Frame::data(buf.copy_to_bytes(buf.remaining())))
@@ -226,28 +230,13 @@ async fn proxy_http(
         warp::reject::custom(BadGateway)
     })?;
 
-    // warp can't reply with a streaming body built outside of warp, so the
-    // upstream response body is read in full before it is sent on.
     let (mut parts, body) = response.into_parts();
-    let body = body
-        .collect()
-        .await
-        .map_err(|error| {
-            warn!(
-                "Error occurred while reading proxied response body: {}",
-                error
-            );
-            warp::reject::custom(BadGateway)
-        })?
-        .to_bytes();
-
     remove_hop_by_hop_headers(&mut parts.headers);
 
-    Ok(Response::from_parts(parts, body))
-}
-
-fn client() -> Client<HttpConnector, ProxyBody> {
-    Client::builder(TokioExecutor::new()).build_http()
+    let mut reply = warp::reply::stream(body.into_data_stream()).into_response();
+    *reply.status_mut() = parts.status;
+    *reply.headers_mut() = parts.headers;
+    Ok(reply)
 }
 
 fn format_uri(target: &Uri, path: &str, query: String) -> String {
@@ -258,29 +247,41 @@ fn format_uri(target: &Uri, path: &str, query: String) -> String {
     };
     format!("{}{}{}", target, path, query)
 }
+/// Removes the headers that only apply to one connection: the standard ones,
+/// and any others named in the `Connection` header.
 fn remove_hop_by_hop_headers(headers: &mut HeaderMap) {
+    let named: Vec<HeaderName> = headers
+        .get_all(CONNECTION)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .filter_map(|name| HeaderName::from_bytes(name.trim().as_bytes()).ok())
+        .collect();
+    for header in named {
+        headers.remove(header);
+    }
     for header in HOP_BY_HOP_HEADERS {
         headers.remove(*header);
     }
 }
 fn append_x_forwarded_for_header(remote_addr: Option<SocketAddr>, headers: &mut HeaderMap) {
-    if let Some(remote_addr) = remote_addr {
-        if let Ok(remote_addr) = HeaderValue::from_str(&remote_addr.ip().to_string()) {
-            match headers.entry(X_FORWARDED_FOR) {
-                Entry::Vacant(entry) => {
-                    entry.insert(remote_addr);
-                }
-                Entry::Occupied(mut entry) => {
-                    let existing = entry.get_mut();
-                    match HeaderValue::from_bytes(
-                        &[existing.as_bytes(), b", ", remote_addr.as_bytes()].concat(),
-                    ) {
-                        Ok(updated) => {
-                            *existing = updated;
-                        }
-                        _ => {
-                            *existing = remote_addr;
-                        }
+    if let Some(remote_addr) = remote_addr
+        && let Ok(remote_addr) = HeaderValue::from_str(&remote_addr.ip().to_string())
+    {
+        match headers.entry(X_FORWARDED_FOR) {
+            Entry::Vacant(entry) => {
+                entry.insert(remote_addr);
+            }
+            Entry::Occupied(mut entry) => {
+                let existing = entry.get_mut();
+                match HeaderValue::from_bytes(
+                    &[existing.as_bytes(), b", ", remote_addr.as_bytes()].concat(),
+                ) {
+                    Ok(updated) => {
+                        *existing = updated;
+                    }
+                    _ => {
+                        *existing = remote_addr;
                     }
                 }
             }

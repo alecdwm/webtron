@@ -5,8 +5,9 @@ import lightcycleOrange from '@/img/lightcycle-orange.png'
 import lightcyclePurple from '@/img/lightcycle-purple.png'
 import lightcycleRed from '@/img/lightcycle-red.png'
 import lightcycleWhite from '@/img/lightcycle-white.png'
+import type { Color } from '@/types'
 
-const lightcycleImages = {
+const lightcycleImages: Record<Color | 'dark', string> = {
   blue: lightcycleBlue,
   dark: lightcycleDark,
   green: lightcycleGreen,

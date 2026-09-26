@@ -10,16 +10,17 @@ import {
   playTurn,
   playWin,
 } from '@/audio/sound'
-import type { Arena } from '@/types'
+import type { Arena, Point } from '@/types'
+import { serverNow } from '@/utils/clock'
 
 // Plays sounds for arena events by diffing each arena state against the
 // previous one, and keeps an engine drone running for every live lightcycle.
-export default function useArenaSounds(arena: Arena, selfId: string | null) {
+export default function useArenaSounds(arena: Arena, selfId: string | null, serverTimeOffset: number) {
   const previousArena = useRef(arena)
   const engines = useRef(new Map<string, Engine>())
-  const running = useRoundRunning(arena.started ? arena.started.valueOf() : null)
+  const running = useRoundRunning(arena.started, serverTimeOffset)
 
-  const panFor = (id: string, position: [number, number]) =>
+  const panFor = (id: string, position: Point) =>
     id === selfId || !arena.width ? 0 : ((position[0] / arena.width) * 2 - 1) * 0.8
 
   useEffect(() => {
@@ -42,11 +43,9 @@ export default function useArenaSounds(arena: Arena, selfId: string | null) {
       }
     }
 
-    for (const [id, ribbon] of Object.entries(arena.derezzing)) {
+    for (const [id, { tip }] of Object.entries(arena.derezzing)) {
       if (id in before.derezzing) continue
-      const path = ribbon.paths[ribbon.paths.length - 1]
-      const end = path?.[path.length - 1]
-      playDerez(end ? panFor(id, end) : 0)
+      playDerez(tip ? panFor(id, tip) : 0)
     }
 
     const beforeIds = Object.keys(before.players)
@@ -96,14 +95,15 @@ export default function useArenaSounds(arena: Arena, selfId: string | null) {
 }
 
 // True once the round's start time has passed, until the round ends.
-function useRoundRunning(startAt: number | null) {
+function useRoundRunning(startAt: number | null, serverTimeOffset: number) {
   const [reachedStart, setReachedStart] = useState<number | null>(null)
 
   useEffect(() => {
     if (startAt === null) return
-    const timeout = window.setTimeout(() => setReachedStart(startAt), Math.max(0, startAt - Date.now()))
+    const delay = Math.max(0, startAt - serverNow(serverTimeOffset))
+    const timeout = window.setTimeout(() => setReachedStart(startAt), delay)
     return () => window.clearTimeout(timeout)
-  }, [startAt])
+  }, [startAt, serverTimeOffset])
 
   return startAt !== null && reachedStart === startAt
 }

@@ -1,4 +1,15 @@
-import { type ComponentProps, useCallback, useId, useLayoutEffect, useRef, useState } from 'react'
+import {
+  type ChangeEvent,
+  type ComponentProps,
+  type FocusEvent,
+  type KeyboardEvent,
+  type SyntheticEvent,
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import useCursorBlink from '@/hooks/useCursorBlink'
 import resolveClassName, { type ClassName } from '@/utils/resolveClassName'
@@ -25,14 +36,15 @@ export default function MenuInput({
   useLayoutEffect(() => {
     if (!focusOnMount) return
     if (inputRef.current === null) return
-    window.setTimeout(() => inputRef.current?.focus(), 10)
+    const timeout = window.setTimeout(() => inputRef.current?.focus(), 10)
+    return () => window.clearTimeout(timeout)
   }, [focusOnMount])
 
   const [cursorBlink, resetCursorBlink] = useCursorBlink()
   const [focused, setFocused] = useState(false)
 
   const handleChange = useCallback(
-    (event) => {
+    (event: ChangeEvent<HTMLInputElement>) => {
       resetCursorBlink()
       if (typeof onChange !== 'function') return
       onChange(event.currentTarget.value)
@@ -41,7 +53,7 @@ export default function MenuInput({
   )
 
   const handleKeyDown = useCallback(
-    ({ key }) => {
+    ({ key }: KeyboardEvent<HTMLInputElement>) => {
       if (key !== 'Enter' && key !== 'Return') return
       if (typeof onSubmit !== 'function') return
       onSubmit()
@@ -49,7 +61,7 @@ export default function MenuInput({
     [onSubmit],
   )
 
-  const handleSelect = useCallback(({ currentTarget }) => {
+  const handleSelect = useCallback(({ currentTarget }: SyntheticEvent<HTMLInputElement>) => {
     setTimeout(() => {
       const value = currentTarget.value
       currentTarget.setSelectionRange(value.length, value.length)
@@ -57,7 +69,7 @@ export default function MenuInput({
   }, [])
 
   const handleFocus = useCallback(
-    ({ currentTarget }) => {
+    ({ currentTarget }: FocusEvent<HTMLInputElement>) => {
       setTimeout(() => {
         const value = currentTarget.value
         currentTarget.setSelectionRange(value.length, value.length)
@@ -82,7 +94,9 @@ export default function MenuInput({
           value === '' && styles.noName,
         ])}
       >
-        <span className={styles.invisibleText}>{value || '_'}</span>
+        <span className={styles.invisibleText} aria-hidden="true">
+          {value || '_'}
+        </span>
         <input
           ref={inputRef}
           className={styles.input}

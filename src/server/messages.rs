@@ -6,6 +6,7 @@ pub use outgoing::Message as MessageOut;
 /// Server to client messages
 ///
 pub mod outgoing {
+    use chrono::{DateTime, Utc};
     use serde_derive::Serialize;
 
     use crate::server::{
@@ -26,6 +27,11 @@ pub mod outgoing {
         ArenaStatePatch(Vec<ArenaUpdate>),
 
         Leaderboard(LeaderboardStandings),
+
+        /// The server's clock, for the client to compare the times in the
+        /// arena's state with. Sent on connecting and before every
+        /// `ArenaState`.
+        ServerTime(DateTime<Utc>),
     }
 
     impl Message {
@@ -95,7 +101,7 @@ pub mod incoming {
         pub fn from_json(client_id: ClientId, json: &str) -> Result<Self, Error> {
             Ok(Self {
                 client_id,
-                payload: serde_json::from_str(&json)?,
+                payload: serde_json::from_str(json)?,
             })
         }
     }

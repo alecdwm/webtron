@@ -1,36 +1,45 @@
-import { useEffect, useRef } from 'react'
+import { type ComponentType, useCallback, useEffect, useRef } from 'react'
 
+import { disconnect, setStage } from '@/actions'
 import { playError, playWhoosh } from '@/audio/sound'
 import Arena from '@/components/Arena'
 import ArenaSelect from '@/components/ArenaSelect'
 import Connect from '@/components/Connect'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import MainMenu from '@/components/MainMenu'
 import useStore from '@/hooks/useStore'
-import socketStates from '@/utils/socketStates'
+import useStoreDispatch from '@/hooks/useStoreDispatch'
+import type { SocketState, Stage as StageName } from '@/types'
 
 import styles from './Webtron.module.css'
 
-const stages = { MainMenu, Connect, ArenaSelect, Arena }
+const stages: Record<StageName, ComponentType> = { MainMenu, Connect, ArenaSelect, Arena }
 
 export default function Webtron() {
-  const { stage, socketState } = useStore()
+  const stage = useStore((store) => store.stage)
+  const socketState = useStore((store) => store.socketState)
   useStageSounds(stage, socketState)
+  const dispatch = useStoreDispatch()
 
-  const Stage = stages[stage] || null
-  if (Stage === null) {
-    const validStages = Object.keys(stages).join(', ')
-    console.error(`No stage by name '${stage}' exists! Valid stages: ${validStages}`)
-    return null
-  }
+  // A stage that fails to render drops the connection and returns to the main
+  // menu, which says the connection closed.
+  const onStageError = useCallback(() => {
+    dispatch(disconnect())
+    dispatch(setStage('MainMenu'))
+  }, [dispatch])
+
+  const Stage = stages[stage]
 
   return (
     <div key={stage} className={styles.stage}>
-      <Stage />
+      <ErrorBoundary onError={onStageError}>
+        <Stage />
+      </ErrorBoundary>
     </div>
   )
 }
 
-function useStageSounds(stage, socketState) {
+function useStageSounds(stage: StageName, socketState: SocketState) {
   const previousStage = useRef(stage)
   useEffect(() => {
     if (previousStage.current === stage) return
@@ -42,6 +51,6 @@ function useStageSounds(stage, socketState) {
   useEffect(() => {
     if (previousSocketState.current === socketState) return
     previousSocketState.current = socketState
-    if (socketState === socketStates.CLOSED) playError()
+    if (socketState === 'CLOSED') playError()
   }, [socketState])
 }

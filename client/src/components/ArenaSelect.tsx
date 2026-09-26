@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { type MouseEvent, useCallback } from 'react'
 
 import { join } from '@/actions'
 import MenuButton from '@/components/MenuButton'
@@ -16,11 +16,11 @@ export default function ArenaSelect() {
   usePreloadImages(Object.values(lightcycleImages))
   useArenaListPolling()
 
-  const { arenaList } = useStore()
+  const arenaList = useStore((store) => store.arenaList) ?? []
   const dispatch = useStoreDispatch()
 
   const joinArena = useCallback(
-    ({ currentTarget }) => dispatch(join(currentTarget.getAttribute('data-id'))),
+    ({ currentTarget }: MouseEvent<HTMLButtonElement>) => dispatch(join(currentTarget.dataset.id ?? null)),
     [dispatch],
   )
 
@@ -80,7 +80,12 @@ export default function ArenaSelect() {
                   />
                 ))}
               </div>
-              <MenuButton className={styles.joinButton} data-id={arena.id} onClick={joinArena}>
+              <MenuButton
+                className={styles.joinButton}
+                data-id={arena.id}
+                aria-label={`Join ${arena.name}`}
+                onClick={joinArena}
+              >
                 JOIN
               </MenuButton>
             </div>
