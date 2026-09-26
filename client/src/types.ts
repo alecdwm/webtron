@@ -158,9 +158,15 @@ export type SocketState = 'NOT_CONNECTED' | 'CONNECTING' | 'OPEN' | 'CLOSING' | 
 
 export type PlayerSettings = { id: string | null; name: string; color: Color }
 
+// How the player turns their lightcycle: 'directional' turns it to face the
+// arrow pressed, 'steering' turns it left or right of the way it is going.
+export type ControlScheme = 'directional' | 'steering'
+export type Side = 'left' | 'right'
+
 export type Store = {
   arena: Arena | null
   arenaList: ArenaOverview[] | null
+  controlScheme: ControlScheme
   leaderboard: Leaderboard | null
   joinError: string | null
   player: PlayerSettings
@@ -175,6 +181,7 @@ export type Action =
   | { type: 'SET_STAGE'; stage: Stage }
   | { type: 'SET_PLAYER_NAME'; name: string }
   | { type: 'SET_PLAYER_COLOR'; color: Color }
+  | { type: 'SET_CONTROL_SCHEME'; controlScheme: ControlScheme }
   | { type: 'SET_SOCKET_STATE'; socketState: SocketState }
   | { type: 'RECEIVE_SERVER_TIME'; serverTimeOffset: number }
   | { type: 'RECEIVE_ARENA_LIST'; arenaList: ArenaOverview[] }

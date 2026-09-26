@@ -3,6 +3,7 @@ import combineReducers from '@/utils/combineReducers'
 
 import arena from './arena'
 import arenaList from './arenaList'
+import controlScheme from './controlScheme'
 import joinError from './joinError'
 import leaderboard from './leaderboard'
 import player from './player'
@@ -13,6 +14,7 @@ import stage from './stage'
 export default combineReducers<Store>({
   arena,
   arenaList,
+  controlScheme,
   joinError,
   leaderboard,
   player,

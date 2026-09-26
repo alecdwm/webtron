@@ -1,6 +1,6 @@
-import { type CSSProperties, type RefObject, useCallback, useRef } from 'react'
+import { type CSSProperties, type RefObject, useCallback, useMemo, useRef } from 'react'
 
-import { start, turn } from '@/actions'
+import { start, steer, turn } from '@/actions'
 import { playClick } from '@/audio/sound'
 import ArenaGrid from '@/components/ArenaGrid'
 import Countdown from '@/components/Countdown'
@@ -17,7 +17,7 @@ import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
-import type { Arena as ArenaType, Color, Direction } from '@/types'
+import type { Arena as ArenaType, Color, ControlScheme, Direction, Side } from '@/types'
 import { colorToHexString } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 
@@ -32,6 +32,7 @@ export default function Arena() {
 function ArenaView({ arena }: { arena: ArenaType }) {
   const leaderboard = useStore((store) => store.leaderboard)
   const player = useStore((store) => store.player)
+  const controlScheme = useStore((store) => store.controlScheme)
   const serverTimeOffset = useStore((store) => store.serverTimeOffset)
   useArenaSounds(arena, player.id, serverTimeOffset)
   const animation = useArenaAnimation(arena, serverTimeOffset)
@@ -41,8 +42,8 @@ function ArenaView({ arena }: { arena: ArenaType }) {
 
   const arenaRef = useRef<HTMLDivElement>(null)
   const inRound = arena.started !== null
-  useKeyControls(inRound)
-  useTouchControls(inRound, arenaRef)
+  useKeyControls(inRound, controlScheme)
+  useTouchControls(inRound, controlScheme, arenaRef)
 
   const { width, height } = arena
   const colorOf = (id: string): Color => arena.players[id]?.color ?? 'white'
@@ -128,7 +129,11 @@ function ArenaView({ arena }: { arena: ArenaType }) {
                     {playerCount}/{arena.max_players} players
                   </div>
                 )}
-                <div className={styles.controlsHint}>Arrows / WASD / tap to steer</div>
+                <div className={styles.controlsHint}>
+                  {controlScheme === 'steering'
+                    ? '← → / A D / tap either side to turn'
+                    : 'Arrows / WASD / tap to steer'}
+                </div>
               </div>
             ) : null}
           </div>
@@ -136,11 +141,6 @@ function ArenaView({ arena }: { arena: ArenaType }) {
       </div>
     </ArenaAnimationContext.Provider>
   )
-}
-
-function useTurnCallback() {
-  const dispatch = useStoreDispatch()
-  return useCallback((direction: Direction) => dispatch(turn(direction)), [dispatch])
 }
 
 // Enter or Space presses the START / REMATCH button while it is shown.
@@ -171,9 +171,29 @@ const turnKeys: Record<string, Direction> = {
   ArrowDown: 'down',
   KeyS: 'down',
 }
+const steerKeys: Record<string, Side> = {
+  ArrowLeft: 'left',
+  KeyA: 'left',
+  ArrowRight: 'right',
+  KeyD: 'right',
+}
 
-function useKeyControls(inRound: boolean) {
-  const onTurn = useTurnCallback()
+// Directional controls turn the lightcycle to face the given direction.
+// Steering controls turn it to its left or right.
+function useControls(controlScheme: ControlScheme) {
+  const dispatch = useStoreDispatch()
+  return useMemo(
+    () => ({
+      onDirection: (direction: Direction) => dispatch(turn(direction)),
+      onSide: (side: Side) => dispatch(steer(side)),
+      steering: controlScheme === 'steering',
+    }),
+    [dispatch, controlScheme],
+  )
+}
+
+function useKeyControls(inRound: boolean, controlScheme: ControlScheme) {
+  const { onDirection, onSide, steering } = useControls(controlScheme)
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -184,9 +204,11 @@ function useKeyControls(inRound: boolean) {
       event.preventDefault()
       // A held key would otherwise send the same turn over and over.
       if (event.repeat) return
-      onTurn(direction)
+      if (!steering) return onDirection(direction)
+      const side = steerKeys[event.code]
+      if (side) onSide(side)
     },
-    [inRound, onTurn],
+    [inRound, onDirection, onSide, steering],
   )
   useEventListener('keydown', onKeyDown)
 }
@@ -197,43 +219,31 @@ function isOnButton(target: EventTarget | null) {
   return target instanceof Element && target.closest('button') !== null
 }
 
-// A press turns towards whichever side of the arena's centre it lands on.
-function useTouchControls(inRound: boolean, arenaRef: RefObject<HTMLDivElement | null>) {
-  const onTurn = useTurnCallback()
-
-  const turnTowards = useCallback(
-    (clientX: number, clientY: number) => {
-      const arena = arenaRef.current
-      if (!arena) return
-      const rect = arena.getBoundingClientRect()
-      const xFromCenter = clientX - rect.left - rect.width / 2
-      const yFromCenter = clientY - rect.top - rect.height / 2
-
-      if (Math.abs(xFromCenter) < Math.abs(yFromCenter)) onTurn(yFromCenter < 0 ? 'up' : 'down')
-      else onTurn(xFromCenter < 0 ? 'left' : 'right')
-    },
-    [arenaRef, onTurn],
-  )
+// Only touches steer: a mouse click on the arena is more likely to be focusing
+// the window than a turn. With directional controls a touch turns towards
+// whichever side of the arena's centre it lands on. With steering controls a
+// touch on the left half turns left, and on the right half turns right.
+function useTouchControls(inRound: boolean, controlScheme: ControlScheme, arenaRef: RefObject<HTMLDivElement | null>) {
+  const { onDirection, onSide, steering } = useControls(controlScheme)
 
   const onTouchStart = useCallback(
     (event: TouchEvent) => {
       if (!inRound || isOnButton(event.target)) return
       const touch = event.changedTouches[0]
-      if (!touch) return
+      const arena = arenaRef.current
+      if (!touch || !arena) return
       event.preventDefault()
-      turnTowards(touch.clientX, touch.clientY)
-    },
-    [inRound, turnTowards],
-  )
 
-  const onMouseDown = useCallback(
-    (event: MouseEvent) => {
-      if (!inRound || isOnButton(event.target)) return
-      turnTowards(event.clientX, event.clientY)
+      const rect = arena.getBoundingClientRect()
+      const xFromCenter = touch.clientX - rect.left - rect.width / 2
+      const yFromCenter = touch.clientY - rect.top - rect.height / 2
+
+      if (steering) onSide(xFromCenter < 0 ? 'left' : 'right')
+      else if (Math.abs(xFromCenter) < Math.abs(yFromCenter)) onDirection(yFromCenter < 0 ? 'up' : 'down')
+      else onDirection(xFromCenter < 0 ? 'left' : 'right')
     },
-    [inRound, turnTowards],
+    [inRound, arenaRef, onDirection, onSide, steering],
   )
 
   useEventListener('touchstart', onTouchStart, arenaRef)
-  useEventListener('mousedown', onMouseDown, arenaRef)
 }

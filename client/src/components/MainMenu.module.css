@@ -6,8 +6,8 @@
   align-items: center;
   flex-direction: column;
   justify-content: center;
-  gap: 4.5cqi;
-  padding: 5cqi;
+  gap: 3.4cqi;
+  padding: 4cqi;
   color: var(--white);
 }
 
@@ -67,7 +67,7 @@
   display: flex;
   align-items: center;
   flex-direction: column;
-  gap: 1.8cqi;
+  gap: 1.4cqi;
 }
 .label {
   letter-spacing: 0.4em;
@@ -214,29 +214,51 @@
     0 0 12px var(--swatch);
 }
 
-.connectButton {
-  margin-top: 1cqi;
-  font-size: clamp(1.1rem, 6cqi, 2.2rem);
+.controlSchemes {
+  display: flex;
+  gap: 3cqi;
 }
-
-.hint {
-  letter-spacing: 0.1em;
+.controlScheme {
+  all: unset;
+}
+.controlScheme {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5cqi 1cqi;
+  cursor: pointer;
+  transition:
+    color 200ms ease,
+    filter 200ms ease,
+    transform 120ms ease;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--white) 40%, transparent);
-  font-size: clamp(0.6rem, 2.3cqi, 0.8rem);
+  font-family: var(--font-mono);
+  font-size: clamp(0.65rem, 2.4cqi, 0.9rem);
+  -webkit-tap-highlight-color: transparent;
 }
-.hint kbd {
-  display: inline-block;
-  margin: 0 0.15em;
-  padding: 0 0.4em;
-  border: 1px solid color-mix(in srgb, var(--white) 30%, transparent);
-  border-radius: 0.25em;
-  font-family: inherit;
+.controlScheme svg {
+  flex-shrink: 0;
+  font-size: 1.5em;
 }
-@media (hover: none) {
-  .hint {
-    display: none;
-  }
+.controlScheme:hover,
+.controlScheme:focus-visible {
+  color: color-mix(in srgb, var(--white) 80%, transparent);
+}
+.controlScheme:active {
+  transition: none;
+  transform: scale(0.92);
+}
+.controlSchemeSelected,
+.controlSchemeSelected:hover,
+.controlSchemeSelected:focus-visible {
+  color: var(--player);
+  filter: drop-shadow(0 0 4px var(--player));
+}
+
+.connectButton {
+  font-size: clamp(1.1rem, 6cqi, 2.2rem);
 }
 
 @keyframes previewscroll {

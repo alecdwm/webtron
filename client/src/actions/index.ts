@@ -1,8 +1,10 @@
 import { closeSocket, openSocket, send } from '@/actions/socket'
+import { forgetSentTurns, trackSentTurns } from '@/actions/steering'
 import type {
   Action,
   ArenaOverview,
   Color,
+  ControlScheme,
   Direction,
   Leaderboard,
   ServerArena,
@@ -12,11 +14,19 @@ import type {
   Thunk,
 } from '@/types'
 import { serverNow } from '@/utils/clock'
+import { storeControlScheme } from '@/utils/controlScheme'
 import defaultPlayer from '@/utils/defaultPlayer'
 
 export const setStage = (stage: Stage): Action => ({ type: 'SET_STAGE', stage })
 export const setPlayerName = (name: string): Action => ({ type: 'SET_PLAYER_NAME', name })
 export const setPlayerColor = (color: Color): Action => ({ type: 'SET_PLAYER_COLOR', color })
+
+export function setControlScheme(controlScheme: ControlScheme): Thunk {
+  return (dispatch) => {
+    storeControlScheme(controlScheme)
+    dispatch({ type: 'SET_CONTROL_SCHEME', controlScheme })
+  }
+}
 
 export function setSocketState(socketState: SocketState): Thunk {
   return (dispatch) => {
@@ -68,6 +78,8 @@ export function turn(direction: Direction): Thunk {
   return () => send({ Turn: direction })
 }
 
+export { steer } from '@/actions/steering'
+
 function receiveSocketMessage(data: string): Thunk {
   return (dispatch, getState) => {
     let message: ServerMessage
@@ -83,8 +95,12 @@ function receiveSocketMessage(data: string): Thunk {
     if ('ServerTime' in message) return dispatch(receiveServerTime(message.ServerTime))
     if ('ArenaList' in message) return dispatch(receiveArenaList(message.ArenaList))
     if ('ArenaJoined' in message) return dispatch(receiveArenaJoined(message.ArenaJoined))
-    if ('ArenaState' in message) return dispatch(receiveArenaState(message.ArenaState, receivedAt))
+    if ('ArenaState' in message) {
+      forgetSentTurns()
+      return dispatch(receiveArenaState(message.ArenaState, receivedAt))
+    }
     if ('ArenaStatePatch' in message) {
+      trackSentTurns(message.ArenaStatePatch, getState().player.id)
       return dispatch({ type: 'RECEIVE_ARENA_STATE_PATCH', statePatch: message.ArenaStatePatch, receivedAt })
     }
     if ('Leaderboard' in message) return dispatch(receiveLeaderboard(message.Leaderboard))
