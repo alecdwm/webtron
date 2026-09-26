@@ -1,6 +1,7 @@
 import { type CSSProperties, useCallback, useRef } from 'react'
 
 import { start, turn } from '@/actions'
+import ArenaGrid from '@/components/ArenaGrid'
 import Countdown from '@/components/Countdown'
 import Hole from '@/components/Hole'
 import Leaderboard from '@/components/Leaderboard'
@@ -15,7 +16,6 @@ import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
 import { colorToHexString } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
-import resolveClassName from '@/utils/resolveClassName'
 
 import styles from './Arena.module.css'
 
@@ -40,10 +40,7 @@ export default function Arena() {
 
   return (
     <div ref={arenaRef} className={styles.arena}>
-      <div
-        className={resolveClassName([styles.background, arena.started !== null && styles.backgroundStarted])}
-        style={{ backgroundImage: `url("${backgroundPanel}")` }}
-      />
+      <ArenaGrid startAt={arena.started === null ? null : arena.started.valueOf()} />
 
       {arena.holes.map(({ player_id, position, radius }) => (
         <Hole

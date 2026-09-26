@@ -1,0 +1,126 @@
+/* Every animation here is of opacity or transform, which browsers can run
+   without repainting the arena. */
+
+.idle,
+.powered,
+.dimming,
+.sweep {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* The faint grid between rounds. */
+.idle {
+  inset: 0;
+  opacity: 0.15;
+  background-repeat: repeat;
+  background-position: center;
+  background-size: calc(100% / 7);
+  animation: grididle 600ms ease both;
+}
+
+.powered,
+.dimming {
+  display: grid;
+  inset: 0;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+}
+/* Kept faint during play so the grid never competes with the lightcycles
+   and trails, some of which share its colour. */
+.powered {
+  opacity: 0.4;
+}
+.dimming {
+  will-change: opacity;
+  animation-name: griddim;
+  animation-timing-function: ease-in;
+  animation-fill-mode: both;
+}
+
+.square,
+.powerUp {
+  background-size: 100% 100%;
+}
+/* Each square flickers on like a failing fluorescent tube. */
+.powerUp {
+  will-change: opacity, transform;
+  animation-name: squarepowerup;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+/* A thin scanline with a short afterglow trailing above it, which sweeps
+   down the grid as it dims. */
+.sweep {
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 10%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--blue) 12%, transparent) 75%,
+    color-mix(in srgb, var(--blue) 35%, transparent) 94%,
+    color-mix(in srgb, var(--white) 85%, transparent) 98%,
+    transparent
+  );
+  will-change: transform, opacity;
+  animation-name: gridsweep;
+  animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes grididle {
+  from {
+    opacity: 0.4;
+  }
+}
+@keyframes squarepowerup {
+  0% {
+    opacity: 0.15;
+    transform: scale(0.92);
+  }
+  12% {
+    opacity: 0.9;
+  }
+  22% {
+    opacity: 0.1;
+  }
+  38% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 0.2;
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes griddim {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.4;
+  }
+}
+@keyframes gridsweep {
+  from {
+    opacity: 1;
+    transform: translateY(-100%);
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(900%);
+  }
+}
