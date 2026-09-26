@@ -1,14 +1,24 @@
+mod planner;
+
 use super::*;
 use getrandom::SysRng;
 use rand_core::{Rng, UnwrapErr};
 
+use planner::{Caution, Options, Planner};
+
 const NPC_COUNT: usize = 2;
+/// How far along their current heading other lightcycles are treated as an obstacle.
 const NPC_LOOK_AHEAD_DISTANCE: f64 = 40.0;
-/// If an obstacle is closer than this, always do emergency survival regardless of behaviour.
-const NPC_CRITICAL_DISTANCE: f64 = 15.0;
 const NPC_TRAP_SEGMENT_LENGTH: f64 = 30.0;
+const NPC_ZIGZAG_LEG_LENGTH: f64 = 16.0;
 const NPC_CUTOFF_COOLDOWN: f64 = 3.0;
-const NPC_CUTOFF_CHANCE: u32 = 75;
+const NPC_ATTACK_COOLDOWN: f64 = 2.0;
+const NPC_OVERTAKE_BUFFER: f64 = 20.0;
+/// How far to the side of a trail an NPC rides when drafting it. More than a
+/// planning grid cell, so the trail doesn't block the NPC's own cells.
+const NPC_DRAFT_OFFSET: f64 = 7.0;
+/// A Territory NPC only turns when a turn gains this much over going straight.
+const NPC_TERRITORY_TURN_GAIN: f64 = 1.05;
 
 /// Phase within the CutOff behaviour.
 #[derive(Debug, Clone, Copy)]
@@ -31,8 +41,6 @@ pub enum SlipstreamAttackPhase {
     /// Cutting across the target's path. Value is distance traveled in the cut.
     Cutting(f64),
 }
-
-const NPC_OVERTAKE_BUFFER: f64 = 20.0;
 
 const NPC_PLAYER_POOL: &[(&str, PlayerColor)] = &[
     ("ABRAXAS", PlayerColor::Green),
@@ -65,19 +73,182 @@ const INCOMPATIBLE_NPC_SETS: &[&[&str]] = &[
     &["RINZLER", "TRON"],
 ];
 
-/// NPC behaviour mode.
+/// The broad playing style of an NPC, picked at random for each round.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Style {
+    /// Claims space aggressively and heads other lightcycles off.
+    Hunter,
+    /// Rides alongside trails for speed, then uses it to overtake and cut in.
+    Racer,
+    /// Weaves, lays traps and turns unexpectedly.
+    Trickster,
+    /// Keeps to open space and punishes anyone who slipstreams it.
+    Sentinel,
+}
+
+#[derive(Debug, Clone)]
+pub struct Personality {
+    pub style: Style,
+    /// Distance to an obstacle ahead at which the NPC would rather turn.
+    pub clearance: f64,
+    /// How much less territory than the best move a behaviour's chosen move
+    /// may leave before it is overruled, as a fraction of the best.
+    pub tolerance: f64,
+    /// Chance, in percent, of trying to cut off a lightcycle slipstreaming it.
+    pub cutoff_chance: u32,
+    /// Chance, in percent, that a cut-off is timed well.
+    pub cutoff_accuracy: u32,
+    /// Chance, in percent, of taking an opening to slipstream and overtake
+    /// another lightcycle.
+    pub attack_chance: u32,
+}
+
+impl Personality {
+    pub fn new(style: Style) -> Self {
+        let (clearance, tolerance, cutoff_chance, cutoff_accuracy, attack_chance) = match style {
+            Style::Hunter => (random_between(8.0, 14.0), 0.10, 85, 75, 60),
+            Style::Racer => (random_between(6.0, 12.0), 0.15, 70, 65, 90),
+            Style::Trickster => (random_between(10.0, 25.0), 0.25, 60, 55, 40),
+            Style::Sentinel => (random_between(20.0, 35.0), 0.05, 90, 80, 20),
+        };
+
+        Self {
+            style,
+            clearance,
+            tolerance,
+            cutoff_chance,
+            cutoff_accuracy,
+            attack_chance,
+        }
+    }
+
+    fn random() -> Self {
+        const STYLES: [Style; 4] = [
+            Style::Hunter,
+            Style::Racer,
+            Style::Trickster,
+            Style::Sentinel,
+        ];
+        Self::new(STYLES[random_below(STYLES.len() as u32) as usize])
+    }
+
+    /// Picks the next behaviour at random, weighted by style.
+    fn pick_behaviour(&self, lightcycle: &Lightcycle) -> NpcBehaviour {
+        let weights: &[(Plan, u32)] = match self.style {
+            Style::Hunter => &[
+                (Plan::Territory, 45),
+                (Plan::Intercept, 30),
+                (Plan::Cruise, 15),
+                (Plan::Draft, 10),
+            ],
+            Style::Racer => &[
+                (Plan::Draft, 40),
+                (Plan::Cruise, 25),
+                (Plan::Intercept, 20),
+                (Plan::Territory, 10),
+                (Plan::Zigzag, 5),
+            ],
+            Style::Trickster => &[
+                (Plan::Cruise, 20),
+                (Plan::Intercept, 20),
+                (Plan::Zigzag, 20),
+                (Plan::RandomTurn, 15),
+                (Plan::BuildTrap, 15),
+                (Plan::Territory, 5),
+                (Plan::Draft, 5),
+            ],
+            Style::Sentinel => &[
+                (Plan::Cruise, 40),
+                (Plan::Territory, 40),
+                (Plan::Draft, 15),
+                (Plan::BuildTrap, 5),
+            ],
+        };
+
+        let mut roll = random_below(weights.iter().map(|(_, weight)| weight).sum());
+        let plan = weights
+            .iter()
+            .find(|(_, weight)| {
+                if roll < *weight {
+                    return true;
+                }
+                roll -= weight;
+                false
+            })
+            .map_or(Plan::Cruise, |(plan, _)| *plan);
+
+        plan.start(lightcycle)
+    }
+}
+
+/// The behaviours an NPC picks between when its current one runs out.
+#[derive(Debug, Clone, Copy)]
+enum Plan {
+    Cruise,
+    Territory,
+    Intercept,
+    Draft,
+    RandomTurn,
+    Zigzag,
+    BuildTrap,
+}
+
+impl Plan {
+    fn start(self, lightcycle: &Lightcycle) -> NpcBehaviour {
+        match self {
+            Plan::Cruise => NpcBehaviour::Cruise,
+            Plan::Territory => NpcBehaviour::Territory,
+            Plan::Intercept => NpcBehaviour::Intercept { target_id: None },
+            Plan::Draft => NpcBehaviour::Draft,
+            Plan::RandomTurn => NpcBehaviour::RandomTurn,
+            Plan::Zigzag => NpcBehaviour::Zigzag {
+                forward: lightcycle.direction,
+                side: random_perpendicular(lightcycle.direction),
+                legs_left: 4 + 2 * random_below(3) as u8,
+                // Start the first leg straight away.
+                travelled: NPC_ZIGZAG_LEG_LENGTH,
+            },
+            Plan::BuildTrap => NpcBehaviour::BuildTrap {
+                step: 0,
+                distance_in_step: 0.0,
+            },
+        }
+    }
+}
+
+/// NPC behaviour mode. Whatever a behaviour asks for is checked against the
+/// space it leaves the NPC (see `Options::vet`), so behaviours only need to
+/// say what they want to do, not whether it is safe.
 #[derive(Debug, Clone)]
 pub enum NpcBehaviour {
-    /// Standard obstacle avoidance — the original behaviour.
-    Survive,
-    /// Steer toward the nearest other lightcycle.
-    Chase,
-    /// Insert one random perpendicular turn, then revert to Survive.
+    /// Go straight, turning towards the most space when blocked.
+    Cruise,
+    /// Take whichever move claims the most space before anyone else can.
+    Territory,
+    /// Head for where a lightcycle will be, to get in front of it.
+    Intercept { target_id: Option<PlayerId> },
+    /// Move alongside a nearby trail to slipstream it.
+    Draft,
+    /// Insert one random perpendicular turn, then revert to Cruise.
     RandomTurn,
+    /// Weave in a staircase, alternating between `side` and `forward` every
+    /// leg, which leaves a trail too jagged to slipstream.
+    Zigzag {
+        forward: Direction,
+        side: Direction,
+        legs_left: u8,
+        travelled: f64,
+    },
     /// Build a notch/bump trap: two turns that create a pocket in the trail.
     /// `step` tracks which segment we're on (0 = first leg, 1 = second leg).
     /// `distance_in_step` accumulates how far we've traveled in the current leg.
     BuildTrap { step: u8, distance_in_step: f64 },
+    /// Turn to `toward`, travel `remaining` units, then turn back to `resume`.
+    LaneChange {
+        toward: Direction,
+        resume: Direction,
+        remaining: f64,
+    },
     /// Cut off a detected slipstreamer by turning in front of them.
     CutOff {
         target_id: PlayerId,
@@ -96,50 +267,109 @@ pub enum NpcBehaviour {
     },
 }
 
+impl NpcBehaviour {
+    /// Attacks and moves alongside trails are judged only on whether they
+    /// lead into a dead end, because they deliberately enter space that other
+    /// lightcycles are contesting.
+    fn caution(&self) -> Caution {
+        match self {
+            NpcBehaviour::LaneChange { .. }
+            | NpcBehaviour::CutOff { .. }
+            | NpcBehaviour::SlipstreamAttack { .. } => Caution::Bold,
+            _ => Caution::Contested,
+        }
+    }
+
+    /// Whether this is a sequence of planned turns, which no longer makes
+    /// sense once one of its moves has been overruled.
+    fn is_maneuver(&self) -> bool {
+        matches!(
+            self,
+            NpcBehaviour::Zigzag { .. }
+                | NpcBehaviour::BuildTrap { .. }
+                | NpcBehaviour::LaneChange { .. }
+                | NpcBehaviour::CutOff { .. }
+                | NpcBehaviour::SlipstreamAttack { .. }
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NpcState {
+    pub personality: Personality,
     pub behaviour: NpcBehaviour,
     /// Seconds remaining before switching to a new random behaviour.
     pub time_remaining: f64,
-    /// Cooldown before the NPC will consider a new cut-off attempt.
+    /// Cooldown before the NPC will react to a new slipstreamer.
     pub cutoff_cooldown: f64,
     /// Cooldown before the NPC will consider a new slipstream attack.
     pub attack_cooldown: f64,
 }
 
 impl Default for NpcState {
+    /// A fresh NPC with a random personality.
     fn default() -> Self {
         Self {
-            behaviour: NpcBehaviour::Survive,
-            time_remaining: random_duration_for(&NpcBehaviour::Survive),
+            personality: Personality::random(),
+            behaviour: NpcBehaviour::Cruise,
+            time_remaining: random_duration_for(&NpcBehaviour::Cruise),
             cutoff_cooldown: 0.0,
             attack_cooldown: 0.0,
         }
     }
 }
 
+impl NpcState {
+    fn set_behaviour(&mut self, behaviour: NpcBehaviour) {
+        self.time_remaining = random_duration_for(&behaviour);
+        self.behaviour = behaviour;
+    }
+
+    fn cruise(&mut self) {
+        self.set_behaviour(NpcBehaviour::Cruise);
+    }
+
+    /// Gives up the current behaviour, holding off from starting the same
+    /// kind of attack again straight away.
+    fn abort(&mut self) {
+        match self.behaviour {
+            NpcBehaviour::CutOff { .. } => self.cutoff_cooldown = NPC_CUTOFF_COOLDOWN,
+            NpcBehaviour::SlipstreamAttack { .. } => self.attack_cooldown = NPC_ATTACK_COOLDOWN,
+            _ => {}
+        }
+        self.cruise();
+    }
+}
+
 fn random_duration_for(behaviour: &NpcBehaviour) -> f64 {
     match behaviour {
-        NpcBehaviour::Survive => 2.0 + (UnwrapErr(SysRng).next_u32() % 300) as f64 / 100.0,
-        NpcBehaviour::Chase => 1.5 + (UnwrapErr(SysRng).next_u32() % 200) as f64 / 100.0,
+        NpcBehaviour::Cruise => random_between(1.5, 4.0),
+        NpcBehaviour::Territory => random_between(3.0, 6.0),
+        NpcBehaviour::Intercept { .. } => random_between(2.0, 4.0),
+        NpcBehaviour::Draft => 1.0,
         NpcBehaviour::RandomTurn => 0.5,
+        NpcBehaviour::Zigzag { .. } => 6.0,
         NpcBehaviour::BuildTrap { .. } => 5.0,
+        NpcBehaviour::LaneChange { .. } => 4.0,
         NpcBehaviour::CutOff { .. } => 10.0,
         NpcBehaviour::SlipstreamAttack { .. } => 15.0,
     }
 }
 
-fn pick_random_behaviour() -> NpcBehaviour {
-    let roll = UnwrapErr(SysRng).next_u32() % 100;
-    match roll {
-        0..=41 => NpcBehaviour::Survive,
-        42..=61 => NpcBehaviour::Chase,
-        62..=94 => NpcBehaviour::RandomTurn,
-        _ => NpcBehaviour::BuildTrap {
-            step: 0,
-            distance_in_step: 0.0,
-        },
-    }
+fn random_below(n: u32) -> u32 {
+    UnwrapErr(SysRng).next_u32() % n.max(1)
+}
+
+fn random_between(min: f64, max: f64) -> f64 {
+    min + (max - min) * (UnwrapErr(SysRng).next_u32() as f64 / u32::MAX as f64)
+}
+
+fn percent_chance(percent: u32) -> bool {
+    random_below(100) < percent
+}
+
+fn random_perpendicular(direction: Direction) -> Direction {
+    direction.perpendicular_directions()[random_below(2) as usize]
 }
 
 pub fn create_npc_players(count: usize) -> Vec<Player> {
@@ -187,6 +417,16 @@ pub fn npc_count_for_arena(human_player_count: usize) -> usize {
     }
 }
 
+/// What a behaviour can see when choosing where to go.
+struct Context<'a> {
+    arena: &'a Arena,
+    npc_ids: &'a [PlayerId],
+    npc_id: PlayerId,
+    lightcycle: &'a Lightcycle,
+    options: &'a Options,
+    delta_time: f64,
+}
+
 /// Run AI for all NPCs, producing turn updates where needed.
 ///
 /// `npc_states` is passed separately (extracted from the arena via `mem::take`) so that we can
@@ -198,6 +438,19 @@ pub fn update_npc_inputs(
 ) -> Vec<ArenaUpdate> {
     let mut updates = Vec::new();
 
+    let npc_ids: Vec<PlayerId> = npc_states.keys().copied().collect();
+    let any_alive = npc_ids.iter().any(|id| {
+        arena
+            .lightcycles
+            .get(id)
+            .is_some_and(|lightcycle| !lightcycle.dead)
+    });
+    if !any_alive {
+        return updates;
+    }
+
+    let planner = Planner::new(arena);
+
     for (npc_id, state) in npc_states.iter_mut() {
         let lightcycle = match arena.lightcycles.get(npc_id) {
             Some(lc) if !lc.dead => lc,
@@ -207,100 +460,33 @@ pub fn update_npc_inputs(
         // Tick the behaviour timer and potentially switch behaviours.
         state.time_remaining -= delta_time;
         if state.time_remaining <= 0.0 {
-            if matches!(state.behaviour, NpcBehaviour::CutOff { .. }) {
-                // CutOff timed out — abort back to Survive.
-                state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
-            }
-            if matches!(state.behaviour, NpcBehaviour::SlipstreamAttack { .. }) {
-                state.attack_cooldown = 2.0;
-            }
-            state.behaviour = pick_random_behaviour();
-            state.time_remaining = random_duration_for(&state.behaviour);
+            state.abort();
+            let behaviour = state.personality.pick_behaviour(lightcycle);
+            state.set_behaviour(behaviour);
         }
 
-        // Detect slipstreamers on this NPC's trail and potentially switch to CutOff.
         state.cutoff_cooldown = (state.cutoff_cooldown - delta_time).max(0.0);
-        if !matches!(state.behaviour, NpcBehaviour::CutOff { .. }) && state.cutoff_cooldown <= 0.0 {
-            if let Some((target_id, target_pos, target_speed)) =
-                find_slipstreamer_on_trail(arena, *npc_id, lightcycle)
-            {
-                if UnwrapErr(SysRng).next_u32() % 100 < NPC_CUTOFF_CHANCE {
-                    let npc_vel = lightcycle.direction.as_velocity();
-                    let delta = lightcycle.position - target_pos;
-                    let distance_behind = npc_vel.x * delta.x + npc_vel.y * delta.y;
-
-                    let perp_distance = match lightcycle.direction {
-                        Direction::Up | Direction::Down => {
-                            (target_pos.x - lightcycle.position.x).abs()
-                        }
-                        Direction::Left | Direction::Right => {
-                            (target_pos.y - lightcycle.position.y).abs()
-                        }
-                    };
-
-                    // Direction toward the slipstreamer.
-                    let perp = lightcycle.direction.perpendicular_directions();
-                    let to_target = target_pos - lightcycle.position;
-                    let s0 = perp[0].as_velocity().x * to_target.x
-                        + perp[0].as_velocity().y * to_target.y;
-                    let s1 = perp[1].as_velocity().x * to_target.x
-                        + perp[1].as_velocity().y * to_target.y;
-                    let cut_direction = if s0 > s1 { perp[0] } else { perp[1] };
-
-                    let closing_speed = target_speed - lightcycle.speed;
-                    if closing_speed > 1.0 && distance_behind > 5.0 {
-                        let catch_up_time = distance_behind / closing_speed;
-
-                        // 60% good timing, 40% turn too late.
-                        let wait_time = if UnwrapErr(SysRng).next_u32() % 100 < 60 {
-                            catch_up_time
-                                * (0.5 + (UnwrapErr(SysRng).next_u32() % 25) as f64 / 100.0)
-                        } else {
-                            catch_up_time
-                                * (1.1 + (UnwrapErr(SysRng).next_u32() % 50) as f64 / 100.0)
-                        };
-
-                        let cut_distance = perp_distance + 3.0;
-
-                        state.behaviour = NpcBehaviour::CutOff {
-                            target_id,
-                            cut_direction,
-                            original_direction: lightcycle.direction,
-                            cut_distance,
-                            phase: CutOffPhase::Waiting(wait_time.max(0.1)),
-                        };
-                        state.time_remaining = random_duration_for(&state.behaviour);
-                    }
-                } else {
-                    state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
-                }
-            }
-        }
-
-        // Detect opportunities to slipstream-attack another bike.
         state.attack_cooldown = (state.attack_cooldown - delta_time).max(0.0);
-        if !matches!(
-            state.behaviour,
-            NpcBehaviour::CutOff { .. } | NpcBehaviour::SlipstreamAttack { .. }
-        ) && state.attack_cooldown <= 0.0
-        {
-            if let Some((target_id, target_direction, approach_direction, cut_distance)) =
-                find_slipstream_attack_target(arena, *npc_id, lightcycle)
-            {
-                state.behaviour = NpcBehaviour::SlipstreamAttack {
-                    target_id,
-                    target_direction,
-                    approach_direction,
-                    cut_distance,
-                    phase: SlipstreamAttackPhase::Approaching,
-                };
-                state.time_remaining = random_duration_for(&state.behaviour);
-            } else {
-                state.attack_cooldown = 2.0;
-            }
+        react_to_slipstreamer(arena, *npc_id, lightcycle, state);
+        look_for_slipstream_attack(arena, *npc_id, lightcycle, state);
+
+        let options = planner.options(*npc_id, lightcycle, delta_time);
+        let context = Context {
+            arena,
+            npc_ids: &npc_ids,
+            npc_id: *npc_id,
+            lightcycle,
+            options: &options,
+            delta_time,
+        };
+        let request = choose_direction(&context, state);
+        let (direction, overruled) =
+            options.vet(request, &state.personality, state.behaviour.caution());
+        if overruled && state.behaviour.is_maneuver() {
+            state.abort();
         }
 
-        if let Some(direction) = choose_direction(arena, lightcycle, *npc_id, state, delta_time) {
+        if direction != lightcycle.direction {
             updates.push(ArenaUpdate::UpdateLightribbonAppendPoint(
                 *npc_id,
                 lightcycle.position,
@@ -312,251 +498,386 @@ pub fn update_npc_inputs(
     updates
 }
 
-fn choose_direction(
+/// When another lightcycle is slipstreaming this NPC's trail, either plan to
+/// cut it off or shift sideways out of its way.
+fn react_to_slipstreamer(
     arena: &Arena,
-    lightcycle: &Lightcycle,
     npc_id: PlayerId,
+    lightcycle: &Lightcycle,
     state: &mut NpcState,
-    delta_time: f64,
-) -> Option<Direction> {
-    let forward_dist = look_ahead_distance(arena, lightcycle.position, lightcycle.direction);
-
-    // Emergency survival override: if we're about to hit something very soon,
-    // always do a survival turn regardless of the current behaviour.
-    if forward_dist < NPC_CRITICAL_DISTANCE {
-        if matches!(
-            state.behaviour,
-            NpcBehaviour::CutOff { .. } | NpcBehaviour::SlipstreamAttack { .. }
-        ) {
-            state.behaviour = NpcBehaviour::Survive;
-            state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-            state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
-            state.attack_cooldown = 2.0;
-        }
-        return survival_turn(arena, lightcycle);
+) {
+    if matches!(state.behaviour, NpcBehaviour::CutOff { .. }) || state.cutoff_cooldown > 0.0 {
+        return;
     }
 
-    // Copy trap state out to avoid double-borrow of `state`.
-    let trap_info = match &state.behaviour {
+    let Some((target_id, target_pos, target_speed)) =
+        find_slipstreamer_on_trail(arena, npc_id, lightcycle)
+    else {
+        return;
+    };
+
+    // Direction toward the slipstreamer.
+    let perp = lightcycle.direction.perpendicular_directions();
+    let to_target = target_pos - lightcycle.position;
+    let cut_direction =
+        if perp[0].as_velocity().dot(to_target) > perp[1].as_velocity().dot(to_target) {
+            perp[0]
+        } else {
+            perp[1]
+        };
+
+    let personality = &state.personality;
+    if !percent_chance(personality.cutoff_chance) {
+        state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
+        if percent_chance(50) {
+            let away = if cut_direction == perp[0] {
+                perp[1]
+            } else {
+                perp[0]
+            };
+            state.set_behaviour(NpcBehaviour::LaneChange {
+                toward: away,
+                resume: lightcycle.direction,
+                remaining: random_between(20.0, 35.0),
+            });
+        }
+        return;
+    }
+
+    let npc_vel = lightcycle.direction.as_velocity();
+    let delta = lightcycle.position - target_pos;
+    let distance_behind = npc_vel.dot(delta);
+    let perp_distance = match lightcycle.direction {
+        Direction::Up | Direction::Down => (target_pos.x - lightcycle.position.x).abs(),
+        Direction::Left | Direction::Right => (target_pos.y - lightcycle.position.y).abs(),
+    };
+
+    let closing_speed = target_speed - lightcycle.speed;
+    if closing_speed <= 1.0 || distance_behind <= 5.0 {
+        return;
+    }
+
+    let catch_up_time = distance_behind / closing_speed;
+    let wait_time = if percent_chance(personality.cutoff_accuracy) {
+        catch_up_time * random_between(0.5, 0.75)
+    } else {
+        // Too late: the slipstreamer is level by the time the NPC turns.
+        catch_up_time * random_between(1.1, 1.6)
+    };
+
+    state.set_behaviour(NpcBehaviour::CutOff {
+        target_id,
+        cut_direction,
+        original_direction: lightcycle.direction,
+        cut_distance: perp_distance + 3.0,
+        phase: CutOffPhase::Waiting(wait_time.max(0.1)),
+    });
+}
+
+/// Start slipstreaming another lightcycle when one is well placed for it.
+fn look_for_slipstream_attack(
+    arena: &Arena,
+    npc_id: PlayerId,
+    lightcycle: &Lightcycle,
+    state: &mut NpcState,
+) {
+    if state.attack_cooldown > 0.0
+        || matches!(
+            state.behaviour,
+            NpcBehaviour::CutOff { .. } | NpcBehaviour::SlipstreamAttack { .. }
+        )
+    {
+        return;
+    }
+
+    match find_slipstream_attack_target(arena, npc_id, lightcycle) {
+        Some((target_id, target_direction, approach_direction, cut_distance))
+            if percent_chance(state.personality.attack_chance) =>
+        {
+            state.set_behaviour(NpcBehaviour::SlipstreamAttack {
+                target_id,
+                target_direction,
+                approach_direction,
+                cut_distance,
+                phase: SlipstreamAttackPhase::Approaching,
+            });
+        }
+        _ => state.attack_cooldown = NPC_ATTACK_COOLDOWN,
+    }
+}
+
+/// Returns the direction the current behaviour wants, or `None` to carry on
+/// straight ahead.
+fn choose_direction(context: &Context, state: &mut NpcState) -> Option<Direction> {
+    let lightcycle = context.lightcycle;
+
+    match state.behaviour.clone() {
+        NpcBehaviour::Cruise => None,
+        NpcBehaviour::Territory => choose_territory(context.options),
+        NpcBehaviour::Intercept { target_id } => choose_intercept(context, target_id, state),
+        NpcBehaviour::Draft => {
+            match find_draft_lane(context) {
+                Some((toward, distance)) => state.set_behaviour(NpcBehaviour::LaneChange {
+                    toward,
+                    resume: lightcycle.direction,
+                    remaining: distance,
+                }),
+                None => state.cruise(),
+            }
+            choose_direction(context, state)
+        }
+        NpcBehaviour::RandomTurn => {
+            state.cruise();
+            Some(random_perpendicular(lightcycle.direction))
+        }
+        NpcBehaviour::Zigzag {
+            forward,
+            side,
+            legs_left,
+            travelled,
+        } => {
+            let travelled = travelled + lightcycle.speed * context.delta_time;
+            if travelled < NPC_ZIGZAG_LEG_LENGTH {
+                state.behaviour = NpcBehaviour::Zigzag {
+                    forward,
+                    side,
+                    legs_left,
+                    travelled,
+                };
+                return None;
+            }
+            if legs_left == 0 {
+                state.cruise();
+                return None;
+            }
+            state.behaviour = NpcBehaviour::Zigzag {
+                forward,
+                side,
+                legs_left: legs_left - 1,
+                travelled: 0.0,
+            };
+            Some(if lightcycle.direction == side {
+                forward
+            } else {
+                side
+            })
+        }
         NpcBehaviour::BuildTrap {
             step,
             distance_in_step,
-        } => Some((*step, *distance_in_step)),
-        _ => None,
-    };
-
-    let cutoff_info = match &state.behaviour {
+        } => choose_trap(context, step, distance_in_step, state),
+        NpcBehaviour::LaneChange {
+            toward,
+            resume,
+            remaining,
+        } => {
+            if lightcycle.direction != toward {
+                return Some(toward);
+            }
+            let remaining = remaining - lightcycle.speed * context.delta_time;
+            if remaining > 0.0 {
+                state.behaviour = NpcBehaviour::LaneChange {
+                    toward,
+                    resume,
+                    remaining,
+                };
+                return None;
+            }
+            state.cruise();
+            Some(resume)
+        }
         NpcBehaviour::CutOff {
             target_id,
             cut_direction,
             original_direction,
             cut_distance,
             phase,
-        } => Some((
-            *target_id,
-            *cut_direction,
-            *original_direction,
-            *cut_distance,
-            *phase,
-        )),
-        _ => None,
-    };
-
-    let attack_info = match &state.behaviour {
+        } => choose_cutoff(
+            context,
+            target_id,
+            cut_direction,
+            original_direction,
+            cut_distance,
+            phase,
+            state,
+        ),
         NpcBehaviour::SlipstreamAttack {
             target_id,
             target_direction,
             approach_direction,
             cut_distance,
             phase,
-        } => Some((
-            *target_id,
-            *target_direction,
-            *approach_direction,
-            *cut_distance,
-            *phase,
-        )),
-        _ => None,
-    };
-
-    match &state.behaviour {
-        NpcBehaviour::Survive => choose_survive(arena, lightcycle, forward_dist),
-        NpcBehaviour::Chase => choose_chase(arena, lightcycle, npc_id, forward_dist),
-        NpcBehaviour::RandomTurn => {
-            let dir = choose_random_turn(lightcycle);
-            // Immediately revert to Survive after the random turn.
-            state.behaviour = NpcBehaviour::Survive;
-            state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-            dir
-        }
-        NpcBehaviour::BuildTrap { .. } => {
-            let (step, distance_in_step) = trap_info.unwrap();
-            choose_trap(
-                arena,
-                lightcycle,
-                step,
-                distance_in_step,
-                delta_time,
-                forward_dist,
-                state,
-            )
-        }
-        NpcBehaviour::CutOff { .. } => {
-            let (target_id, cut_direction, original_direction, cut_distance, phase) =
-                cutoff_info.unwrap();
-            choose_cutoff(
-                arena,
-                lightcycle,
-                target_id,
-                cut_direction,
-                original_direction,
-                cut_distance,
-                phase,
-                delta_time,
-                forward_dist,
-                state,
-            )
-        }
-        NpcBehaviour::SlipstreamAttack { .. } => {
-            let (target_id, target_direction, approach_direction, cut_distance, phase) =
-                attack_info.unwrap();
-            choose_slipstream_attack(
-                arena,
-                lightcycle,
-                target_id,
-                target_direction,
-                approach_direction,
-                cut_distance,
-                phase,
-                delta_time,
-                forward_dist,
-                state,
-            )
-        }
+        } => choose_slipstream_attack(
+            context,
+            target_id,
+            target_direction,
+            approach_direction,
+            cut_distance,
+            phase,
+            state,
+        ),
     }
 }
 
-/// Original obstacle-avoidance behaviour.
-fn choose_survive(arena: &Arena, lightcycle: &Lightcycle, forward_dist: f64) -> Option<Direction> {
-    if forward_dist > NPC_LOOK_AHEAD_DISTANCE {
+/// Turn only when a turn claims clearly more space than going straight.
+fn choose_territory(options: &Options) -> Option<Direction> {
+    let best_turn = options
+        .turns
+        .iter()
+        .filter(|option| options.is_safe(option))
+        .max_by(|a, b| a.territory.total_cmp(&b.territory))?;
+
+    (best_turn.territory > options.straight.territory * NPC_TERRITORY_TURN_GAIN)
+        .then_some(best_turn.direction)
+}
+
+/// Steer for the point a lightcycle will reach by the time the NPC gets
+/// there, so that the NPC ends up across its path.
+fn choose_intercept(
+    context: &Context,
+    target_id: Option<PlayerId>,
+    state: &mut NpcState,
+) -> Option<Direction> {
+    let lightcycle = context.lightcycle;
+    let alive = |id: &PlayerId| {
+        context
+            .arena
+            .lightcycles
+            .get(id)
+            .is_some_and(|lightcycle| !lightcycle.dead)
+    };
+
+    let Some(target_id) = target_id
+        .filter(alive)
+        .or_else(|| find_intercept_target(context))
+    else {
+        state.cruise();
+        return None;
+    };
+    state.behaviour = NpcBehaviour::Intercept {
+        target_id: Some(target_id),
+    };
+
+    let target = &context.arena.lightcycles[&target_id];
+    let distance = (target.position - lightcycle.position).length();
+    let lead = (distance * target.speed / lightcycle.speed).min(150.0);
+    let aim = target.position + target.direction.as_velocity() * lead;
+    let aim = ArenaPoint::new(
+        aim.x.clamp(0.0, context.arena.width),
+        aim.y.clamp(0.0, context.arena.height),
+    );
+
+    let delta = aim - lightcycle.position;
+    let forward = lightcycle.direction.as_velocity().dot(delta);
+    let [a, b] = lightcycle.direction.perpendicular_directions();
+    let (toward, lateral) = if a.as_velocity().dot(delta) > b.as_velocity().dot(delta) {
+        (a, a.as_velocity().dot(delta))
+    } else {
+        (b, b.as_velocity().dot(delta))
+    };
+
+    if lateral < NPC_DRAFT_OFFSET {
+        // Lined up with the aim point. If it is behind, turn around by way
+        // of whichever side has more room.
+        if forward >= 0.0 {
+            return None;
+        }
+        let [a, b] = context.options.turns;
+        return Some(if a.territory >= b.territory {
+            a.direction
+        } else {
+            b.direction
+        });
+    }
+    if forward > lateral * 1.5 {
         return None;
     }
-    survival_turn(arena, lightcycle)
+    Some(toward)
 }
 
-/// Pick the perpendicular direction with more room.
-fn survival_turn(arena: &Arena, lightcycle: &Lightcycle) -> Option<Direction> {
-    let perp = lightcycle.direction.perpendicular_directions();
-    let dist_a = look_ahead_distance(arena, lightcycle.position, perp[0]);
-    let dist_b = look_ahead_distance(arena, lightcycle.position, perp[1]);
-
-    let chosen = if dist_a > dist_b {
-        perp[0]
-    } else if dist_b > dist_a {
-        perp[1]
-    } else {
-        perp[UnwrapErr(SysRng).next_u32() as usize % 2]
-    };
-
-    Some(chosen)
-}
-
-/// Steer toward the nearest other lightcycle.
-fn choose_chase(
-    arena: &Arena,
-    lightcycle: &Lightcycle,
-    npc_id: PlayerId,
-    forward_dist: f64,
-) -> Option<Direction> {
-    // If we need to dodge soon, do a survival turn instead of chasing.
-    if forward_dist < NPC_LOOK_AHEAD_DISTANCE {
-        return survival_turn(arena, lightcycle);
-    }
-
-    // Find the nearest alive lightcycle that isn't us.
-    let target_pos = arena
+/// The nearest other lightcycle, favouring human players.
+fn find_intercept_target(context: &Context) -> Option<PlayerId> {
+    context
+        .arena
         .lightcycles
         .iter()
-        .filter(|(id, lc)| **id != npc_id && !lc.dead)
-        .map(|(_, lc)| {
-            let dx = lc.position.x - lightcycle.position.x;
-            let dy = lc.position.y - lightcycle.position.y;
-            (dx * dx + dy * dy, lc.position)
+        .filter(|(id, lightcycle)| **id != context.npc_id && !lightcycle.dead)
+        .map(|(id, lightcycle)| {
+            let distance = (lightcycle.position - context.lightcycle.position).length();
+            let weight = if context.npc_ids.contains(id) {
+                1.0
+            } else {
+                0.7
+            };
+            (*id, distance * weight)
         })
-        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(_, pos)| pos);
-
-    let target = match target_pos {
-        Some(p) => p,
-        None => return None, // nobody to chase
-    };
-
-    // Determine which perpendicular direction moves us closer to the target.
-    let perp = lightcycle.direction.perpendicular_directions();
-    let dx = target.x - lightcycle.position.x;
-    let dy = target.y - lightcycle.position.y;
-
-    // Pick the perpendicular direction whose velocity vector aligns with the delta.
-    let score = |dir: Direction| -> f64 {
-        let v = dir.as_velocity();
-        v.x * dx + v.y * dy // dot product
-    };
-
-    let s0 = score(perp[0]);
-    let s1 = score(perp[1]);
-
-    // Only turn if we're not already heading roughly toward the target along our current axis.
-    // Check if the target is mostly ahead of us.
-    let forward_score = {
-        let v = lightcycle.direction.as_velocity();
-        v.x * dx + v.y * dy
-    };
-    let lateral_score = s0.abs().max(s1.abs());
-
-    // If target is mostly ahead, keep going straight.
-    if forward_score > 0.0 && forward_score > lateral_score * 1.5 {
-        return None;
-    }
-
-    let chosen = if s0 > s1 { perp[0] } else { perp[1] };
-
-    // Safety check: don't turn into something close.
-    let chosen_dist = look_ahead_distance(arena, lightcycle.position, chosen);
-    if chosen_dist < NPC_CRITICAL_DISTANCE {
-        return None; // too dangerous, keep going straight
-    }
-
-    Some(chosen)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(id, _)| id)
 }
 
-/// Insert a random perpendicular turn.
-fn choose_random_turn(lightcycle: &Lightcycle) -> Option<Direction> {
-    let perp = lightcycle.direction.perpendicular_directions();
-    Some(perp[UnwrapErr(SysRng).next_u32() as usize % 2])
+/// Finds a trail running the same way as the NPC, a little to one side and
+/// stretching out ahead, that it could slipstream. Returns the direction to
+/// move sideways in and how far to go.
+fn find_draft_lane(context: &Context) -> Option<(Direction, f64)> {
+    let lightcycle = context.lightcycle;
+    let position = lightcycle.position;
+    let velocity = lightcycle.direction.as_velocity();
+    let is_vertical = matches!(lightcycle.direction, Direction::Up | Direction::Down);
+
+    let mut best: Option<(Direction, f64)> = None;
+    for (id, lightribbon) in context.arena.lightribbons.iter() {
+        if *id == context.npc_id {
+            continue;
+        }
+
+        for (from, to) in lightribbon.segments() {
+            let (lateral, parallel) = if is_vertical {
+                (from.x - position.x, (from.x - to.x).abs() <= f64::EPSILON)
+            } else {
+                (from.y - position.y, (from.y - to.y).abs() <= f64::EPSILON)
+            };
+            if !parallel || lateral.abs() <= NPC_DRAFT_OFFSET + 2.0 || lateral.abs() > 70.0 {
+                continue;
+            }
+
+            // How far ahead of the NPC the segment starts and ends.
+            let (start, end) = {
+                let a = velocity.dot(from - position);
+                let b = velocity.dot(to - position);
+                (a.min(b), a.max(b))
+            };
+            if end < 60.0 || start > 30.0 {
+                continue;
+            }
+
+            let distance = lateral.abs() - NPC_DRAFT_OFFSET;
+            if best.is_none_or(|(_, best)| distance < best) {
+                let [a, b] = lightcycle.direction.perpendicular_directions();
+                let toward = if a.as_velocity().dot(from - position) > 0.0 {
+                    a
+                } else {
+                    b
+                };
+                best = Some((toward, distance));
+            }
+        }
+    }
+
+    best
 }
 
 /// Build a notch/bump trap: turn perpendicular, travel a short distance, turn back.
 /// This creates a pocket in the trail that other players can collide with.
 fn choose_trap(
-    arena: &Arena,
-    lightcycle: &Lightcycle,
+    context: &Context,
     step: u8,
     distance_in_step: f64,
-    delta_time: f64,
-    forward_dist: f64,
     state: &mut NpcState,
 ) -> Option<Direction> {
-    // If we'd hit something soon, abort the trap and go to Survive.
-    if forward_dist < NPC_LOOK_AHEAD_DISTANCE {
-        state.behaviour = NpcBehaviour::Survive;
-        state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-        return survival_turn(arena, lightcycle);
-    }
-
-    let distance_in_step = distance_in_step + lightcycle.speed * delta_time;
+    let lightcycle = context.lightcycle;
+    let distance_in_step = distance_in_step + lightcycle.speed * context.delta_time;
 
     if distance_in_step < NPC_TRAP_SEGMENT_LENGTH {
-        // Update the accumulated distance but don't turn yet.
         state.behaviour = NpcBehaviour::BuildTrap {
             step,
             distance_in_step,
@@ -564,49 +885,24 @@ fn choose_trap(
         return None;
     }
 
-    // Time to make the next turn.
-    let perp = lightcycle.direction.perpendicular_directions();
-
+    let [a, b] = context.options.turns;
     match step {
         0 => {
-            // First turn: pick a random perpendicular direction.
-            let idx = UnwrapErr(SysRng).next_u32() as usize % 2;
-            let chosen = perp[idx];
-            let alt = perp[1 - idx];
-            let chosen = if look_ahead_distance(arena, lightcycle.position, chosen)
-                > NPC_CRITICAL_DISTANCE
-            {
-                chosen
-            } else if look_ahead_distance(arena, lightcycle.position, alt) > NPC_CRITICAL_DISTANCE {
-                alt
-            } else {
-                // Both directions blocked, abort trap.
-                state.behaviour = NpcBehaviour::Survive;
-                state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-                return survival_turn(arena, lightcycle);
-            };
-
+            // First turn: either side.
             state.behaviour = NpcBehaviour::BuildTrap {
                 step: 1,
                 distance_in_step: 0.0,
             };
-            Some(chosen)
-        }
-        1 => {
-            // Second turn: complete the notch. Pick the direction with more room.
-            let dist_a = look_ahead_distance(arena, lightcycle.position, perp[0]);
-            let dist_b = look_ahead_distance(arena, lightcycle.position, perp[1]);
-            let chosen = if dist_a >= dist_b { perp[0] } else { perp[1] };
-
-            // Trap complete, switch back to Survive.
-            state.behaviour = NpcBehaviour::Survive;
-            state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-            Some(chosen)
+            Some(random_perpendicular(lightcycle.direction))
         }
         _ => {
-            state.behaviour = NpcBehaviour::Survive;
-            state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-            None
+            // Second turn: complete the notch towards the roomier side.
+            state.cruise();
+            Some(if a.ray >= b.ray {
+                a.direction
+            } else {
+                b.direction
+            })
         }
     }
 }
@@ -615,261 +911,151 @@ fn choose_trap(
 /// crossing their lane, then turning back. When the timing is bad the NPC ends
 /// up behind the slipstreamer and effectively follows them.
 fn choose_cutoff(
-    arena: &Arena,
-    lightcycle: &Lightcycle,
+    context: &Context,
     target_id: PlayerId,
     cut_direction: Direction,
     original_direction: Direction,
     cut_distance: f64,
     phase: CutOffPhase,
-    delta_time: f64,
-    forward_dist: f64,
     state: &mut NpcState,
 ) -> Option<Direction> {
+    let lightcycle = context.lightcycle;
+
     match phase {
         CutOffPhase::Waiting(remaining) => {
-            let new_remaining = remaining - delta_time;
-            if new_remaining <= 0.0 {
-                // Time to turn — safety check the cut direction.
-                let cut_ahead = look_ahead_distance(arena, lightcycle.position, cut_direction);
-                if cut_ahead < NPC_CRITICAL_DISTANCE {
-                    state.behaviour = NpcBehaviour::Survive;
-                    state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-                    state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
-                    return None;
-                }
-
-                state.behaviour = NpcBehaviour::CutOff {
-                    target_id,
-                    cut_direction,
-                    original_direction,
-                    cut_distance,
-                    phase: CutOffPhase::Crossing(0.0),
-                };
-                Some(cut_direction)
+            let remaining = remaining - context.delta_time;
+            let phase = if remaining <= 0.0 {
+                CutOffPhase::Crossing(0.0)
             } else {
-                // Still waiting — forward safety check.
-                if forward_dist < NPC_LOOK_AHEAD_DISTANCE {
-                    state.behaviour = NpcBehaviour::Survive;
-                    state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-                    state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
-                    return survival_turn(arena, lightcycle);
-                }
-
-                state.behaviour = NpcBehaviour::CutOff {
-                    target_id,
-                    cut_direction,
-                    original_direction,
-                    cut_distance,
-                    phase: CutOffPhase::Waiting(new_remaining),
-                };
-                None
-            }
+                CutOffPhase::Waiting(remaining)
+            };
+            state.behaviour = NpcBehaviour::CutOff {
+                target_id,
+                cut_direction,
+                original_direction,
+                cut_distance,
+                phase,
+            };
+            (remaining <= 0.0).then_some(cut_direction)
         }
         CutOffPhase::Crossing(distance) => {
-            let new_distance = distance + lightcycle.speed * delta_time;
-
-            if new_distance >= cut_distance {
-                // Done crossing — turn back to original direction.
-                let orig_ahead =
-                    look_ahead_distance(arena, lightcycle.position, original_direction);
-                state.behaviour = NpcBehaviour::Survive;
-                state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-                state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN + 2.0;
-
-                if orig_ahead >= NPC_CRITICAL_DISTANCE {
-                    Some(original_direction)
-                } else {
-                    survival_turn(arena, lightcycle)
-                }
-            } else {
-                // Still crossing.
+            let distance = distance + lightcycle.speed * context.delta_time;
+            if distance < cut_distance {
                 state.behaviour = NpcBehaviour::CutOff {
                     target_id,
                     cut_direction,
                     original_direction,
                     cut_distance,
-                    phase: CutOffPhase::Crossing(new_distance),
+                    phase: CutOffPhase::Crossing(distance),
                 };
-                None
+                return None;
             }
+
+            // Done crossing: turn back to the original direction.
+            state.cruise();
+            state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN + 2.0;
+            Some(original_direction)
         }
     }
 }
 
 /// Slipstream behind a target, overtake via speed boost, then cut across their path.
 fn choose_slipstream_attack(
-    arena: &Arena,
-    lightcycle: &Lightcycle,
+    context: &Context,
     target_id: PlayerId,
     target_direction: Direction,
     approach_direction: Direction,
     cut_distance: f64,
     phase: SlipstreamAttackPhase,
-    delta_time: f64,
-    forward_dist: f64,
     state: &mut NpcState,
 ) -> Option<Direction> {
-    let abort = |state: &mut NpcState| {
-        state.behaviour = NpcBehaviour::Survive;
-        state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-        state.attack_cooldown = 2.0;
+    let lightcycle = context.lightcycle;
+    let target = context
+        .arena
+        .lightcycles
+        .get(&target_id)
+        .filter(|target| !target.dead);
+    let on_course = target.filter(|target| target.direction == target_direction);
+    let set_phase = |state: &mut NpcState, phase| {
+        state.behaviour = NpcBehaviour::SlipstreamAttack {
+            target_id,
+            target_direction,
+            approach_direction,
+            cut_distance,
+            phase,
+        };
     };
-
-    let target = arena.lightcycles.get(&target_id);
-    let target_alive_and_on_course = target
-        .map(|lc| !lc.dead && lc.direction == target_direction)
-        .unwrap_or(false);
 
     match phase {
         SlipstreamAttackPhase::Approaching => {
-            if !target_alive_and_on_course {
-                abort(state);
+            let Some(target) = on_course else {
+                state.abort();
                 return None;
-            }
+            };
 
             if lightcycle.direction != approach_direction {
-                // First tick: turn to approach direction.
-                let ahead = look_ahead_distance(arena, lightcycle.position, approach_direction);
-                if ahead < NPC_CRITICAL_DISTANCE {
-                    abort(state);
-                    return None;
-                }
                 return Some(approach_direction);
             }
 
-            // Check perpendicular distance to target's lane.
-            let target_lc = target.unwrap();
             let perp_dist = match target_direction {
                 Direction::Up | Direction::Down => {
-                    (target_lc.position.x - lightcycle.position.x).abs()
+                    (target.position.x - lightcycle.position.x).abs()
                 }
                 Direction::Left | Direction::Right => {
-                    (target_lc.position.y - lightcycle.position.y).abs()
+                    (target.position.y - lightcycle.position.y).abs()
                 }
             };
-
-            if perp_dist <= SLIPSTREAM_DISTANCE * 0.8 {
-                // Within slipstream range — turn to match target.
-                let target_ahead =
-                    look_ahead_distance(arena, lightcycle.position, target_direction);
-                if target_ahead < NPC_CRITICAL_DISTANCE {
-                    abort(state);
-                    return survival_turn(arena, lightcycle);
-                }
-                state.behaviour = NpcBehaviour::SlipstreamAttack {
-                    target_id,
-                    target_direction,
-                    approach_direction,
-                    cut_distance,
-                    phase: SlipstreamAttackPhase::Drafting,
-                };
-                return Some(target_direction);
+            if perp_dist > SLIPSTREAM_DISTANCE * 0.8 {
+                return None;
             }
 
-            // Not within range yet — keep approaching.
-            if forward_dist < NPC_LOOK_AHEAD_DISTANCE {
-                abort(state);
-                return survival_turn(arena, lightcycle);
-            }
-            None
+            // Within slipstream range: fall in behind the target.
+            set_phase(state, SlipstreamAttackPhase::Drafting);
+            Some(target_direction)
         }
 
         SlipstreamAttackPhase::Drafting => {
-            if !target_alive_and_on_course {
-                abort(state);
+            let Some(target) = on_course else {
+                state.abort();
                 return None;
-            }
+            };
 
-            let target_lc = target.unwrap();
-            let vel = target_direction.as_velocity();
-            let delta = lightcycle.position - target_lc.position;
-            let ahead = vel.x * delta.x + vel.y * delta.y;
-
+            let ahead = target_direction
+                .as_velocity()
+                .dot(lightcycle.position - target.position);
             if ahead > 0.0 {
-                // We've overtaken the target.
-                state.behaviour = NpcBehaviour::SlipstreamAttack {
-                    target_id,
-                    target_direction,
-                    approach_direction,
-                    cut_distance,
-                    phase: SlipstreamAttackPhase::Overtaking,
-                };
-                return None;
-            }
-
-            if forward_dist < NPC_LOOK_AHEAD_DISTANCE {
-                abort(state);
-                return survival_turn(arena, lightcycle);
+                set_phase(state, SlipstreamAttackPhase::Overtaking);
             }
             None
         }
 
         SlipstreamAttackPhase::Overtaking => {
-            // Check distance ahead of target (use real-time position if alive).
-            let ahead_of_target = if let Some(target_lc) = target {
-                if !target_lc.dead {
-                    let vel = target_direction.as_velocity();
-                    let delta = lightcycle.position - target_lc.position;
-                    vel.x * delta.x + vel.y * delta.y
-                } else {
-                    NPC_OVERTAKE_BUFFER // target dead, just cut
-                }
-            } else {
-                NPC_OVERTAKE_BUFFER
+            let ahead_of_target = match target {
+                Some(target) => target_direction
+                    .as_velocity()
+                    .dot(lightcycle.position - target.position),
+                // The target is gone, so just cut across.
+                None => NPC_OVERTAKE_BUFFER,
             };
-
-            if ahead_of_target >= NPC_OVERTAKE_BUFFER {
-                // Far enough ahead — cut across.
-                let cut_ahead = look_ahead_distance(arena, lightcycle.position, approach_direction);
-                if cut_ahead < NPC_CRITICAL_DISTANCE {
-                    abort(state);
-                    return None;
-                }
-                state.behaviour = NpcBehaviour::SlipstreamAttack {
-                    target_id,
-                    target_direction,
-                    approach_direction,
-                    cut_distance,
-                    phase: SlipstreamAttackPhase::Cutting(0.0),
-                };
-                return Some(approach_direction);
+            if ahead_of_target < NPC_OVERTAKE_BUFFER {
+                return None;
             }
 
-            if forward_dist < NPC_LOOK_AHEAD_DISTANCE {
-                abort(state);
-                return survival_turn(arena, lightcycle);
-            }
-            None
+            set_phase(state, SlipstreamAttackPhase::Cutting(0.0));
+            Some(approach_direction)
         }
 
         SlipstreamAttackPhase::Cutting(distance) => {
-            let new_distance = distance + lightcycle.speed * delta_time;
-
-            if new_distance >= cut_distance {
-                // Done cutting — turn back to target direction or survive.
-                let target_ahead =
-                    look_ahead_distance(arena, lightcycle.position, target_direction);
-                state.behaviour = NpcBehaviour::Survive;
-                state.time_remaining = random_duration_for(&NpcBehaviour::Survive);
-                state.attack_cooldown = 5.0;
-
-                if target_ahead >= NPC_CRITICAL_DISTANCE {
-                    return Some(target_direction);
-                } else {
-                    return survival_turn(arena, lightcycle);
-                }
+            let distance = distance + lightcycle.speed * context.delta_time;
+            if distance < cut_distance {
+                set_phase(state, SlipstreamAttackPhase::Cutting(distance));
+                return None;
             }
 
-            // Still cutting.
-            state.behaviour = NpcBehaviour::SlipstreamAttack {
-                target_id,
-                target_direction,
-                approach_direction,
-                cut_distance,
-                phase: SlipstreamAttackPhase::Cutting(new_distance),
-            };
-            None
+            // Done cutting: turn back to the target's direction.
+            state.cruise();
+            state.attack_cooldown = 5.0;
+            Some(target_direction)
         }
     }
 }
