@@ -32,6 +32,41 @@
   animation: derezcycle 600ms steps(6) both;
 }
 
+/* A zero-size anchor at the centre of the lightcycle, turned with it, so the
+   beam can be placed relative to the sprite's front. */
+.headlight {
+  position: absolute;
+  z-index: 1;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+/* A cone of light from the headlight, which is at the front edge of the
+   20px-long sprite. A conic gradient centred on the lamp softens the sides of
+   the cone, and a radial mask fades it with distance. */
+.beam {
+  position: absolute;
+  top: calc(-55px * var(--beam-reach, 1));
+  left: 9px;
+  width: calc(90px * var(--beam-reach, 1));
+  height: calc(110px * var(--beam-reach, 1));
+  background: conic-gradient(
+    from 62deg at 0 50%,
+    transparent 0deg,
+    color-mix(in srgb, var(--white) 16%, transparent) 16deg,
+    color-mix(in srgb, var(--white) 30%, transparent) 28deg,
+    color-mix(in srgb, var(--white) 16%, transparent) 40deg,
+    transparent 56deg,
+    transparent 360deg
+  );
+  mask-image: radial-gradient(farthest-side at 0 50%, #000, rgba(0, 0, 0, 0.5) 40%, transparent);
+  mix-blend-mode: screen;
+  transition:
+    width 300ms ease-out,
+    height 300ms ease-out,
+    top 300ms ease-out;
+}
+
 /* Pulsing ring around your own cycle while waiting in the lobby. */
 .selfMarker {
   position: absolute;

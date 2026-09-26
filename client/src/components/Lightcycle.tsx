@@ -18,6 +18,9 @@ type LightcycleProps = {
   isSelf?: boolean
 }
 
+// Base speed from src/server/arena.rs.
+const LIGHTCYCLE_SPEED = 55
+
 const rotationMap = {
   up: '270deg',
   down: '90deg',
@@ -45,6 +48,10 @@ export default function Lightcycle({
   const tagBottom = `calc(${(interpolatedPosition[1] / height) * 100}% + 20px)`
   const transform = `translate(-50%, 50%) rotate(${rotationMap[direction]})`
   const colorVars = { '--cycle': colorToHexString(color) } as CSSProperties
+  // The beam reaches further as the lightcycle speeds up.
+  const beamVars = {
+    '--beam-reach': 1 + Math.max(0, speed - LIGHTCYCLE_SPEED) / LIGHTCYCLE_SPEED,
+  } as CSSProperties
 
   return (
     <>
@@ -57,6 +64,14 @@ export default function Lightcycle({
       >
         {isSelf && started === null ? `${name} (you)` : name}
       </div>
+      {!dead ? (
+        <div
+          className={styles.headlight}
+          style={{ ...colorVars, ...beamVars, left, bottom, transform: `rotate(${rotationMap[direction]})` }}
+        >
+          <div className={styles.beam} />
+        </div>
+      ) : null}
       <img
         className={resolveClassName([styles.lightcycle, dead && styles.dead])}
         src={lightcycleImages[color]}
