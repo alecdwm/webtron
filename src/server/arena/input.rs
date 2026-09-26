@@ -124,6 +124,11 @@ impl ArenaInput {
                     return vec![];
                 }
 
+                if lightcycle.direction == direction {
+                    trace!("Refusing to turn lightcycle in the direction it is already going");
+                    return vec![];
+                }
+
                 return vec![
                     ArenaUpdate::UpdateLightribbonAppendPoint(player_id, lightcycle.position),
                     ArenaUpdate::UpdateLightcycleDirection(player_id, direction),

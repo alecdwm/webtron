@@ -38,26 +38,9 @@ impl Lightribbon {
 
     /// Every segment of every path.
     pub fn segments(&self) -> impl Iterator<Item = (ArenaPoint, ArenaPoint)> + '_ {
-        self.segments_except_newest(0)
-    }
-
-    /// Every segment except the newest `skip` segments of the live path.
-    pub fn segments_except_newest(
-        &self,
-        skip: usize,
-    ) -> impl Iterator<Item = (ArenaPoint, ArenaPoint)> + '_ {
-        let last = self.paths.len().saturating_sub(1);
         self.paths
             .iter()
-            .enumerate()
-            .flat_map(move |(index, path)| {
-                let path = if index == last {
-                    &path[..path.len().saturating_sub(skip)]
-                } else {
-                    &path[..]
-                };
-                path.windows(2).map(|segment| (segment[0], segment[1]))
-            })
+            .flat_map(|path| path.windows(2).map(|segment| (segment[0], segment[1])))
     }
 
     pub fn last_point(&self) -> Option<ArenaPoint> {

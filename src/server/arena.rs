@@ -17,7 +17,7 @@ pub use self::input::*;
 pub use self::updates::*;
 pub use self::util::*;
 
-use crate::server::{ArenaId, ArenaLine, ArenaPoint, Direction, Player, PlayerColor, PlayerId};
+use crate::server::{ArenaId, ArenaPoint, Direction, Player, PlayerColor, PlayerId};
 
 const ARENA_WIDTH: f64 = 560.0;
 const ARENA_HEIGHT: f64 = 560.0;
@@ -157,11 +157,17 @@ impl Arena {
         self.updates.extend(npc_updates);
         self.apply_updates();
 
-        self.update_lightcycle_speeds(delta_time)
+        self.update_lightcycle_speeds(delta_time).apply_updates();
+
+        let starts: HashMap<PlayerId, ArenaPoint> = self
+            .lightcycles
+            .iter()
+            .map(|(id, lightcycle)| (*id, lightcycle.position))
+            .collect();
+
+        self.update_lightcycle_positions(delta_time)
             .apply_updates()
-            .update_lightcycle_positions(delta_time)
-            .apply_updates()
-            .calculate_lightcycle_collisions(delta_time)
+            .calculate_lightcycle_collisions(&starts)
             .apply_updates()
             .update_lightribbon_positions()
             .apply_updates()
@@ -269,91 +275,55 @@ impl Arena {
         self
     }
 
-    fn calculate_lightcycle_collisions(&mut self, delta_time: f64) -> &mut Self {
+    /// Tests each lightcycle's travel this update, from its position in
+    /// `starts`. This must be the position exactly as it was, not one worked
+    /// out from the speed: the lightcycle's own trail ends there, and a
+    /// rounding error would count that as a crash.
+    fn calculate_lightcycle_collisions(
+        &mut self,
+        starts: &HashMap<PlayerId, ArenaPoint>,
+    ) -> &mut Self {
         'next_lightcycle: for (id, lightcycle) in self.lightcycles.iter() {
             if lightcycle.dead {
                 continue 'next_lightcycle;
             };
 
-            let last_position = lightcycle.position
-                - lightcycle.direction.as_velocity() * lightcycle.speed * delta_time;
+            let to = lightcycle.position;
+            let from = starts.get(id).copied().unwrap_or(to);
 
-            let travelled = ArenaLine {
-                from: last_position.to_untyped(),
-                to: lightcycle.position.to_untyped(),
-            };
-
-            // test for lightribbon collisions
+            // test for lightribbon collisions, stopping the lightcycle at the
+            // first trail it touches
+            let mut crash: Option<(f64, ArenaPoint, PlayerId)> = None;
             for (ribbon_id, lightribbon) in self.lightribbons.iter() {
-                // For the bike's own ribbon, skip the last 2 segments (the active
-                // segment collinear with the bike's direction and the perpendicular
-                // segment sharing the turn-point vertex). At higher speeds the
-                // longer travelled segment can falsely intersect these.
-                let skip = if ribbon_id == id { 2 } else { 0 };
+                // Another lightcycle's ribbon doesn't reach where that
+                // lightcycle moved this update until the ribbon positions are
+                // updated, so the stretch in between is checked as well. A
+                // lightcycle's own stretch is the one it just travelled.
+                let live_segment = self
+                    .lightcycles
+                    .get(ribbon_id)
+                    .filter(|other| ribbon_id != id && !other.dead)
+                    .zip(lightribbon.last_point())
+                    .map(|(other, last_point)| (last_point, other.position));
 
-                for (from, to) in lightribbon.segments_except_newest(skip) {
-                    let line = ArenaLine {
-                        from: from.to_untyped(),
-                        to: to.to_untyped(),
-                    };
-
-                    if travelled.overlaps_segment(&line) {
-                        self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
-                            *id,
-                            DeathCause::Trail(*ribbon_id),
-                        ));
-                        continue 'next_lightcycle;
-                    }
-
-                    if let Some(intersection) = travelled.intersection(&line) {
-                        self.updates.push(ArenaUpdate::UpdateLightcyclePosition(
-                            *id,
-                            ArenaPoint::from_untyped(intersection),
-                        ));
-                        self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
-                            *id,
-                            DeathCause::Trail(*ribbon_id),
-                        ));
-                        continue 'next_lightcycle;
-                    }
-                }
-
-                // Check the "live" segment for other bikes: the ribbon's last point
-                // hasn't been updated yet this frame, so there's a gap between the
-                // ribbon tip and the bike's current position. Without this check,
-                // collisions in that gap are missed.
-                if ribbon_id != id {
-                    if let Some(other_cycle) = self.lightcycles.get(ribbon_id) {
-                        if !other_cycle.dead {
-                            if let Some(last_point) = lightribbon.last_point() {
-                                let live_segment = ArenaLine {
-                                    from: last_point.to_untyped(),
-                                    to: other_cycle.position.to_untyped(),
-                                };
-
-                                if travelled.overlaps_segment(&live_segment) {
-                                    self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
-                                        *id,
-                                        DeathCause::Trail(*ribbon_id),
-                                    ));
-                                    continue 'next_lightcycle;
-                                }
-
-                                if let Some(intersection) = travelled.intersection(&live_segment) {
-                                    self.updates.push(ArenaUpdate::UpdateLightcyclePosition(
-                                        *id,
-                                        ArenaPoint::from_untyped(intersection),
-                                    ));
-                                    self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
-                                        *id,
-                                        DeathCause::Trail(*ribbon_id),
-                                    ));
-                                    continue 'next_lightcycle;
-                                }
-                            }
+                for (a, b) in lightribbon.segments().chain(live_segment) {
+                    if let Some(contact) = first_contact(from, to, a, b) {
+                        let distance = (contact - from).length();
+                        if crash.is_none_or(|(nearest, ..)| distance < nearest) {
+                            crash = Some((distance, contact, *ribbon_id));
                         }
                     }
                 }
+            }
+
+            if let Some((_, contact, ribbon_id)) = crash {
+                self.updates
+                    .push(ArenaUpdate::UpdateLightcyclePosition(*id, contact));
+                self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
+                    *id,
+                    DeathCause::Trail(ribbon_id),
+                ));
+                continue 'next_lightcycle;
             }
 
             // test for arena bounds collisions
@@ -559,6 +529,43 @@ impl From<&Arena> for ArenaOverview {
     }
 }
 
+/// Where a lightcycle travelling in a straight line from `from` to `to` first
+/// touches the trail segment from `a` to `b`, ends included. Touching it only at
+/// `from` doesn't count: a lightcycle's own trail always ends where the
+/// lightcycle was, and anything else there would have crashed it already.
+///
+/// Both the path and the segment must be horizontal or vertical, so that each
+/// is the same as its bounding box.
+fn first_contact(
+    from: ArenaPoint,
+    to: ArenaPoint,
+    a: ArenaPoint,
+    b: ArenaPoint,
+) -> Option<ArenaPoint> {
+    let min = ArenaPoint::new(
+        from.x.min(to.x).max(a.x.min(b.x)),
+        from.y.min(to.y).max(a.y.min(b.y)),
+    );
+    let max = ArenaPoint::new(
+        from.x.max(to.x).min(a.x.max(b.x)),
+        from.y.max(to.y).min(a.y.max(b.y)),
+    );
+    if min.x > max.x || min.y > max.y {
+        return None;
+    }
+
+    // The two touch along the part of the path from `min` to `max`.
+    let (near, far) = if (to - from).dot(max - min) >= 0.0 {
+        (min, max)
+    } else {
+        (max, min)
+    };
+    if far == from {
+        return None;
+    }
+    Some(near)
+}
+
 /// Returns true if the bike at `pos` (traveling vertically if `bike_is_vertical`,
 /// horizontally otherwise) is within `SLIPSTREAM_DISTANCE` of the parallel segment
 /// from `p1` to `p2` and alongside it.
@@ -623,12 +630,173 @@ mod tests {
             },
         );
 
-        arena.calculate_lightcycle_collisions(0.05).apply_updates();
+        let starts = HashMap::from([(id, ArenaPoint::new(91.0, 150.0))]);
+        arena
+            .calculate_lightcycle_collisions(&starts)
+            .apply_updates();
         assert_eq!(arena.unrecorded_deaths, vec![(id, DeathCause::Trail(id))]);
         assert_eq!(
             arena.lightcycles[&id].death_cause,
             Some(DeathCause::Trail(id))
         );
+    }
+
+    /// A running arena with one lightcycle at `position`, trailing `ribbon`.
+    fn arena_with_lightcycle(
+        id: PlayerId,
+        position: ArenaPoint,
+        direction: Direction,
+        ribbon: Vec<ArenaPoint>,
+    ) -> Arena {
+        let mut arena = Arena {
+            started: Some(Utc::now() - OldDuration::seconds(1)),
+            ..Default::default()
+        };
+        arena.lightcycles.insert(
+            id,
+            Lightcycle {
+                position,
+                direction,
+                ..Default::default()
+            },
+        );
+        arena.lightribbons.insert(
+            id,
+            Lightribbon {
+                paths: vec![ribbon],
+            },
+        );
+        arena
+    }
+
+    #[test]
+    fn crossing_a_trail_exactly_at_one_of_its_points_crashes() {
+        let id = PlayerId::default();
+        // About to cross its own trail at (100, 155), where the trail has a
+        // point between two segments in a straight line. One update moves a
+        // lightcycle 2.75 exactly, landing on it.
+        let mut arena = arena_with_lightcycle(
+            id,
+            ArenaPoint::new(102.75, 155.0),
+            Direction::Left,
+            vec![
+                ArenaPoint::new(100.0, 100.0),
+                ArenaPoint::new(100.0, 155.0),
+                ArenaPoint::new(100.0, 210.0),
+                ArenaPoint::new(127.5, 210.0),
+                ArenaPoint::new(127.5, 155.0),
+                ArenaPoint::new(102.75, 155.0),
+            ],
+        );
+
+        arena.update(0.05);
+        assert_eq!(
+            arena.lightcycles[&id].death_cause,
+            Some(DeathCause::Trail(id))
+        );
+        assert_eq!(
+            arena.lightcycles[&id].position,
+            ArenaPoint::new(100.0, 155.0)
+        );
+    }
+
+    #[test]
+    fn lightcycles_crash_at_the_first_trail_in_their_way() {
+        let id = PlayerId::default();
+        let other = PlayerId::default();
+        // Heading right through its own trail at x = 101 and another's at
+        // x = 100, which is inserted second.
+        let mut arena = arena_with_lightcycle(
+            id,
+            ArenaPoint::new(98.0, 50.0),
+            Direction::Right,
+            vec![
+                ArenaPoint::new(101.0, 0.0),
+                ArenaPoint::new(101.0, 100.0),
+                ArenaPoint::new(90.0, 100.0),
+                ArenaPoint::new(90.0, 50.0),
+                ArenaPoint::new(98.0, 50.0),
+            ],
+        );
+        arena.lightribbons.insert(
+            other,
+            Lightribbon {
+                paths: vec![vec![
+                    ArenaPoint::new(100.0, 0.0),
+                    ArenaPoint::new(100.0, 100.0),
+                ]],
+            },
+        );
+
+        arena.update(0.05);
+        assert_eq!(
+            arena.lightcycles[&id].death_cause,
+            Some(DeathCause::Trail(other))
+        );
+        assert_eq!(
+            arena.lightcycles[&id].position,
+            ArenaPoint::new(100.0, 50.0)
+        );
+    }
+
+    #[test]
+    fn turning_twice_in_one_update_is_not_a_crash() {
+        let id = PlayerId::default();
+        let mut arena = arena_with_lightcycle(
+            id,
+            ArenaPoint::new(100.0, 110.0),
+            Direction::Up,
+            vec![ArenaPoint::new(100.0, 100.0), ArenaPoint::new(100.0, 110.0)],
+        );
+
+        arena.process_input(id, ArenaInput::Turn(Direction::Left));
+        arena.process_input(id, ArenaInput::Turn(Direction::Right));
+        for _ in 0..10 {
+            arena.update(0.05);
+        }
+        assert!(!arena.lightcycles[&id].dead);
+        assert_eq!(arena.lightcycles[&id].direction, Direction::Right);
+    }
+
+    #[test]
+    fn lightcycles_at_any_speed_dont_crash_into_their_own_trail() {
+        let id = PlayerId::default();
+        // Speeds between the two limits, as when a slipstream boost ramps up
+        // or down, move a lightcycle by amounts that aren't exact.
+        for step in 0..=1000 {
+            let speed = LIGHTCYCLE_SPEED
+                + (LIGHTCYCLE_BOOST_SPEED - LIGHTCYCLE_SPEED) * step as f64 / 1000.0;
+            let mut arena = arena_with_lightcycle(
+                id,
+                ArenaPoint::new(280.0, 280.0),
+                Direction::Down,
+                vec![ArenaPoint::new(280.0, 300.0), ArenaPoint::new(280.0, 280.0)],
+            );
+            arena.lightcycles.get_mut(&id).unwrap().speed = speed;
+            arena.update(0.05);
+            arena.process_input(id, ArenaInput::Turn(Direction::Right));
+            for _ in 0..10 {
+                arena.update(0.05);
+            }
+            assert!(
+                !arena.lightcycles[&id].dead,
+                "crashed starting at speed {speed}"
+            );
+        }
+    }
+
+    #[test]
+    fn turning_the_way_a_lightcycle_is_going_does_nothing() {
+        let id = PlayerId::default();
+        let mut arena = arena_with_lightcycle(
+            id,
+            ArenaPoint::new(100.0, 110.0),
+            Direction::Up,
+            vec![ArenaPoint::new(100.0, 100.0), ArenaPoint::new(100.0, 110.0)],
+        );
+
+        arena.process_input(id, ArenaInput::Turn(Direction::Up));
+        assert!(arena.updates.is_empty());
     }
 
     #[test]

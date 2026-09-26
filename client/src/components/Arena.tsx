@@ -137,6 +137,17 @@ function useStartKeys(enabled: boolean, onStart: () => void) {
   useEventListener('keydown', onKeyDown)
 }
 
+const turnKeys = {
+  ArrowUp: 'up',
+  w: 'up',
+  ArrowLeft: 'left',
+  a: 'left',
+  ArrowRight: 'right',
+  d: 'right',
+  ArrowDown: 'down',
+  s: 'down',
+}
+
 function useKeyControls(started) {
   const onTurn = useTurnCallback()
 
@@ -144,24 +155,12 @@ function useKeyControls(started) {
     (event) => {
       if (!started) return
 
-      switch (event.key) {
-        case 'ArrowUp':
-        case 'w':
-          event.preventDefault()
-          return onTurn('up')
-        case 'ArrowLeft':
-        case 'a':
-          event.preventDefault()
-          return onTurn('left')
-        case 'ArrowRight':
-        case 'd':
-          event.preventDefault()
-          return onTurn('right')
-        case 'ArrowDown':
-        case 's':
-          event.preventDefault()
-          return onTurn('down')
-      }
+      const direction = turnKeys[event.key]
+      if (!direction) return
+      event.preventDefault()
+      // A held key would otherwise send the same turn over and over.
+      if (event.repeat) return
+      onTurn(direction)
     },
     [started, onTurn],
   )

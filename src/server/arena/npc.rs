@@ -1,6 +1,7 @@
 mod planner;
 
 use super::*;
+use crate::server::ArenaLine;
 use getrandom::SysRng;
 use rand_core::{Rng, UnwrapErr};
 
