@@ -11,13 +11,17 @@ impl ArenaInput {
     pub fn process_into_updates(self, arena: &mut Arena, player_id: PlayerId) -> Vec<ArenaUpdate> {
         match self {
             ArenaInput::Start => {
-                if arena.started.is_some() {
+                // A round can be cut short once only NPCs are left in it.
+                if arena.started.is_some() && arena.any_human_alive() {
                     trace!(
                         "Refusing to start arena that is already started: {}",
                         arena.id
                     );
                     return vec![];
                 }
+                // Forget an NPC winner of a round cut short, so the new
+                // round isn't ended when that winner's timeout runs out.
+                arena.winner_at = None;
 
                 let mut updates = Vec::with_capacity(
                     1 + arena.lightcycles.len()

@@ -9,6 +9,7 @@ export type Point = [number, number]
 export type Player = {
   name: string
   color: Color
+  npc?: boolean
 }
 
 export type Lightcycle = {

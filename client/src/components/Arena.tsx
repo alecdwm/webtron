@@ -37,6 +37,11 @@ export default function Arena() {
   // The player count is only meaningful before the first round: afterwards
   // it also counts NPCs from the round that just ended.
   const roundPlayed = Object.keys(arena.lightcycles).length > 0
+  // Once every human is out, anyone can start the next round without
+  // waiting for the NPCs to finish this one.
+  const humanAlive = Object.entries(arena.lightcycles).some(([id, { dead }]) => !dead && !arena.players[id]?.npc)
+  const canCutShort = arena.started !== null && roundPlayed && !humanAlive
+  const showLobby = arena.started === null || canCutShort
 
   return (
     <div ref={arenaRef} className={styles.arena}>
@@ -76,7 +81,7 @@ export default function Arena() {
 
       {arena.started !== null ? <Countdown key={arena.started.valueOf()} startAt={arena.started.valueOf()} /> : null}
 
-      {winner || arena.started === null ? (
+      {winner || showLobby ? (
         <div className={styles.overlay}>
           {winner && (
             <div className={styles.winner} style={{ '--winner': colorToHexString(winner.color) } as CSSProperties}>
@@ -86,11 +91,11 @@ export default function Arena() {
             </div>
           )}
 
-          {arena.started === null ? (
+          {showLobby ? (
             <div className={styles.lobby}>
-              {!winner && <div className={styles.arenaName}>{arena.name}</div>}
+              {!winner && !canCutShort && <div className={styles.arenaName}>{arena.name}</div>}
               <MenuButton className={styles.startButton} onClick={onStart}>
-                {winner ? 'REMATCH' : 'START'}
+                {winner || canCutShort ? 'REMATCH' : 'START'}
               </MenuButton>
               {!roundPlayed && (
                 <div className={styles.lobbyInfo}>

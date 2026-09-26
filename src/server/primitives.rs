@@ -35,6 +35,9 @@ pub struct Player {
     pub id: PlayerId,
     pub name: String,
     pub color: PlayerColor,
+    /// Set by the server for computer-controlled players; clients can't set it.
+    #[serde(skip_deserializing)]
+    pub npc: bool,
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]

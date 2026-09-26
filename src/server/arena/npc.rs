@@ -402,6 +402,7 @@ pub fn create_npc_players(count: usize) -> Vec<Player> {
             id: PlayerId::default(),
             name: name.to_string(),
             color,
+            npc: true,
         });
     }
 

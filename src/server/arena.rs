@@ -88,6 +88,13 @@ impl Arena {
             .filter(|id| !self.npc_states.contains_key(id))
     }
 
+    /// Whether any human player's lightcycle is still in the round.
+    pub fn any_human_alive(&self) -> bool {
+        self.lightcycles
+            .iter()
+            .any(|(id, lightcycle)| !lightcycle.dead && !self.npc_states.contains_key(id))
+    }
+
     pub fn clear_updates(&mut self) {
         self.updates.clear();
         self.updates_applied_so_far = 0;
@@ -614,5 +621,39 @@ mod tests {
             update.apply(&mut client);
         }
         assert_eq!(client.players.len(), 3);
+    }
+
+    #[test]
+    fn rounds_restart_once_only_npcs_are_left() {
+        let mut arena = Arena::default();
+        let human = Player {
+            id: PlayerId::default(),
+            name: "A".to_string(),
+            ..Default::default()
+        };
+        arena.add_player(human.clone());
+        arena.apply_updates();
+        arena.process_input(human.id, ArenaInput::Start);
+        arena.apply_updates();
+        let first_start = arena.started;
+        let first_npcs: Vec<PlayerId> = arena.npc_states.keys().copied().collect();
+
+        // Refused while the human is alive.
+        arena.process_input(human.id, ArenaInput::Start);
+        arena.apply_updates();
+        assert_eq!(arena.started, first_start);
+
+        arena
+            .updates
+            .push(ArenaUpdate::UpdateLightcycleApplyDeath(human.id));
+        arena.apply_updates();
+        arena.winner_at = Some(Utc::now());
+        arena.process_input(human.id, ArenaInput::Start);
+        arena.apply_updates();
+
+        assert_ne!(arena.started, first_start);
+        assert!(arena.winner_at.is_none());
+        assert!(!arena.lightcycles[&human.id].dead);
+        assert!(first_npcs.iter().all(|id| !arena.players.contains_key(id)));
     }
 }
