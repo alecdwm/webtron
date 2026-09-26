@@ -586,6 +586,9 @@ impl Default for Arena {
 }
 
 /// ArenaOverview represents an overview of an Arena for the arena selection screen.
+///
+/// It lists human players only. NPCs make way for humans when the next round
+/// starts, so an arena filled out with NPCs is still open to join.
 #[derive(Debug, Clone, Serialize)]
 pub struct ArenaOverview {
     id: ArenaId,
@@ -602,7 +605,10 @@ impl From<&Arena> for ArenaOverview {
             name: arena.name.clone(),
             max_players: arena.max_players,
             started: arena.started,
-            players: arena.players.clone(),
+            players: arena
+                .human_player_ids()
+                .map(|id| (id, arena.players[&id].clone()))
+                .collect(),
         }
     }
 }
@@ -1042,6 +1048,23 @@ mod tests {
         server_players.sort_by_key(|id| id.to_string());
         client_players.sort_by_key(|id| id.to_string());
         assert_eq!(client_players, server_players);
+    }
+
+    #[test]
+    fn arena_overview_lists_human_players_only() {
+        let mut arena = Arena::default();
+        let human = Player {
+            id: PlayerId::default(),
+            name: "A".to_string(),
+            ..Default::default()
+        };
+        arena.add_player(human.clone());
+        arena.process_input(human.id, ArenaInput::Start);
+        arena.apply_updates();
+        assert!(!arena.npc_states.is_empty());
+
+        let overview = ArenaOverview::from(&arena);
+        assert_eq!(overview.players.keys().collect::<Vec<_>>(), vec![&human.id]);
     }
 
     #[test]
