@@ -7,15 +7,8 @@ export function randomColor(): Color {
   return colors[Math.floor(Math.random() * colors.length)]
 }
 
-const hexStrings: Record<Color, string> = {
-  blue: '#00c2cc',
-  green: '#2ee53d',
-  orange: '#f2d91a',
-  purple: '#8a2ee5',
-  red: '#e5482e',
-  white: '#e5feff',
-}
-
-export function colorToHexString(color: Color): string {
-  return hexStrings[color]
+// The color's custom property from index.css, which holds a wide-gamut version
+// of it on displays that can show one.
+export function colorToCss(color: Color): string {
+  return `var(--${color})`
 }

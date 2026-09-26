@@ -18,7 +18,7 @@ import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
 import type { Arena as ArenaType, Color, ControlScheme, Direction, Side } from '@/types'
-import { colorToHexString } from '@/utils/colors'
+import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 
 import styles from './Arena.module.css'
@@ -111,7 +111,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
         {winner || showLobby ? (
           <div className={styles.overlay}>
             {winner && (
-              <div className={styles.winner} style={{ '--winner': colorToHexString(winner.color) } as CSSProperties}>
+              <div className={styles.winner} style={{ '--winner': colorToCss(winner.color) } as CSSProperties}>
                 <div className={styles.winnerLabel}>Winner</div>
                 <div className={styles.winnerName}>{winner.name.toUpperCase()}</div>
                 {leaderboard ? <Leaderboard leaderboard={leaderboard} playerColor={player.color} /> : null}

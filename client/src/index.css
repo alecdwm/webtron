@@ -17,6 +17,17 @@
   --red: #e5482e;
   --white: #e5feff;
 }
+/* On wide-gamut displays, the same colors at their Display P3 chroma limit,
+   with the same OKLCH lightness and hue. */
+@media (color-gamut: p3) {
+  :root {
+    --blue: color(display-p3 0 0.771 0.832);
+    --green: color(display-p3 0.253 0.92 0);
+    --orange: color(display-p3 0.95 0.852 0);
+    --purple: color(display-p3 0.516 0 0.947);
+    --red: color(display-p3 0.916 0.176 0);
+  }
+}
 :root {
   --footer-height: 4rem;
 

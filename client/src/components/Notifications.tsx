@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 
 import type { Arena, Color, DeathCause, Player } from '@/types'
-import { colorToHexString } from '@/utils/colors'
+import { colorToCss } from '@/utils/colors'
 
 import styles from './Notifications.module.css'
 
@@ -56,14 +56,14 @@ export default function Notifications({ arena }: { arena: Arena }) {
           className={styles.notification}
           style={
             {
-              '--notification': colorToHexString(color),
+              '--notification': colorToCss(color),
               animationDuration: `${NOTIFICATION_MS}ms`,
             } as CSSProperties
           }
         >
           {parts.map(({ text, color }, index) =>
             color ? (
-              <span key={index} className={styles.name} style={{ '--name': colorToHexString(color) } as CSSProperties}>
+              <span key={index} className={styles.name} style={{ '--name': colorToCss(color) } as CSSProperties}>
                 {text}
               </span>
             ) : (

@@ -6,7 +6,7 @@ import useArenaListPolling from '@/hooks/useArenaListPolling'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
-import { colorToHexString } from '@/utils/colors'
+import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 import resolveClassName from '@/utils/resolveClassName'
 
@@ -65,7 +65,7 @@ export default function ArenaSelect() {
                   <img
                     key={playerId}
                     className={styles.arenaPlayer}
-                    style={{ color: colorToHexString(player.color) }}
+                    style={{ color: colorToCss(player.color) }}
                     src={lightcycleImages[player.color]}
                     alt={player.name}
                     title={player.name}

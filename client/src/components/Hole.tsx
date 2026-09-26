@@ -1,7 +1,7 @@
 import { type CSSProperties, memo } from 'react'
 
 import type { Color, Point } from '@/types'
-import { colorToHexString } from '@/utils/colors'
+import { colorToCss } from '@/utils/colors'
 
 import styles from './Hole.module.css'
 
@@ -18,7 +18,7 @@ type HoleProps = {
 // laid across it show on top.
 function Hole({ color, position, radius, width, height }: HoleProps) {
   const style = {
-    '--hole': colorToHexString(color),
+    '--hole': colorToCss(color),
     left: `${(position[0] / width) * 100}%`,
     bottom: `${(position[1] / height) * 100}%`,
     width: `${((radius * 2) / width) * 100}%`,

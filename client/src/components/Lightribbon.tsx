@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo } from 'react'
 
 import { useArenaAnimationContext } from '@/hooks/useArenaAnimation'
 import type { Color, Point } from '@/types'
-import { colorToHexString } from '@/utils/colors'
+import { colorToCss } from '@/utils/colors'
 import resolveClassName from '@/utils/resolveClassName'
 import { liveSegmentData, pathData } from '@/utils/ribbonPath'
 
@@ -57,7 +57,7 @@ function Lightribbon(props: LightribbonProps) {
       {/* Soft halo, then the solid ribbon, then a bright core. */}
       <g
         className={styles.halo}
-        stroke={colorToHexString(color)}
+        style={{ stroke: colorToCss(color) }}
         strokeWidth="9"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -65,7 +65,7 @@ function Lightribbon(props: LightribbonProps) {
       >
         {layer}
       </g>
-      <g stroke={colorToHexString(color)} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" fill="none">
+      <g style={{ stroke: colorToCss(color) }} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" fill="none">
         {layer}
       </g>
       <g className={styles.core} strokeWidth="1" shapeRendering="crispEdges" fill="none">

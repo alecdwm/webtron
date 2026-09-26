@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 
 import type { Color, Leaderboard as LeaderboardType, LeaderboardEntry } from '@/types'
-import { colorToHexString } from '@/utils/colors'
+import { colorToCss } from '@/utils/colors'
 import resolveClassName from '@/utils/resolveClassName'
 
 import styles from './Leaderboard.module.css'
@@ -35,7 +35,7 @@ export default function Leaderboard({ leaderboard: { top, player }, playerColor 
 }
 
 function Entry({ entry: { rank, name, wins, kills, color }, self }: { entry: LeaderboardEntry; self: boolean }) {
-  const style = color ? ({ '--entry': colorToHexString(color) } as CSSProperties) : undefined
+  const style = color ? ({ '--entry': colorToCss(color) } as CSSProperties) : undefined
   return (
     <li className={resolveClassName([styles.entry, self && styles.self])} style={style}>
       <span className={styles.rank}>{rank ?? '–'}</span>

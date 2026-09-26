@@ -2,7 +2,7 @@ import { type CSSProperties, memo, useCallback } from 'react'
 
 import { useArenaAnimationContext } from '@/hooks/useArenaAnimation'
 import type { Color, Direction } from '@/types'
-import { colorToHexString } from '@/utils/colors'
+import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 import resolveClassName from '@/utils/resolveClassName'
 
@@ -40,7 +40,7 @@ function Lightcycle({ id, name, color, direction, speed, dead, isSelf, inLobby }
   )
 
   const transform = `translate(-50%, 50%) rotate(${rotationMap[direction]})`
-  const colorVars = { '--cycle': colorToHexString(color) } as CSSProperties
+  const colorVars = { '--cycle': colorToCss(color) } as CSSProperties
   // The beam reaches further as the lightcycle speeds up.
   const beamVars = {
     '--beam-reach': 1 + Math.max(0, speed - LIGHTCYCLE_SPEED) / LIGHTCYCLE_SPEED,

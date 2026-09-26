@@ -13,7 +13,7 @@ import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import type { Color, ControlScheme } from '@/types'
-import colors, { colorToHexString } from '@/utils/colors'
+import colors, { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 import resolveClassName from '@/utils/resolveClassName'
 import statusFromSocketState from '@/utils/statusFromSocketState'
@@ -96,7 +96,7 @@ export default function MainMenu() {
   const status = statusFromSocketState(socketState)
 
   return (
-    <div className={styles.mainMenu} style={{ '--player': colorToHexString(player.color) } as CSSProperties}>
+    <div className={styles.mainMenu} style={{ '--player': colorToCss(player.color) } as CSSProperties}>
       {joinError ? (
         <div className={styles.errorText} role="alert">
           {joinError}
@@ -150,7 +150,7 @@ export default function MainMenu() {
             <button
               key={color}
               className={resolveClassName([styles.swatch, color === player.color && styles.swatchSelected])}
-              style={{ '--swatch': colorToHexString(color) } as CSSProperties}
+              style={{ '--swatch': colorToCss(color) } as CSSProperties}
               onClick={() => selectColor(color)}
               aria-label={color}
               aria-pressed={color === player.color}
