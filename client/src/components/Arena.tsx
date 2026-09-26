@@ -1,6 +1,7 @@
 import { type CSSProperties, useCallback, useRef } from 'react'
 
 import { start, turn } from '@/actions'
+import { playClick } from '@/audio/sound'
 import ArenaGrid from '@/components/ArenaGrid'
 import Countdown from '@/components/Countdown'
 import Hole from '@/components/Hole'
@@ -42,6 +43,7 @@ export default function Arena() {
   const humanAlive = Object.entries(arena.lightcycles).some(([id, { dead }]) => !dead && !arena.players[id]?.npc)
   const canCutShort = arena.started !== null && roundPlayed && !humanAlive
   const showLobby = arena.started === null || canCutShort
+  useStartKeys(showLobby, onStart)
 
   return (
     <div ref={arenaRef} className={styles.arena}>
@@ -114,6 +116,22 @@ export default function Arena() {
 function useTurnCallback() {
   const dispatch = useStoreDispatch()
   return useCallback((direction) => dispatch(turn(direction)), [dispatch])
+}
+
+// Enter or Space presses the START / REMATCH button while it is shown.
+function useStartKeys(enabled: boolean, onStart: () => void) {
+  const onKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!enabled || event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return
+      // A focused button or field already handles these keys itself.
+      if (event.target instanceof HTMLElement && event.target.closest('button, input, textarea, select')) return
+      event.preventDefault()
+      playClick()
+      onStart()
+    },
+    [enabled, onStart],
+  )
+  useEventListener('keydown', onKeyDown)
 }
 
 function useKeyControls(started) {
