@@ -43,9 +43,13 @@ impl ArenaInput {
                     .copied()
                     .for_each(|id| updates.push(ArenaUpdate::RemoveLightribbon(id)));
 
-                // add NPC players
-                arena.npc_states.clear();
-                let npc_count = npc::npc_count_for_arena(arena.players.len());
+                // replace the last round's NPC players, which stay until now
+                // so the end of the round can still show their names
+                let human_ids: Vec<PlayerId> = arena.human_player_ids().collect();
+                for (npc_id, _) in arena.npc_states.drain() {
+                    updates.push(ArenaUpdate::RemovePlayer(npc_id));
+                }
+                let npc_count = npc::npc_count_for_arena(human_ids.len());
                 let npc_players = npc::create_npc_players(npc_count);
                 for npc_player in &npc_players {
                     arena
@@ -55,7 +59,7 @@ impl ArenaInput {
                 }
 
                 // add new lightcycles and lightribbons
-                let mut player_ids: Vec<PlayerId> = arena.players.keys().copied().collect();
+                let mut player_ids = human_ids;
                 player_ids.extend(npc_players.iter().map(|p| p.id));
                 calculate_spawnpoints(player_ids).drain(..).for_each(
                     |(player_id, spawn_position, spawn_direction)| {

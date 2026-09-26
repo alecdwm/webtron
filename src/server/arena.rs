@@ -79,6 +79,13 @@ impl Arena {
         self.updates.push(ArenaUpdate::RemovePlayer(player_id));
     }
 
+    pub fn human_player_ids(&self) -> impl Iterator<Item = PlayerId> + '_ {
+        self.players
+            .keys()
+            .copied()
+            .filter(|id| !self.npc_states.contains_key(id))
+    }
+
     pub fn clear_updates(&mut self) {
         self.updates.clear();
         self.updates_applied_so_far = 0;
@@ -530,5 +537,38 @@ fn segment_is_parallel_slipstream(
             return false;
         }
         (pos.y - p1.y).abs() <= SLIPSTREAM_DISTANCE && pos.x >= min_x && pos.x <= max_x
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clients_see_npc_players_replaced_each_round() {
+        let mut arena = Arena::default();
+        let human = Player {
+            id: PlayerId::default(),
+            name: "A".to_string(),
+            ..Default::default()
+        };
+        arena.add_player(human.clone());
+        arena.apply_updates();
+
+        for _ in 0..3 {
+            arena.process_input(human.id, ArenaInput::Start);
+            arena.apply_updates();
+            arena.updates.push(ArenaUpdate::End);
+            arena.apply_updates();
+            assert_eq!(arena.players.len(), 3);
+        }
+        assert_eq!(arena.human_player_ids().collect::<Vec<_>>(), vec![human.id]);
+
+        // Clients build their copy of the arena from the same updates.
+        let mut client = Arena::default();
+        for update in &arena.updates {
+            update.apply(&mut client);
+        }
+        assert_eq!(client.players.len(), 3);
     }
 }

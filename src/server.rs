@@ -65,8 +65,8 @@ impl Server {
         self.arenas.retain(|_, arena| {
             arena.update(delta_time);
 
-            // discard arena if all players have left
-            !arena.players.is_empty()
+            // discard arena if all human players have left
+            arena.human_player_ids().next().is_some()
         });
 
         let winners: Vec<(ArenaId, PlayerId)> = self
@@ -317,7 +317,7 @@ impl Server {
                     .get_mut(&arena_id)
                     .ok_or_else(|| anyhow!("Arena {} not found", arena_id))?;
 
-                if arena.players.len() >= arena.max_players {
+                if arena.human_player_ids().count() >= arena.max_players {
                     return Err(anyhow!("Arena {} is full", arena_id));
                 }
 
