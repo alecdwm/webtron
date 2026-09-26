@@ -1,0 +1,24 @@
+services:
+  main:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM alpine:3
+        COPY webtron /bin/webtron
+        EXPOSE 3000
+        CMD /bin/webtron -b 0.0.0.0
+    image: webtron
+    ports:
+      - 3000:3000
+    environment:
+      LEADERBOARD_PATH: /data/leaderboard.jsonl
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+    restart: unless-stopped
+
+volumes:
+  data:
