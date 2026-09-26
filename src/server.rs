@@ -6,12 +6,13 @@ mod primitives;
 use anyhow::{Context as ResultContext, Error, anyhow};
 use log::{error, info, warn};
 use std::collections::HashMap;
+use std::mem;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time;
 
-pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate};
-pub use leaderboard::{Leaderboard, LeaderboardStandings};
+pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate, DeathCause};
+pub use leaderboard::{Leaderboard, LeaderboardStandings, Stat};
 pub use messages::{MessageIn, MessageOut};
 pub use primitives::*;
 
@@ -69,53 +70,70 @@ impl Server {
             arena.human_player_ids().next().is_some()
         });
 
-        let winners: Vec<(ArenaId, PlayerId)> = self
-            .arenas
-            .values_mut()
-            .filter_map(|arena| Some((arena.id, arena.unrecorded_winner.take()?)))
-            .collect();
-        for (arena_id, winner) in winners {
-            if let Some(arena) = self.arenas.get(&arena_id) {
-                self.record_winner(arena, winner);
-            }
+        let ids: Vec<ArenaId> = self.arenas.keys().copied().collect();
+        for arena_id in ids {
+            self.record_leaderboard_events(arena_id);
         }
     }
 
-    /// Adds a win to the leaderboard, with the colour it was won in, if the
-    /// winner is a human player, then sends the leaderboard to everyone in
-    /// the arena. The leaderboard file is
-    /// written off the game loop.
-    fn record_winner(&self, arena: &Arena, winner: PlayerId) {
-        let human_winner = arena
-            .players
-            .get(&winner)
-            .filter(|_| !arena.npc_states.contains_key(&winner))
-            .map(|player| (player.name.clone(), player.color));
+    /// Adds this update's rounds, wins, kills and deaths of human players to
+    /// the leaderboard. If the round was won, sends the leaderboard to everyone
+    /// in the arena. The leaderboard file is used off the game loop.
+    fn record_leaderboard_events(&mut self, arena_id: ArenaId) {
+        let Some(arena) = self.arenas.get_mut(&arena_id) else {
+            return;
+        };
+        let winner = arena.unrecorded_winner.take();
+        let deaths = mem::take(&mut arena.unrecorded_deaths);
+        let round_players = mem::take(&mut arena.unrecorded_round_players);
+        let arena = &*arena;
 
-        let recipients: Vec<(Sender<MessageOut>, Option<String>)> = self
-            .clients
-            .values()
-            .filter(|client| client.arena == Some(arena.id))
-            .map(|client| {
-                let name = client
-                    .player
-                    .and_then(|id| arena.players.get(&id))
-                    .map(|player| player.name.clone());
-                (client.tx.clone(), name)
-            })
-            .collect();
+        let human_name = |id: &PlayerId| human_name(arena, id);
+
+        let mut events: Vec<(String, Stat)> = Vec::new();
+        for player in round_players {
+            if let Some(name) = human_name(&player) {
+                events.push((name, Stat::RoundPlayed));
+            }
+        }
+        for (victim, cause) in deaths {
+            events.extend(death_events(arena, victim, cause));
+        }
+        if let Some(winner) = winner {
+            if let (Some(name), Some(player)) = (human_name(&winner), arena.players.get(&winner)) {
+                events.push((name, Stat::Win(player.color)));
+            }
+        }
+
+        if events.is_empty() && winner.is_none() {
+            return;
+        }
+
+        // Only a won round shows the leaderboard.
+        let recipients: Vec<(Sender<MessageOut>, Option<String>)> = match winner {
+            Some(_) => self
+                .clients
+                .values()
+                .filter(|client| client.arena == Some(arena.id))
+                .map(|client| {
+                    let name = client
+                        .player
+                        .and_then(|id| arena.players.get(&id))
+                        .map(|player| player.name.clone());
+                    (client.tx.clone(), name)
+                })
+                .collect(),
+            None => Vec::new(),
+        };
 
         let leaderboard = self.leaderboard.clone();
         tokio::spawn(async move {
             let standings = tokio::task::spawn_blocking(move || {
-                let wins = match human_winner {
-                    Some((name, color)) => leaderboard.record_win(&name, color)?,
-                    None => leaderboard.wins()?,
-                };
+                let stats = leaderboard.record(&events)?;
                 Ok::<_, Error>(
                     recipients
                         .into_iter()
-                        .map(|(tx, name)| (tx, wins.standings(name.as_deref())))
+                        .map(|(tx, name)| (tx, stats.standings(name.as_deref())))
                         .collect::<Vec<_>>(),
                 )
             })
@@ -351,5 +369,129 @@ impl Server {
             }
         }
         Ok(())
+    }
+}
+
+/// The name of a human player in the arena, or `None` for an NPC or a player
+/// who has left.
+fn human_name(arena: &Arena, id: &PlayerId) -> Option<String> {
+    arena
+        .players
+        .get(id)
+        .filter(|_| !arena.npc_states.contains_key(id))
+        .map(|player| player.name.clone())
+}
+
+/// The leaderboard events for a lightcycle's death: a kill for the human
+/// player whose trail it hit, and the kind of death for a human victim.
+fn death_events(arena: &Arena, victim: PlayerId, cause: DeathCause) -> Vec<(String, Stat)> {
+    let victim_name = human_name(arena, &victim);
+    let owner = match cause {
+        DeathCause::Boundary => {
+            return victim_name
+                .map(|name| (name, Stat::ArenaDeath))
+                .into_iter()
+                .collect();
+        }
+        DeathCause::Lightcycle => {
+            return victim_name
+                .map(|name| (name, Stat::HeadonCrash))
+                .into_iter()
+                .collect();
+        }
+        DeathCause::Trail(owner) => owner,
+    };
+    if owner == victim {
+        return victim_name
+            .map(|name| (name, Stat::Suicide))
+            .into_iter()
+            .collect();
+    }
+
+    let mut events = Vec::new();
+    if let Some(name) = human_name(arena, &owner) {
+        let kill = if arena.npc_states.contains_key(&victim) {
+            Stat::NpcKill
+        } else {
+            Stat::PlayerKill
+        };
+        events.push((name, kill));
+    }
+    if let Some(name) = victim_name {
+        let death = if arena.npc_states.contains_key(&owner) {
+            Stat::NpcDeath
+        } else {
+            Stat::PlayerDeath
+        };
+        events.push((name, death));
+    }
+    events
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn player(arena: &mut Arena, name: &str, npc: bool) -> PlayerId {
+        let id = PlayerId::default();
+        arena.players.insert(
+            id,
+            Player {
+                id,
+                name: name.to_string(),
+                npc,
+                ..Default::default()
+            },
+        );
+        if npc {
+            arena.npc_states.insert(id, Default::default());
+        }
+        id
+    }
+
+    fn events(list: &[(&str, Stat)]) -> Vec<(String, Stat)> {
+        list.iter()
+            .map(|(name, stat)| (name.to_string(), *stat))
+            .collect()
+    }
+
+    #[test]
+    fn crashing_into_your_own_trail_is_only_a_suicide() {
+        let mut arena = Arena::default();
+        let alec = player(&mut arena, "alec", false);
+        assert_eq!(
+            death_events(&arena, alec, DeathCause::Trail(alec)),
+            events(&[("alec", Stat::Suicide)])
+        );
+    }
+
+    #[test]
+    fn crashes_into_other_trails_count_for_both_players() {
+        let mut arena = Arena::default();
+        let alec = player(&mut arena, "alec", false);
+        let bob = player(&mut arena, "bob", false);
+        let clu = player(&mut arena, "CLU", true);
+
+        assert_eq!(
+            death_events(&arena, bob, DeathCause::Trail(alec)),
+            events(&[("alec", Stat::PlayerKill), ("bob", Stat::PlayerDeath)])
+        );
+        assert_eq!(
+            death_events(&arena, clu, DeathCause::Trail(alec)),
+            events(&[("alec", Stat::NpcKill)])
+        );
+        assert_eq!(
+            death_events(&arena, alec, DeathCause::Trail(clu)),
+            events(&[("alec", Stat::NpcDeath)])
+        );
+        assert_eq!(death_events(&arena, clu, DeathCause::Trail(clu)), vec![]);
+        assert_eq!(
+            death_events(&arena, alec, DeathCause::Boundary),
+            events(&[("alec", Stat::ArenaDeath)])
+        );
+        assert_eq!(
+            death_events(&arena, bob, DeathCause::Lightcycle),
+            events(&[("bob", Stat::HeadonCrash)])
+        );
     }
 }

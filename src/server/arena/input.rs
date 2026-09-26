@@ -53,6 +53,7 @@ impl ArenaInput {
                 for (npc_id, _) in arena.npc_states.drain() {
                     updates.push(ArenaUpdate::RemovePlayer(npc_id));
                 }
+                arena.unrecorded_round_players.extend(&human_ids);
                 let npc_count = npc::npc_count_for_arena(human_ids.len());
                 let npc_players = npc::create_npc_players(npc_count);
                 for npc_player in &npc_players {

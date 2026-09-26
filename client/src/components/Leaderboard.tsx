@@ -17,7 +17,7 @@ export default function Leaderboard({ leaderboard: { top, player }, playerColor 
 
   return (
     <div className={styles.leaderboard}>
-      <div className={styles.title}>Most wins</div>
+      <div className={styles.title}>Leaderboard</div>
       {top.length > 0 ? (
         <ol className={styles.grid}>
           {top.map((entry) => (
@@ -34,13 +34,18 @@ export default function Leaderboard({ leaderboard: { top, player }, playerColor 
   )
 }
 
-function Entry({ entry: { rank, name, wins, color }, self }: { entry: LeaderboardEntry; self: boolean }) {
+function Entry({ entry: { rank, name, wins, kills, color }, self }: { entry: LeaderboardEntry; self: boolean }) {
   const style = color ? ({ '--entry': colorToHexString(color) } as CSSProperties) : undefined
   return (
     <li className={resolveClassName([styles.entry, self && styles.self])} style={style}>
       <span className={styles.rank}>{rank ?? '–'}</span>
       <span className={styles.name}>{name}</span>
-      <span className={styles.wins}>{wins}</span>
+      <span className={styles.stat}>
+        <span className={styles.label}>Wins:</span> {wins}
+      </span>
+      <span className={styles.stat}>
+        <span className={styles.label}>Kills:</span> {kills}
+      </span>
     </li>
   )
 }

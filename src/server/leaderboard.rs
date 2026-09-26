@@ -15,29 +15,42 @@ const TOP_COUNT: usize = 10;
 /// Longest name kept on the leaderboard, in characters.
 const MAX_NAME_LENGTH: usize = 32;
 
-/// The number of rounds each player has won, kept in a text file with one
+/// Each human player's wins, kills and deaths, kept in a text file with one
 /// JSON object per line:
 ///
 /// ```text
-/// {"name":"alec","wins":12,"color":"blue"}
-/// {"name":"bob","wins":3,"color":"red"}
+/// {"name":"alec","wins":12,"color":"blue","rounds_played":40,"player_kills":4,"npc_kills":30,"player_deaths":3,"npc_deaths":20,"suicides":2,"arena_deaths":5,"headon_crashes":1}
 /// ```
 ///
-/// JSON escapes line breaks and quotes inside names, so no name can break
-/// the format. Players are identified by their name in the form the client
-/// gives it (see `normalize_name`), which is how it is written to the file;
-/// lines for the same player are added together. `color` is the colour the
-/// player used in their last win, and can be left out.
+/// - `wins`: rounds won.
+/// - `color`: the colour of their last win.
+/// - `rounds_played`: rounds started, including ones cut short.
+/// - `player_kills`: human players who crashed into this player's trail.
+/// - `npc_kills`: NPCs that crashed into this player's trail.
+/// - `player_deaths`: crashes into another human player's trail.
+/// - `npc_deaths`: crashes into an NPC's trail.
+/// - `suicides`: crashes into their own trail.
+/// - `arena_deaths`: crashes into the arena boundary.
+/// - `headon_crashes`: crashes into another lightcycle.
 ///
-/// Players are ranked by wins. Players with the same number of wins are
+/// Fields are written in this order, and counts of zero are left out. Any
+/// of these but `name` can be left out when editing. JSON escapes line breaks and
+/// quotes inside names, so no name can break the format. Players are
+/// identified by their name in the form the client gives it (see
+/// `normalize_name`), which is how it is written to the file; lines for the
+/// same player are added together. A player gets a line the first time one
+/// of these happens to them.
+///
+/// Players are ranked by wins, and players with no wins aren't ranked.
+/// Players with the same number of wins are
 /// ranked in the order they appear in the file, which is the order they
-/// reached that number: the file is kept sorted by wins, a player's first
-/// win adds them at the end, and sorting never moves a player past others
-/// with the same number of wins.
+/// reached that number: the file is kept sorted by wins, a new player is
+/// added at the end, and sorting never moves a player past others with the
+/// same number of wins.
 ///
-/// The file is the source of truth: it is read afresh for every win, so it
-/// can be edited while the server runs. A win updates the player's first
-/// line, or adds a line at the end for a player's first win, then sorts the
+/// The file is the source of truth: it is read afresh for every change, so
+/// it can be edited while the server runs. A change updates the player's
+/// first line, or adds a line at the end for a new player, then sorts the
 /// lines by the players' wins. Lines that can't be read stay where they are
 /// and are otherwise ignored. Other lines are only rewritten when their
 /// record changes. The file is replaced by writing a temporary file next to
@@ -45,14 +58,15 @@ const MAX_NAME_LENGTH: usize = 32;
 #[derive(Debug, Clone)]
 pub struct Leaderboard {
     path: PathBuf,
-    /// Held while reading and rewriting the file, so wins in different
+    /// Held while reading and rewriting the file, so changes from different
     /// arenas can't overwrite each other.
     lock: Arc<Mutex<()>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct Record {
     name: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
     wins: u32,
     #[serde(
         default,
@@ -60,6 +74,26 @@ struct Record {
         deserialize_with = "deserialize_color"
     )]
     color: Option<PlayerColor>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    rounds_played: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    player_kills: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    npc_kills: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    player_deaths: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    npc_deaths: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    suicides: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    arena_deaths: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    headon_crashes: u32,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 /// Reads a colour, treating one that isn't a player colour as no colour, so
@@ -84,17 +118,56 @@ enum Line {
     Other(String),
 }
 
-/// Wins and colour per player, in the order the players first appear in the
+/// Something that happened to a player, to count on the leaderboard.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Stat {
+    /// Won a round, in this colour.
+    Win(PlayerColor),
+    RoundPlayed,
+    PlayerKill,
+    NpcKill,
+    PlayerDeath,
+    NpcDeath,
+    Suicide,
+    ArenaDeath,
+    HeadonCrash,
+}
+
+/// One player's totals from the leaderboard file.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PlayerStats {
+    pub name: String,
+    pub wins: u32,
+    pub player_kills: u32,
+    pub npc_kills: u32,
+    pub suicides: u32,
+    pub arena_deaths: u32,
+    pub color: Option<PlayerColor>,
+    pub rounds_played: u32,
+    pub player_deaths: u32,
+    pub npc_deaths: u32,
+    pub headon_crashes: u32,
+}
+
+impl PlayerStats {
+    fn kills(&self) -> u32 {
+        self.player_kills + self.npc_kills
+    }
+}
+
+/// Every player's totals, in the order the players first appear in the
 /// leaderboard file.
 #[derive(Debug, Default, PartialEq)]
-pub struct Wins(Vec<(String, u32, Option<PlayerColor>)>);
+pub struct Stats(Vec<PlayerStats>);
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LeaderboardEntry {
-    /// Position on the leaderboard, or `None` for a player with no wins.
+    /// Position on the leaderboard, or `None` for a player who isn't ranked.
     pub rank: Option<u32>,
     pub name: String,
     pub wins: u32,
+    /// Human players and NPCs killed.
+    pub kills: u32,
     pub color: Option<PlayerColor>,
 }
 
@@ -143,56 +216,64 @@ impl Leaderboard {
         Ok(lines)
     }
 
-    /// Reads the current wins from the file.
-    pub fn wins(&self) -> Result<Wins, Error> {
-        let _lock = self
-            .lock
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        Ok(wins(&self.read_lines()?))
-    }
-
-    /// Adds a win for the named player and sets their colour, then returns
-    /// the wins including it.
-    pub fn record_win(&self, name: &str, color: PlayerColor) -> Result<Wins, Error> {
+    /// Reads the file, adds one to the named players' counts for each event,
+    /// writes it back if anything changed, and returns the new totals.
+    pub fn record(&self, events: &[(String, Stat)]) -> Result<Stats, Error> {
         let _lock = self
             .lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut lines = self.read_lines()?;
 
-        let key = normalize_name(name);
-        if !key.is_empty() {
-            let existing = lines.iter_mut().find_map(|line| match line {
-                Line::Record {
-                    key: line_key,
-                    record,
-                    text,
-                } if *line_key == key => Some((record, text)),
-                _ => None,
-            });
-            match existing {
-                Some((record, text)) => {
-                    record.name = key;
-                    record.wins += 1;
-                    record.color = Some(color);
-                    *text = None;
-                }
-                None => lines.push(Line::Record {
-                    record: Record {
-                        name: key.clone(),
-                        wins: 1,
-                        color: Some(color),
-                    },
-                    key,
-                    text: None,
-                }),
+        let mut changed = false;
+        for (name, stat) in events {
+            let key = normalize_name(name);
+            if key.is_empty() {
+                continue;
             }
+
+            let index = match lines.iter().position(
+                |line| matches!(line, Line::Record { key: line_key, .. } if *line_key == key),
+            ) {
+                Some(index) => index,
+                None => {
+                    lines.push(Line::Record {
+                        record: Record::default(),
+                        key: key.clone(),
+                        text: None,
+                    });
+                    lines.len() - 1
+                }
+            };
+            let Line::Record { record, text, .. } = &mut lines[index] else {
+                unreachable!("the line was found or added as a record");
+            };
+
+            record.name = key;
+            match stat {
+                Stat::Win(color) => {
+                    record.wins += 1;
+                    record.color = Some(*color);
+                }
+                Stat::RoundPlayed => record.rounds_played += 1,
+                Stat::PlayerKill => record.player_kills += 1,
+                Stat::NpcKill => record.npc_kills += 1,
+                Stat::PlayerDeath => record.player_deaths += 1,
+                Stat::NpcDeath => record.npc_deaths += 1,
+                Stat::Suicide => record.suicides += 1,
+                Stat::ArenaDeath => record.arena_deaths += 1,
+                Stat::HeadonCrash => record.headon_crashes += 1,
+            }
+            *text = None;
+            changed = true;
+        }
+
+        if changed {
             sort_lines(&mut lines);
             self.write_lines(&lines)?;
         }
 
-        Ok(wins(&lines))
+        Ok(stats(&lines))
     }
 
     fn write_lines(&self, lines: &[Line]) -> Result<(), Error> {
@@ -248,31 +329,46 @@ fn parse_line(line: &str) -> Line {
     }
 }
 
-fn wins(lines: &[Line]) -> Wins {
-    let mut wins: Vec<(String, u32, Option<PlayerColor>)> = Vec::new();
+fn stats(lines: &[Line]) -> Stats {
+    let mut stats: Vec<PlayerStats> = Vec::new();
     for line in lines {
-        if let Line::Record { key, record, .. } = line {
-            match wins.iter_mut().find(|(name, _, _)| name == key) {
-                Some(entry) => {
-                    entry.1 += record.wins;
-                    // The first line with a colour gives the player's colour.
-                    entry.2 = entry.2.or(record.color);
-                }
-                None => wins.push((key.clone(), record.wins, record.color)),
+        let Line::Record { key, record, .. } = line else {
+            continue;
+        };
+        let index = match stats.iter().position(|player| player.name == *key) {
+            Some(index) => index,
+            None => {
+                stats.push(PlayerStats {
+                    name: key.clone(),
+                    ..Default::default()
+                });
+                stats.len() - 1
             }
-        }
+        };
+        let player = &mut stats[index];
+        player.wins += record.wins;
+        player.player_kills += record.player_kills;
+        player.npc_kills += record.npc_kills;
+        player.suicides += record.suicides;
+        player.arena_deaths += record.arena_deaths;
+        player.rounds_played += record.rounds_played;
+        player.player_deaths += record.player_deaths;
+        player.npc_deaths += record.npc_deaths;
+        player.headon_crashes += record.headon_crashes;
+        // The first line with a colour gives the player's colour.
+        player.color = player.color.or(record.color);
     }
-    Wins(wins)
+    Stats(stats)
 }
 
 /// Sorts the records by their players' total wins, most first, keeping the
 /// order of records with the same total. Lines that aren't records keep
 /// their places, and the records are sorted around them.
 fn sort_lines(lines: &mut [Line]) {
-    let totals: HashMap<String, u32> = wins(lines)
+    let totals: HashMap<String, u32> = stats(lines)
         .0
         .into_iter()
-        .map(|(name, wins, _)| (name, wins))
+        .map(|player| (player.name, player.wins))
         .collect();
 
     let slots: Vec<usize> = lines
@@ -297,42 +393,45 @@ fn sort_lines(lines: &mut [Line]) {
     }
 }
 
-impl Wins {
+impl Stats {
     /// The top players, and the named player's own entry.
     pub fn standings(&self, name: Option<&str>) -> LeaderboardStandings {
         // Most wins first, then in file order, which `sort_by_key` keeps as
         // it is stable. Players with no wins aren't ranked.
-        let mut ranked: Vec<(&String, u32, Option<PlayerColor>)> = self
-            .0
-            .iter()
-            .filter(|(_, wins, _)| *wins > 0)
-            .map(|(name, wins, color)| (name, *wins, *color))
-            .collect();
-        ranked.sort_by_key(|(_, wins, _)| Reverse(*wins));
+        let mut ranked: Vec<&PlayerStats> =
+            self.0.iter().filter(|player| player.wins > 0).collect();
+        ranked.sort_by_key(|player| Reverse(player.wins));
 
-        let entry = |index: usize| {
-            let (name, wins, color) = ranked[index];
-            LeaderboardEntry {
-                rank: Some(index as u32 + 1),
-                name: name.to_string(),
-                wins,
-                color,
-            }
+        let entry = |rank: Option<u32>, player: &PlayerStats| LeaderboardEntry {
+            rank,
+            name: player.name.clone(),
+            wins: player.wins,
+            kills: player.kills(),
+            color: player.color,
         };
 
-        let top = (0..ranked.len().min(TOP_COUNT)).map(entry).collect();
+        let top = ranked
+            .iter()
+            .take(TOP_COUNT)
+            .enumerate()
+            .map(|(index, player)| entry(Some(index as u32 + 1), player))
+            .collect();
 
         let player = name
             .map(normalize_name)
             .filter(|name| !name.is_empty())
             .map(
-                |name| match ranked.iter().position(|(ranked, _, _)| **ranked == name) {
-                    Some(index) => entry(index),
-                    None => LeaderboardEntry {
-                        rank: None,
-                        name,
-                        wins: 0,
-                        color: None,
+                |name| match ranked.iter().position(|player| player.name == name) {
+                    Some(index) => entry(Some(index as u32 + 1), ranked[index]),
+                    None => match self.0.iter().find(|player| player.name == name) {
+                        Some(player) => entry(None, player),
+                        None => entry(
+                            None,
+                            &PlayerStats {
+                                name,
+                                ..Default::default()
+                            },
+                        ),
                     },
                 },
             );
@@ -363,13 +462,22 @@ mod tests {
             rank,
             name: name.to_string(),
             wins,
+            kills: 0,
             color: Some(PlayerColor::White),
         }
     }
 
     impl Leaderboard {
-        fn record_win_in_white(&self, name: &str) -> Result<Wins, Error> {
+        fn record_win_in_white(&self, name: &str) -> Result<Stats, Error> {
             self.record_win(name, PlayerColor::White)
+        }
+
+        fn record_win(&self, name: &str, color: PlayerColor) -> Result<Stats, Error> {
+            self.record(&[(name.to_string(), Stat::Win(color))])
+        }
+
+        fn stats(&self) -> Result<Stats, Error> {
+            self.record(&[])
         }
     }
 
@@ -424,7 +532,7 @@ mod tests {
     #[test]
     fn only_winners_are_written() {
         let leaderboard = TestLeaderboard::new("winners", None);
-        let wins = leaderboard.0.wins().unwrap();
+        let wins = leaderboard.0.stats().unwrap();
         assert_eq!(
             wins.standings(Some("carol")).player,
             Some(LeaderboardEntry {
@@ -514,7 +622,7 @@ mod tests {
         }
 
         assert_eq!(leaderboard.contents().lines().count(), names.len());
-        let wins = leaderboard.0.wins().unwrap();
+        let wins = leaderboard.0.stats().unwrap();
         for name in names {
             assert_eq!(
                 wins.standings(Some(name)).player.map(|entry| entry.wins),
@@ -574,7 +682,7 @@ mod tests {
                 "{\"name\":\"dave\",\"wins\":1}\n",
             )),
         );
-        let names = |wins: Wins| -> Vec<String> {
+        let names = |wins: Stats| -> Vec<String> {
             wins.standings(None)
                 .top
                 .into_iter()
@@ -607,6 +715,50 @@ mod tests {
                 "{\"name\":\"dave\",\"wins\":2,\"color\":\"white\"}\n",
                 "{\"name\":\"erin\",\"wins\":1,\"color\":\"white\"}\n",
             )
+        );
+    }
+
+    #[test]
+    fn counts_kills_and_deaths() {
+        let leaderboard = TestLeaderboard::new("kills", None);
+        let event = |name: &str, stat| (name.to_string(), stat);
+        leaderboard
+            .0
+            .record(&[
+                event("alec", Stat::NpcKill),
+                event("alec", Stat::NpcKill),
+                event("alec", Stat::PlayerKill),
+                event("alec", Stat::Suicide),
+                event("bob", Stat::ArenaDeath),
+                event("bob", Stat::HeadonCrash),
+                event("bob", Stat::NpcDeath),
+                event("bob", Stat::PlayerDeath),
+                event("bob", Stat::RoundPlayed),
+            ])
+            .unwrap();
+        let stats = leaderboard
+            .0
+            .record(&[event("alec", Stat::ArenaDeath)])
+            .unwrap();
+
+        assert_eq!(
+            leaderboard.contents(),
+            concat!(
+                "{\"name\":\"alec\",\"player_kills\":1,\"npc_kills\":2,\"suicides\":1,\"arena_deaths\":1}\n",
+                "{\"name\":\"bob\",\"rounds_played\":1,\"player_deaths\":1,\"npc_deaths\":1,\"arena_deaths\":1,\"headon_crashes\":1}\n",
+            )
+        );
+
+        // Players without wins aren't ranked, but still see their own entry.
+        let standings = stats.standings(Some("alec"));
+        assert_eq!(standings.top, vec![]);
+        assert_eq!(
+            standings.player,
+            Some(LeaderboardEntry {
+                kills: 3,
+                color: None,
+                ..entry(None, "alec", 0)
+            })
         );
     }
 

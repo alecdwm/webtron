@@ -54,8 +54,14 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.wins {
+.stat {
+  white-space: nowrap;
   color: var(--white);
+}
+.label {
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--white) 45%, transparent);
+  font-size: 0.8em;
 }
 
 .self {

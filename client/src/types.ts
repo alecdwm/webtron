@@ -63,6 +63,8 @@ export type LeaderboardEntry = {
   rank: number | null
   name: string
   wins: number
+  // Human players and NPCs killed.
+  kills: number
   // The colour of the player's last win, if known.
   color: Color | null
 }

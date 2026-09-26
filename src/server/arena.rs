@@ -34,6 +34,16 @@ const OWN_SLIPSTREAM_MIN_DISTANCE: f64 = 1.0;
 const HOLE_RADIUS: f64 = 20.0;
 const DEAD_LIGHTRIBBON_SECONDS: i64 = 6;
 
+/// What a lightcycle crashed into.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DeathCause {
+    /// The trail of this player, which may be the lightcycle's own.
+    Trail(PlayerId),
+    Boundary,
+    /// Another lightcycle, head-on.
+    Lightcycle,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Arena {
     pub id: ArenaId,
@@ -58,6 +68,14 @@ pub struct Arena {
     /// A winner the server hasn't recorded on the leaderboard yet.
     #[serde(skip)]
     pub unrecorded_winner: Option<PlayerId>,
+    /// Lightcycles that died, which the server hasn't recorded on the
+    /// leaderboard yet.
+    #[serde(skip)]
+    pub unrecorded_deaths: Vec<(PlayerId, DeathCause)>,
+    /// Human players who started a round, which the server hasn't recorded
+    /// on the leaderboard yet.
+    #[serde(skip)]
+    pub unrecorded_round_players: Vec<PlayerId>,
 
     #[serde(skip)]
     pub updates: Vec<ArenaUpdate>,
@@ -282,6 +300,8 @@ impl Arena {
                     if travelled.overlaps_segment(&line) {
                         self.updates
                             .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                        self.unrecorded_deaths
+                            .push((*id, DeathCause::Trail(*ribbon_id)));
                         continue 'next_lightcycle;
                     }
 
@@ -292,6 +312,8 @@ impl Arena {
                         ));
                         self.updates
                             .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                        self.unrecorded_deaths
+                            .push((*id, DeathCause::Trail(*ribbon_id)));
                         continue 'next_lightcycle;
                     }
                 }
@@ -312,6 +334,8 @@ impl Arena {
                                 if travelled.overlaps_segment(&live_segment) {
                                     self.updates
                                         .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                                    self.unrecorded_deaths
+                                        .push((*id, DeathCause::Trail(*ribbon_id)));
                                     continue 'next_lightcycle;
                                 }
 
@@ -322,6 +346,8 @@ impl Arena {
                                     ));
                                     self.updates
                                         .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                                    self.unrecorded_deaths
+                                        .push((*id, DeathCause::Trail(*ribbon_id)));
                                     continue 'next_lightcycle;
                                 }
                             }
@@ -338,6 +364,7 @@ impl Arena {
             {
                 self.updates
                     .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                self.unrecorded_deaths.push((*id, DeathCause::Boundary));
                 continue 'next_lightcycle;
             }
 
@@ -351,6 +378,7 @@ impl Arena {
             {
                 self.updates
                     .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id));
+                self.unrecorded_deaths.push((*id, DeathCause::Lightcycle));
                 continue 'next_lightcycle;
             }
         }
@@ -498,6 +526,8 @@ impl Default for Arena {
 
             winner_at: None,
             unrecorded_winner: None,
+            unrecorded_deaths: Default::default(),
+            unrecorded_round_players: Default::default(),
 
             updates: Default::default(),
             updates_applied_so_far: 0,
@@ -564,6 +594,36 @@ fn segment_is_parallel_slipstream(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crashing_into_your_own_trail_is_blamed_on_you() {
+        let mut arena = Arena::default();
+        let id = PlayerId::default();
+        // Heading left into the first leg of its own trail, at x = 90.
+        arena.lightcycles.insert(
+            id,
+            Lightcycle {
+                position: ArenaPoint::new(88.0, 150.0),
+                direction: Direction::Left,
+                ..Default::default()
+            },
+        );
+        arena.lightribbons.insert(
+            id,
+            Lightribbon {
+                paths: vec![vec![
+                    ArenaPoint::new(90.0, 100.0),
+                    ArenaPoint::new(90.0, 200.0),
+                    ArenaPoint::new(150.0, 200.0),
+                    ArenaPoint::new(150.0, 150.0),
+                    ArenaPoint::new(91.0, 150.0),
+                ]],
+            },
+        );
+
+        arena.calculate_lightcycle_collisions(0.05);
+        assert_eq!(arena.unrecorded_deaths, vec![(id, DeathCause::Trail(id))]);
+    }
 
     #[test]
     fn lightcycles_slipstream_their_own_trail() {
@@ -655,5 +715,7 @@ mod tests {
         assert!(arena.winner_at.is_none());
         assert!(!arena.lightcycles[&human.id].dead);
         assert!(first_npcs.iter().all(|id| !arena.players.contains_key(id)));
+        // Both rounds count as played by the human, and only by them.
+        assert_eq!(arena.unrecorded_round_players, vec![human.id, human.id]);
     }
 }
