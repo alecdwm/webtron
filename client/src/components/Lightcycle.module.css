@@ -30,7 +30,7 @@
 .nameTagDead {
   transition: opacity 1s ease 0.4s;
   text-decoration: line-through;
-  opacity: 0.4;
+  opacity: 0;
   text-shadow: none;
 }
 
@@ -43,7 +43,7 @@
   image-rendering: pixelated;
 }
 .dead {
-  opacity: 0.3;
+  opacity: 0;
   filter: grayscale(1) brightness(0.7);
   animation: derezcycle 600ms steps(6) both;
 }
