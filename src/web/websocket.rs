@@ -45,16 +45,26 @@ async fn handle_websocket(
         return;
     }
 
-    let in_task = tokio::spawn(handle_in(id, ws_rx, server_tx.clone()));
-    let out_task = tokio::spawn(handle_out(messages_rx, ws_tx.clone()));
-    let ping_task = tokio::spawn(handle_ping(ws_tx));
+    let mut in_task = tokio::spawn(handle_in(id, ws_rx, server_tx.clone()));
+    let mut out_task = tokio::spawn(handle_out(messages_rx, ws_tx.clone()));
+    let mut ping_task = tokio::spawn(handle_ping(ws_tx.clone()));
 
     if let Err(error) = select! {
-        out = in_task => out,
-        out = out_task => out,
-        out = ping_task => out,
+        out = &mut in_task => out,
+        out = &mut out_task => out,
+        out = &mut ping_task => out,
     } {
         error!("Failure occurred while handling websocket: {}", error);
+    }
+
+    // Stop the other tasks and close the socket now. Otherwise they keep it
+    // open, and the reply to a client's close frame isn't sent until the next
+    // ping, leaving the client waiting.
+    in_task.abort();
+    out_task.abort();
+    ping_task.abort();
+    if let Err(error) = ws_tx.lock().await.close().await {
+        trace!("Failed to close websocket: {:?}", error);
     }
 
     // send client disconnect
