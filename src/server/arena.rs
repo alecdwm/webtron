@@ -677,7 +677,9 @@ mod tests {
             arena.apply_updates();
             arena.updates.push(ArenaUpdate::End);
             arena.apply_updates();
-            assert_eq!(arena.players.len(), 3);
+            // The human, and this round's NPCs until the next round starts.
+            assert_eq!(arena.players.len(), 1 + arena.npc_states.len());
+            assert!(!arena.npc_states.is_empty());
         }
         assert_eq!(arena.human_player_ids().collect::<Vec<_>>(), vec![human.id]);
 
@@ -686,7 +688,11 @@ mod tests {
         for update in &arena.updates {
             update.apply(&mut client);
         }
-        assert_eq!(client.players.len(), 3);
+        let mut server_players: Vec<_> = arena.players.keys().collect();
+        let mut client_players: Vec<_> = client.players.keys().collect();
+        server_players.sort_by_key(|id| id.to_string());
+        client_players.sort_by_key(|id| id.to_string());
+        assert_eq!(client_players, server_players);
     }
 
     #[test]

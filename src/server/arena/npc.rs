@@ -6,7 +6,8 @@ use rand_core::{Rng, UnwrapErr};
 
 use planner::{Caution, Options, Planner};
 
-const NPC_COUNT: usize = 2;
+/// Every round has at least this many lightcycles, human or NPC.
+const MIN_LIGHTCYCLES: usize = 2;
 /// How far along their current heading other lightcycles are treated as an obstacle.
 const NPC_LOOK_AHEAD_DISTANCE: f64 = 40.0;
 const NPC_TRAP_SEGMENT_LENGTH: f64 = 30.0;
@@ -409,13 +410,16 @@ pub fn create_npc_players(count: usize) -> Vec<Player> {
     players
 }
 
+/// How many NPCs to add to a round: enough to make a random total number of
+/// lightcycles, from `MIN_LIGHTCYCLES` (or the number of human players, if
+/// more) up to `ARENA_MAX_PLAYERS`.
 pub fn npc_count_for_arena(human_player_count: usize) -> usize {
-    let total = human_player_count + NPC_COUNT;
-    if total > ARENA_MAX_PLAYERS {
-        ARENA_MAX_PLAYERS - human_player_count
-    } else {
-        NPC_COUNT
+    let min_total = human_player_count.max(MIN_LIGHTCYCLES);
+    if min_total >= ARENA_MAX_PLAYERS {
+        return ARENA_MAX_PLAYERS.saturating_sub(human_player_count);
     }
+    let total = min_total + random_below((ARENA_MAX_PLAYERS - min_total + 1) as u32) as usize;
+    total - human_player_count
 }
 
 /// What a behaviour can see when choosing where to go.
@@ -1302,5 +1306,32 @@ fn wall_distance(arena: &Arena, position: ArenaPoint, direction: Direction) -> f
         Direction::Down => position.y,
         Direction::Right => arena.width - position.x,
         Direction::Left => position.x,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rounds_have_between_two_and_eight_lightcycles() {
+        for humans in 1..=ARENA_MAX_PLAYERS {
+            let totals: Vec<usize> = (0..500)
+                .map(|_| humans + npc_count_for_arena(humans))
+                .collect();
+            let lowest = humans.max(MIN_LIGHTCYCLES);
+            assert!(
+                totals
+                    .iter()
+                    .all(|total| (lowest..=ARENA_MAX_PLAYERS).contains(total))
+            );
+            // Every possible total turns up.
+            for total in lowest..=ARENA_MAX_PLAYERS {
+                assert!(
+                    totals.contains(&total),
+                    "{humans} humans never made {total}"
+                );
+            }
+        }
     }
 }
