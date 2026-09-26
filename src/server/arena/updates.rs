@@ -5,6 +5,7 @@ pub enum ArenaUpdate {
     AddPlayer(PlayerId, Player),
     AddLightcycle(PlayerId, Lightcycle),
     AddLightribbon(PlayerId, Lightribbon),
+    AddHole(Hole),
 
     Start(DateTime<Utc>),
     End,
@@ -36,7 +37,14 @@ impl ArenaUpdate {
                 arena.lightribbons.insert(*player_id, lightribbon.clone());
             }
 
-            ArenaUpdate::Start(start_at) => arena.started = Some(*start_at),
+            ArenaUpdate::AddHole(hole) => {
+                arena.holes.push(hole.clone());
+            }
+
+            ArenaUpdate::Start(start_at) => {
+                arena.started = Some(*start_at);
+                arena.holes.clear();
+            }
             ArenaUpdate::End => {
                 arena.started = None;
                 // Remove NPC players when the round ends
@@ -100,7 +108,7 @@ impl ArenaUpdate {
                     }
                 };
 
-                lightribbon.points.push(*point);
+                lightribbon.append_point(*point);
             }
             ArenaUpdate::UpdateLightribbonReplaceLatestPoint(player_id, latest_point) => {
                 let lightribbon = match arena.lightribbons.get_mut(player_id) {
@@ -111,8 +119,7 @@ impl ArenaUpdate {
                     }
                 };
 
-                lightribbon.points.pop();
-                lightribbon.points.push(*latest_point);
+                lightribbon.replace_latest_point(*latest_point);
             }
 
             ArenaUpdate::RemovePlayer(player_id) => {

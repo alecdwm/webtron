@@ -19,6 +19,7 @@ export default createReducer(initialState, {
     players: {},
     lightcycles: {},
     lightribbons: {},
+    holes: [],
   }),
   [RECEIVE_ARENA_STATE]: (_, { state }) => ({
     ...state,
@@ -54,9 +55,15 @@ function updateArena(arena, update) {
       },
     }),
 
+    AddHole: (hole) => ({
+      ...arena,
+      holes: [...arena.holes, hole],
+    }),
+
     Start: (startAt) => ({
       ...arena,
       started: dayjs(startAt),
+      holes: [],
     }),
     End: () => ({
       ...arena,
@@ -114,7 +121,7 @@ function updateArena(arena, update) {
         ...arena.lightribbons,
         [playerId]: {
           ...arena.lightribbons[playerId],
-          points: [...arena.lightribbons[playerId].points, point],
+          paths: updateLivePath(arena.lightribbons[playerId].paths, (path) => [...path, point]),
         },
       },
     }),
@@ -124,7 +131,7 @@ function updateArena(arena, update) {
         ...arena.lightribbons,
         [playerId]: {
           ...arena.lightribbons[playerId],
-          points: [...arena.lightribbons[playerId].points.slice(0, -1), latestPoint],
+          paths: updateLivePath(arena.lightribbons[playerId].paths, (path) => [...path.slice(0, -1), latestPoint]),
         },
       },
     }),
@@ -144,4 +151,8 @@ function updateArena(arena, update) {
   }
 
   return updateHandlers[updateType] ? updateHandlers[updateType](updateData) : arena
+}
+
+function updateLivePath(paths, update) {
+  return paths.length === 0 ? [update([])] : [...paths.slice(0, -1), update(paths[paths.length - 1])]
 }

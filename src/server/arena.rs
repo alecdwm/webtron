@@ -29,6 +29,7 @@ const LIGHTCYCLE_BOOST_SPEED: f64 = 110.0;
 const SLIPSTREAM_DISTANCE: f64 = 15.0;
 const SLIPSTREAM_RAMP_UP_SECONDS: f64 = 5.0;
 const SLIPSTREAM_RAMP_DOWN_SECONDS: f64 = 2.0;
+const HOLE_RADIUS: f64 = 20.0;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Arena {
@@ -44,6 +45,7 @@ pub struct Arena {
     pub players: HashMap<PlayerId, Player>,
     pub lightcycles: HashMap<PlayerId, Lightcycle>,
     pub lightribbons: HashMap<PlayerId, Lightribbon>,
+    pub holes: Vec<Hole>,
 
     #[serde(skip)]
     pub npc_states: HashMap<PlayerId, npc::NpcState>,
@@ -125,6 +127,8 @@ impl Arena {
             .apply_updates()
             .update_lightribbon_positions()
             .apply_updates()
+            .create_holes()
+            .apply_updates()
             .test_win_condition()
             .apply_updates()
             .test_round_end()
@@ -172,8 +176,8 @@ impl Arena {
                 continue;
             }
 
-            for segment in ribbon.points.windows(2) {
-                if segment_is_parallel_slipstream(pos, is_vertical, segment[0], segment[1]) {
+            for (from, to) in ribbon.segments() {
+                if segment_is_parallel_slipstream(pos, is_vertical, from, to) {
                     return true;
                 }
             }
@@ -181,11 +185,11 @@ impl Arena {
             // Check live segment (ribbon tip to other bike's current position)
             if let Some(other_cycle) = self.lightcycles.get(ribbon_id) {
                 if !other_cycle.dead {
-                    if let Some(last_point) = ribbon.points.last() {
+                    if let Some(last_point) = ribbon.last_point() {
                         if segment_is_parallel_slipstream(
                             pos,
                             is_vertical,
-                            *last_point,
+                            last_point,
                             other_cycle.position,
                         ) {
                             return true;
@@ -233,16 +237,12 @@ impl Arena {
                 // segment collinear with the bike's direction and the perpendicular
                 // segment sharing the turn-point vertex). At higher speeds the
                 // longer travelled segment can falsely intersect these.
-                let check_points = if ribbon_id == id {
-                    &lightribbon.points[..lightribbon.points.len().saturating_sub(2)]
-                } else {
-                    &lightribbon.points[..]
-                };
+                let skip = if ribbon_id == id { 2 } else { 0 };
 
-                for line in check_points.windows(2) {
+                for (from, to) in lightribbon.segments_except_newest(skip) {
                     let line = ArenaLine {
-                        from: line[0].to_untyped(),
-                        to: line[1].to_untyped(),
+                        from: from.to_untyped(),
+                        to: to.to_untyped(),
                     };
 
                     if travelled.overlaps_segment(&line) {
@@ -269,7 +269,7 @@ impl Arena {
                 if ribbon_id != id {
                     if let Some(other_cycle) = self.lightcycles.get(ribbon_id) {
                         if !other_cycle.dead {
-                            if let Some(last_point) = lightribbon.points.last() {
+                            if let Some(last_point) = lightribbon.last_point() {
                                 let live_segment = ArenaLine {
                                     from: last_point.to_untyped(),
                                     to: other_cycle.position.to_untyped(),
@@ -351,6 +351,47 @@ impl Arena {
         self
     }
 
+    /// Blows a hole in every trail around each lightcycle that died this update.
+    fn create_holes(&mut self) -> &mut Self {
+        let new_holes: Vec<Hole> = self
+            .lightcycles
+            .iter()
+            .filter(|(id, lightcycle)| {
+                lightcycle.dead && !self.holes.iter().any(|hole| hole.player_id == **id)
+            })
+            .map(|(id, lightcycle)| Hole {
+                player_id: *id,
+                position: lightcycle.position,
+                radius: HOLE_RADIUS,
+            })
+            .collect();
+
+        if new_holes.is_empty() {
+            return self;
+        }
+
+        for (id, lightribbon) in self.lightribbons.iter() {
+            let live_end = self
+                .lightcycles
+                .get(id)
+                .filter(|lightcycle| !lightcycle.dead)
+                .map(|lightcycle| lightcycle.position);
+
+            let mut cut = lightribbon.clone();
+            for hole in &new_holes {
+                cut.cut(hole.position, hole.radius, live_end);
+            }
+
+            if cut != *lightribbon {
+                self.updates.push(ArenaUpdate::AddLightribbon(*id, cut));
+            }
+        }
+
+        self.updates
+            .extend(new_holes.into_iter().map(ArenaUpdate::AddHole));
+        self
+    }
+
     fn test_win_condition(&mut self) -> &mut Self {
         if self.winner.is_some() {
             return self;
@@ -402,6 +443,7 @@ impl Default for Arena {
             players: Default::default(),
             lightcycles: Default::default(),
             lightribbons: Default::default(),
+            holes: Default::default(),
 
             npc_states: Default::default(),
 

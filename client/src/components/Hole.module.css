@@ -1,0 +1,56 @@
+.hole {
+  position: absolute;
+  aspect-ratio: 1;
+  transform: translate(-50%, 50%);
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0.6) 0 45%,
+    color-mix(in srgb, var(--hole) 12%, rgba(0, 0, 0, 0.4)) 68%,
+    color-mix(in srgb, var(--hole) 35%, transparent) 70%,
+    transparent 72%
+  );
+  animation: holeburn 1200ms ease-out both;
+}
+
+/* A ring that sweeps out to the edge of the hole as it clears the trails. */
+.shockwave {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--white);
+  border-radius: 50%;
+  box-shadow:
+    0 0 12px var(--hole),
+    inset 0 0 12px var(--hole);
+  animation: holeshockwave 500ms cubic-bezier(0.2, 0.7, 0.4, 1) both;
+}
+
+/* A brief scorch that fades away; the gap left in the trails is the only
+   lasting sign of the hole. */
+@keyframes holeburn {
+  0% {
+    opacity: 0;
+    filter: brightness(4);
+  }
+  15% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes holeshockwave {
+  from {
+    opacity: 1;
+    transform: scale(0.1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}

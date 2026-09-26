@@ -69,9 +69,7 @@ impl ArenaInput {
                         ));
                         updates.push(ArenaUpdate::AddLightribbon(
                             player_id,
-                            Lightribbon {
-                                points: vec![spawn_position, spawn_position],
-                            },
+                            Lightribbon::new(spawn_position),
                         ));
                     },
                 );

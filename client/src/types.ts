@@ -18,8 +18,16 @@ export type Lightcycle = {
   dead: boolean
 }
 
+// A trail can be cut into several paths by holes. The last path is the one
+// its lightcycle is still laying down.
 export type Lightribbon = {
-  points: Point[]
+  paths: Point[][]
+}
+
+export type Hole = {
+  player_id: string
+  position: Point
+  radius: number
 }
 
 export type Arena = {
@@ -35,6 +43,7 @@ export type Arena = {
   players: Record<string, Player>
   lightcycles: Record<string, Lightcycle>
   lightribbons: Record<string, Lightribbon>
+  holes: Hole[]
 }
 
 export type ArenaOverview = {

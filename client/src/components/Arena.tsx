@@ -2,6 +2,7 @@ import { type CSSProperties, useCallback, useRef } from 'react'
 
 import { start, turn } from '@/actions'
 import Countdown from '@/components/Countdown'
+import Hole from '@/components/Hole'
 import Lightcycle from '@/components/Lightcycle'
 import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
@@ -40,8 +41,16 @@ export default function Arena() {
         style={{ backgroundImage: `url("${backgroundPanel}")` }}
       />
 
-      {Object.entries(arena.lightribbons).map(([id, { points }]) => (
-        <Lightribbon key={id} color={arena.players[id] ? arena.players[id].color : 'white'} points={points} />
+      {arena.holes.map(({ player_id, position, radius }) => (
+        <Hole
+          key={player_id}
+          color={arena.players[player_id] ? arena.players[player_id].color : 'white'}
+          position={position}
+          radius={radius}
+        />
+      ))}
+      {Object.entries(arena.lightribbons).map(([id, { paths }]) => (
+        <Lightribbon key={id} color={arena.players[id] ? arena.players[id].color : 'white'} paths={paths} />
       ))}
       {Object.entries(arena.lightcycles).map(([id, { position, direction, speed, dead }]) => (
         <Lightcycle

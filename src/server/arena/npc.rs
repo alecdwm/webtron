@@ -986,24 +986,19 @@ fn find_slipstreamer_on_trail(
         let other_is_vertical = matches!(other_lc.direction, Direction::Up | Direction::Down);
         let mut is_slipstreaming_us = false;
 
-        for segment in npc_ribbon.points.windows(2) {
-            if segment_is_parallel_slipstream(
-                other_lc.position,
-                other_is_vertical,
-                segment[0],
-                segment[1],
-            ) {
+        for (from, to) in npc_ribbon.segments() {
+            if segment_is_parallel_slipstream(other_lc.position, other_is_vertical, from, to) {
                 is_slipstreaming_us = true;
                 break;
             }
         }
 
         if !is_slipstreaming_us {
-            if let Some(last_point) = npc_ribbon.points.last() {
+            if let Some(last_point) = npc_ribbon.last_point() {
                 if segment_is_parallel_slipstream(
                     other_lc.position,
                     other_is_vertical,
-                    *last_point,
+                    last_point,
                     lightcycle.position,
                 ) {
                     is_slipstreaming_us = true;
@@ -1038,10 +1033,10 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
     let mut min_dist = wall_distance(arena, position, direction);
 
     for (ribbon_id, lightribbon) in arena.lightribbons.iter() {
-        for line in lightribbon.points.windows(2) {
+        for (from, to) in lightribbon.segments() {
             let segment = ArenaLine {
-                from: line[0].to_untyped(),
-                to: line[1].to_untyped(),
+                from: from.to_untyped(),
+                to: to.to_untyped(),
             };
 
             if let Some(intersection) = ray.intersection(&segment) {
@@ -1057,7 +1052,7 @@ fn look_ahead_distance(arena: &Arena, position: ArenaPoint, direction: Direction
         // Check the live segment (ribbon tip → bike position) for other bikes.
         if let Some(other_cycle) = arena.lightcycles.get(ribbon_id) {
             if !other_cycle.dead {
-                if let Some(last_point) = lightribbon.points.last() {
+                if let Some(last_point) = lightribbon.last_point() {
                     let live_segment = ArenaLine {
                         from: last_point.to_untyped(),
                         to: other_cycle.position.to_untyped(),
