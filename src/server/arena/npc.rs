@@ -20,6 +20,13 @@ const NPC_CUTOFF_COOLDOWN: f64 = 3.0;
 /// ahead of it changes hands from one update to the next.
 const NPC_SETTLE_TIME: f64 = 0.25;
 const NPC_ATTACK_COOLDOWN: f64 = 2.0;
+const NPC_SIDESTEP_COOLDOWN: f64 = 2.0;
+/// How far an NPC must have come in a straight line before doubling back
+/// alongside its own trail is worth it.
+const NPC_HAIRPIN_MIN_RUN: f64 = 60.0;
+/// How far to the side of its target's lane a shadowing NPC rides: outside
+/// slipstream range, so neither gets a boost from the other's trail.
+const NPC_SHADOW_OFFSET: f64 = 22.0;
 /// How far to the side of a trail an NPC rides when drafting it. More than a
 /// planning grid cell, so the trail doesn't block the NPC's own cells.
 const NPC_DRAFT_OFFSET: f64 = 7.0;
@@ -92,6 +99,80 @@ pub enum Style {
     Trickster,
     /// Keeps to open space and punishes anyone who slipstreams it.
     Sentinel,
+    /// Rides alongside another lightcycle, turning when it turns, and waits
+    /// for it to slip up.
+    Shadow,
+    /// Lays long straight walls across the arena to box others in.
+    Boxer,
+    /// Chases other lightcycles and takes every opening to cut them off,
+    /// accepting moves that leave it much less room.
+    Kamikaze,
+}
+
+impl Style {
+    const ALL: [Style; 7] = [
+        Style::Hunter,
+        Style::Racer,
+        Style::Trickster,
+        Style::Sentinel,
+        Style::Shadow,
+        Style::Boxer,
+        Style::Kamikaze,
+    ];
+
+    /// How likely each plan is to be picked when a behaviour runs out.
+    fn plans(self) -> &'static [(Plan, u32)] {
+        match self {
+            Style::Hunter => &[
+                (Plan::Territory, 45),
+                (Plan::Intercept, 30),
+                (Plan::Cruise, 15),
+                (Plan::Draft, 10),
+                (Plan::Hairpin, 5),
+            ],
+            Style::Racer => &[
+                (Plan::Draft, 35),
+                (Plan::Cruise, 20),
+                (Plan::Intercept, 20),
+                (Plan::Hairpin, 15),
+                (Plan::Territory, 10),
+                (Plan::Zigzag, 5),
+            ],
+            Style::Trickster => &[
+                (Plan::Cruise, 20),
+                (Plan::Intercept, 20),
+                (Plan::Zigzag, 20),
+                (Plan::RandomTurn, 15),
+                (Plan::BuildTrap, 15),
+                (Plan::Territory, 5),
+                (Plan::Draft, 5),
+                (Plan::Hairpin, 5),
+            ],
+            Style::Sentinel => &[
+                (Plan::Cruise, 40),
+                (Plan::Territory, 40),
+                (Plan::Draft, 15),
+                (Plan::BuildTrap, 5),
+            ],
+            Style::Shadow => &[
+                (Plan::Shadow, 60),
+                (Plan::Draft, 15),
+                (Plan::Cruise, 15),
+                (Plan::Territory, 10),
+            ],
+            Style::Boxer => &[
+                (Plan::Divide, 55),
+                (Plan::Territory, 35),
+                (Plan::Cruise, 10),
+            ],
+            Style::Kamikaze => &[
+                (Plan::Intercept, 55),
+                (Plan::Shadow, 20),
+                (Plan::Draft, 15),
+                (Plan::Hairpin, 10),
+            ],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -109,72 +190,74 @@ pub struct Personality {
     /// Chance, in percent, of taking an opening to slipstream and overtake
     /// another lightcycle.
     pub attack_chance: u32,
+    /// Chance, in percent, of sidestepping a faster lightcycle drawing level
+    /// alongside, before it can cut in.
+    pub anticipation: u32,
+    /// Chance, in percent, of holding a grudge against a lightcycle that
+    /// slipstreams it or tries to cut in on it.
+    pub temper: u32,
+    /// This NPC's own weighting of its style's plans.
+    plans: Vec<(Plan, u32)>,
 }
 
 impl Personality {
+    /// A personality of the given style. Each NPC's numbers vary a little
+    /// around its style's, so no two NPCs of a style play quite alike.
     pub fn new(style: Style) -> Self {
-        let (clearance, tolerance, cutoff_chance, cutoff_accuracy, attack_chance) = match style {
-            Style::Hunter => (random_between(8.0, 14.0), 0.10, 85, 75, 60),
-            Style::Racer => (random_between(6.0, 12.0), 0.15, 70, 65, 90),
-            Style::Trickster => (random_between(10.0, 25.0), 0.25, 60, 55, 40),
-            Style::Sentinel => (random_between(20.0, 35.0), 0.05, 90, 80, 20),
-        };
+        #[rustfmt::skip]
+        let (clearance, tolerance, cutoff_chance, cutoff_accuracy, attack_chance, anticipation, temper) =
+            match style {
+                Style::Hunter => (random_between(8.0, 14.0), 0.10, 85, 75, 60, 60, 50),
+                Style::Racer => (random_between(6.0, 12.0), 0.15, 70, 65, 90, 70, 30),
+                Style::Trickster => (random_between(10.0, 25.0), 0.25, 60, 55, 40, 50, 40),
+                Style::Sentinel => (random_between(20.0, 35.0), 0.05, 90, 80, 20, 80, 20),
+                Style::Shadow => (random_between(10.0, 16.0), 0.12, 80, 85, 75, 90, 60),
+                Style::Boxer => (random_between(3.0, 6.0), 0.08, 50, 60, 20, 40, 20),
+                Style::Kamikaze => (random_between(4.0, 8.0), 0.40, 100, 50, 100, 20, 90),
+            };
+        let vary = |percent: u32| (percent as f64 * random_between(0.8, 1.2)).min(100.0) as u32;
 
         Self {
             style,
             clearance,
-            tolerance,
-            cutoff_chance,
-            cutoff_accuracy,
-            attack_chance,
+            tolerance: tolerance * random_between(0.7, 1.3),
+            cutoff_chance: vary(cutoff_chance),
+            cutoff_accuracy: vary(cutoff_accuracy),
+            attack_chance: vary(attack_chance),
+            anticipation: vary(anticipation),
+            temper: vary(temper),
+            plans: style
+                .plans()
+                .iter()
+                .map(|(plan, weight)| (*plan, vary(*weight).max(1)))
+                .collect(),
         }
     }
 
     fn random() -> Self {
-        const STYLES: [Style; 4] = [
-            Style::Hunter,
-            Style::Racer,
-            Style::Trickster,
-            Style::Sentinel,
-        ];
-        Self::new(STYLES[random_below(STYLES.len() as u32) as usize])
+        Self::new(Style::ALL[random_below(Style::ALL.len() as u32) as usize])
     }
 
-    /// Picks the next behaviour at random, weighted by style.
-    fn pick_behaviour(&self, lightcycle: &Lightcycle) -> NpcBehaviour {
-        let weights: &[(Plan, u32)] = match self.style {
-            Style::Hunter => &[
-                (Plan::Territory, 45),
-                (Plan::Intercept, 30),
-                (Plan::Cruise, 15),
-                (Plan::Draft, 10),
-            ],
-            Style::Racer => &[
-                (Plan::Draft, 40),
-                (Plan::Cruise, 25),
-                (Plan::Intercept, 20),
-                (Plan::Territory, 10),
-                (Plan::Zigzag, 5),
-            ],
-            Style::Trickster => &[
-                (Plan::Cruise, 20),
-                (Plan::Intercept, 20),
-                (Plan::Zigzag, 20),
-                (Plan::RandomTurn, 15),
-                (Plan::BuildTrap, 15),
-                (Plan::Territory, 5),
-                (Plan::Draft, 5),
-            ],
-            Style::Sentinel => &[
-                (Plan::Cruise, 40),
-                (Plan::Territory, 40),
-                (Plan::Draft, 15),
-                (Plan::BuildTrap, 5),
-            ],
-        };
+    /// Picks the next behaviour at random, weighted by this NPC's plans. An
+    /// NPC with a grudge often goes after whoever it holds it against.
+    fn pick_behaviour(&self, lightcycle: &Lightcycle, grudge: Option<PlayerId>) -> NpcBehaviour {
+        if let Some(target_id) = grudge
+            && percent_chance(60)
+        {
+            return if percent_chance(50) {
+                NpcBehaviour::Shadow {
+                    target_id: Some(target_id),
+                }
+            } else {
+                NpcBehaviour::Intercept {
+                    target_id: Some(target_id),
+                }
+            };
+        }
 
-        let mut roll = random_below(weights.iter().map(|(_, weight)| weight).sum());
-        let plan = weights
+        let mut roll = random_below(self.plans.iter().map(|(_, weight)| weight).sum());
+        let plan = self
+            .plans
             .iter()
             .find(|(_, weight)| {
                 if roll < *weight {
@@ -199,6 +282,9 @@ enum Plan {
     RandomTurn,
     Zigzag,
     BuildTrap,
+    Hairpin,
+    Shadow,
+    Divide,
 }
 
 impl Plan {
@@ -220,6 +306,9 @@ impl Plan {
                 step: 0,
                 distance_in_step: 0.0,
             },
+            Plan::Hairpin => NpcBehaviour::Hairpin,
+            Plan::Shadow => NpcBehaviour::Shadow { target_id: None },
+            Plan::Divide => NpcBehaviour::Divide,
         }
     }
 }
@@ -237,6 +326,14 @@ pub enum NpcBehaviour {
     Intercept { target_id: Option<PlayerId> },
     /// Move alongside a nearby trail to slipstream it.
     Draft,
+    /// Double back alongside the NPC's own trail to slipstream it.
+    Hairpin,
+    /// Ride level with a lightcycle a little to one side of it, turning when
+    /// it turns.
+    Shadow { target_id: Option<PlayerId> },
+    /// Turn onto the longest open line and ride it out, walling off the
+    /// arena.
+    Divide,
     /// Insert one random perpendicular turn, then revert to Cruise.
     RandomTurn,
     /// Weave in a staircase, alternating between `side` and `forward` every
@@ -323,6 +420,11 @@ pub struct NpcState {
     pub cutoff_cooldown: f64,
     /// Cooldown before the NPC will consider a new slipstream attack.
     pub attack_cooldown: f64,
+    /// Cooldown before the NPC will react to a new lightcycle drawing level.
+    pub sidestep_cooldown: f64,
+    /// A lightcycle this NPC holds a grudge against, and for how many more
+    /// seconds.
+    pub grudge: Option<(PlayerId, f64)>,
     /// Seconds since the NPC last turned.
     pub since_turn: f64,
 }
@@ -336,6 +438,8 @@ impl Default for NpcState {
             time_remaining: random_duration_for(&NpcBehaviour::Cruise),
             cutoff_cooldown: 0.0,
             attack_cooldown: 0.0,
+            sidestep_cooldown: 0.0,
+            grudge: None,
             since_turn: 0.0,
         }
     }
@@ -349,6 +453,25 @@ impl NpcState {
 
     fn cruise(&mut self) {
         self.set_behaviour(NpcBehaviour::Cruise);
+    }
+
+    /// Maybe start holding a grudge against `against`, depending on temper.
+    fn provoke(&mut self, against: PlayerId) {
+        if self.grudge.is_none_or(|(id, _)| id != against)
+            && percent_chance(self.personality.temper)
+        {
+            self.grudge = Some((against, random_between(8.0, 15.0)));
+        }
+    }
+
+    /// The lightcycle this NPC holds a grudge against, if it is still alive.
+    fn grudge_target(&self, arena: &Arena) -> Option<PlayerId> {
+        self.grudge.map(|(id, _)| id).filter(|id| {
+            arena
+                .lightcycles
+                .get(id)
+                .is_some_and(|lightcycle| !lightcycle.dead)
+        })
     }
 
     /// Gives up the current behaviour, holding off from starting the same
@@ -368,7 +491,8 @@ fn random_duration_for(behaviour: &NpcBehaviour) -> f64 {
         NpcBehaviour::Cruise => random_between(1.5, 4.0),
         NpcBehaviour::Territory => random_between(3.0, 6.0),
         NpcBehaviour::Intercept { .. } => random_between(2.0, 4.0),
-        NpcBehaviour::Draft => 1.0,
+        NpcBehaviour::Draft | NpcBehaviour::Hairpin | NpcBehaviour::Divide => 1.0,
+        NpcBehaviour::Shadow { .. } => random_between(5.0, 9.0),
         NpcBehaviour::RandomTurn => 0.5,
         NpcBehaviour::Zigzag { .. } => 6.0,
         NpcBehaviour::BuildTrap { .. } => 5.0,
@@ -484,16 +608,23 @@ pub fn update_npc_inputs(
         };
 
         // Tick the behaviour timer and potentially switch behaviours.
+        state.grudge = state
+            .grudge
+            .map(|(id, remaining)| (id, remaining - delta_time))
+            .filter(|(_, remaining)| *remaining > 0.0);
         state.time_remaining -= delta_time;
         if state.time_remaining <= 0.0 {
             state.abort();
-            let behaviour = state.personality.pick_behaviour(lightcycle);
+            let grudge = state.grudge_target(arena);
+            let behaviour = state.personality.pick_behaviour(lightcycle, grudge);
             state.set_behaviour(behaviour);
         }
 
         state.cutoff_cooldown = (state.cutoff_cooldown - delta_time).max(0.0);
         state.attack_cooldown = (state.attack_cooldown - delta_time).max(0.0);
+        state.sidestep_cooldown = (state.sidestep_cooldown - delta_time).max(0.0);
         react_to_slipstreamer(arena, *npc_id, lightcycle, state);
+        react_to_overtaker(arena, *npc_id, lightcycle, state);
         look_for_slipstream_attack(arena, *npc_id, lightcycle, state);
 
         let options = planner.options(*npc_id, lightcycle, delta_time, state.behaviour.target());
@@ -578,6 +709,7 @@ fn react_to_slipstreamer(
         return;
     }
 
+    state.provoke(target_id);
     let personality = &state.personality;
     if !percent_chance(personality.cutoff_chance) {
         state.cutoff_cooldown = NPC_CUTOFF_COOLDOWN;
@@ -610,6 +742,83 @@ fn react_to_slipstreamer(
         overshoot: random_between(10.0, 20.0),
         phase: CutOffPhase::Waiting { lead },
     });
+}
+
+/// When a faster lightcycle draws level alongside, sidestep away from it
+/// before it can get past and cut in. If it cuts in anyway, it runs into the
+/// NPC's new lane; if not, the NPC can fall in behind it and slipstream it.
+fn react_to_overtaker(
+    arena: &Arena,
+    npc_id: PlayerId,
+    lightcycle: &Lightcycle,
+    state: &mut NpcState,
+) {
+    let committed = matches!(
+        state.behaviour,
+        NpcBehaviour::CutOff { .. }
+            | NpcBehaviour::SlipstreamAttack { .. }
+            | NpcBehaviour::LaneChange { .. }
+    );
+    if committed || state.sidestep_cooldown > 0.0 {
+        return;
+    }
+    let Some((overtaker_id, away)) = find_overtaker(arena, npc_id, lightcycle) else {
+        return;
+    };
+
+    state.sidestep_cooldown = NPC_SIDESTEP_COOLDOWN;
+    state.provoke(overtaker_id);
+    if !percent_chance(state.personality.anticipation) {
+        return;
+    }
+    state.set_behaviour(NpcBehaviour::LaneChange {
+        toward: away,
+        resume: lightcycle.direction,
+        remaining: random_between(18.0, 28.0),
+    });
+    state.attack_cooldown = 0.0;
+}
+
+/// Finds a faster lightcycle going the same way, close alongside and about
+/// level. Returns it and the direction away from it.
+fn find_overtaker(
+    arena: &Arena,
+    npc_id: PlayerId,
+    lightcycle: &Lightcycle,
+) -> Option<(PlayerId, Direction)> {
+    let forward = lightcycle.direction.as_velocity();
+    let [a, b] = lightcycle.direction.perpendicular_directions();
+
+    arena
+        .lightcycles
+        .iter()
+        .filter(|(id, other)| {
+            **id != npc_id
+                && !other.dead
+                && other.direction == lightcycle.direction
+                && other.speed > lightcycle.speed + 5.0
+        })
+        .find_map(|(id, other)| {
+            let delta = other.position - lightcycle.position;
+            let ahead = forward.dot(delta);
+            let side = if a.as_velocity().dot(delta) > 0.0 {
+                a
+            } else {
+                b
+            };
+            let lateral = side.as_velocity().dot(delta);
+            ((-4.0..=10.0).contains(&ahead) && lateral <= SLIPSTREAM_DISTANCE)
+                .then(|| (*id, opposite(side)))
+        })
+}
+
+fn opposite(direction: Direction) -> Direction {
+    match direction {
+        Direction::Up => Direction::Down,
+        Direction::Down => Direction::Up,
+        Direction::Left => Direction::Right,
+        Direction::Right => Direction::Left,
+    }
 }
 
 /// Seconds until a slipstreamer `distance` behind a lightcycle moving at
@@ -648,9 +857,19 @@ fn look_for_slipstream_attack(
         return;
     }
 
-    match find_slipstream_attack_target(arena, npc_id, lightcycle) {
+    let grudge = state.grudge_target(arena);
+    let target = find_slipstream_attack_target(arena, npc_id, lightcycle, grudge);
+    let chance = |target_id| {
+        let chance = state.personality.attack_chance;
+        if Some(target_id) == grudge {
+            chance + 30
+        } else {
+            chance
+        }
+    };
+    match target {
         Some((target_id, target_direction, approach_direction, cut_distance))
-            if percent_chance(state.personality.attack_chance) =>
+            if percent_chance(chance(target_id)) =>
         {
             state.set_behaviour(NpcBehaviour::SlipstreamAttack {
                 target_id,
@@ -683,6 +902,25 @@ fn choose_direction(context: &Context, state: &mut NpcState) -> Option<Direction
                 None => state.cruise(),
             }
             choose_direction(context, state)
+        }
+        NpcBehaviour::Hairpin => {
+            match start_hairpin(context) {
+                Some(behaviour) => state.set_behaviour(behaviour),
+                None => state.cruise(),
+            }
+            choose_direction(context, state)
+        }
+        NpcBehaviour::Shadow { target_id } => choose_shadow(context, target_id, state),
+        NpcBehaviour::Divide => {
+            let options = context.options;
+            let longest = std::iter::once(&options.straight)
+                .chain(options.turns.iter())
+                .filter(|option| options.is_safe(option))
+                .max_by(|a, b| a.ray.total_cmp(&b.ray))
+                .map(|option| option.direction);
+            state.cruise();
+            state.time_remaining = random_between(4.0, 7.0);
+            longest.filter(|direction| *direction != lightcycle.direction)
         }
         NpcBehaviour::RandomTurn => {
             state.cruise();
@@ -807,7 +1045,7 @@ fn choose_intercept(
 
     let Some(target_id) = target_id
         .filter(alive)
-        .or_else(|| find_intercept_target(context))
+        .or_else(|| find_intercept_target(context, state.grudge_target(context.arena)))
     else {
         state.cruise();
         return None;
@@ -853,8 +1091,12 @@ fn choose_intercept(
     Some(toward)
 }
 
-/// The nearest other lightcycle, favouring human players.
-fn find_intercept_target(context: &Context) -> Option<PlayerId> {
+/// `preferred` if it is alive, or else the nearest other lightcycle,
+/// favouring human players.
+fn find_intercept_target(context: &Context, preferred: Option<PlayerId>) -> Option<PlayerId> {
+    if preferred.is_some() {
+        return preferred;
+    }
     context
         .arena
         .lightcycles
@@ -871,6 +1113,113 @@ fn find_intercept_target(context: &Context) -> Option<PlayerId> {
         })
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(id, _)| id)
+}
+
+/// A turn onto a lane just beside the NPC's own trail, from which to double
+/// back alongside it and slipstream it, when the NPC has come a long way in
+/// a straight line and the lane back is clear.
+fn start_hairpin(context: &Context) -> Option<NpcBehaviour> {
+    let lightcycle = context.lightcycle;
+    // The trail's last point follows the lightcycle, so the straight run
+    // starts at the point before it.
+    let path = context
+        .arena
+        .lightribbons
+        .get(&context.npc_id)?
+        .paths
+        .last()?;
+    let corner = path.get(path.len().checked_sub(2)?)?;
+    let run = (lightcycle.position - *corner).length();
+    if run < NPC_HAIRPIN_MIN_RUN {
+        return None;
+    }
+
+    let back = opposite(lightcycle.direction);
+    let offset = random_between(NPC_DRAFT_OFFSET, NPC_DRAFT_OFFSET + 4.0);
+    context
+        .options
+        .turns
+        .iter()
+        .filter(|turn| turn.ray > offset + NPC_DRAFT_OFFSET)
+        .filter(|turn| {
+            let lane = lightcycle.position + turn.direction.as_velocity() * offset;
+            look_ahead_distance(context.arena, lane, back, None) > run * 0.75
+        })
+        .max_by(|a, b| a.space.total_cmp(&b.space))
+        .map(|turn| NpcBehaviour::LaneChange {
+            toward: turn.direction,
+            resume: back,
+            remaining: offset,
+        })
+}
+
+/// Ride level with a lightcycle, `NPC_SHADOW_OFFSET` to one side of its
+/// lane, and turn when it turns. While well behind, ride close enough to its
+/// trail to slipstream it and catch up.
+fn choose_shadow(
+    context: &Context,
+    target_id: Option<PlayerId>,
+    state: &mut NpcState,
+) -> Option<Direction> {
+    let lightcycle = context.lightcycle;
+    let alive = |id: &PlayerId| {
+        context
+            .arena
+            .lightcycles
+            .get(id)
+            .is_some_and(|lightcycle| !lightcycle.dead)
+    };
+    let Some(target_id) = target_id
+        .filter(alive)
+        .or_else(|| find_intercept_target(context, state.grudge_target(context.arena)))
+    else {
+        state.cruise();
+        return None;
+    };
+    state.behaviour = NpcBehaviour::Shadow {
+        target_id: Some(target_id),
+    };
+
+    let target = &context.arena.lightcycles[&target_id];
+    let to_target = target.position - lightcycle.position;
+    let [a, b] = lightcycle.direction.perpendicular_directions();
+    let toward = if a.as_velocity().dot(to_target) > 0.0 {
+        a
+    } else {
+        b
+    };
+
+    if lightcycle.direction == target.direction {
+        // Alongside: move out or in to the right distance from its lane.
+        let lateral = toward.as_velocity().dot(to_target);
+        let behind = target.direction.as_velocity().dot(to_target);
+        let (near, far) = if behind > 25.0 {
+            (NPC_DRAFT_OFFSET * 0.5, SLIPSTREAM_DISTANCE - 2.0)
+        } else {
+            (NPC_SHADOW_OFFSET * 0.5, NPC_SHADOW_OFFSET * 1.5)
+        };
+        if lateral > far {
+            Some(toward)
+        } else if lateral < near {
+            Some(opposite(toward))
+        } else {
+            None
+        }
+    } else if lightcycle.direction.is_opposite(target.direction) {
+        Some(toward)
+    } else {
+        // Heading across its lane: straighten up alongside it, on this side
+        // if already close enough, otherwise once across.
+        let to_lane = lightcycle.direction.as_velocity().dot(to_target);
+        let turn = if to_lane > NPC_SHADOW_OFFSET {
+            false
+        } else if to_lane >= NPC_SHADOW_OFFSET * 0.5 {
+            true
+        } else {
+            to_lane <= -NPC_SHADOW_OFFSET * 0.5
+        };
+        turn.then_some(target.direction)
+    }
 }
 
 /// Finds a trail, its own included, running the same way as the NPC, a
@@ -1166,10 +1515,12 @@ fn choose_slipstream_attack(
 
 /// Find a nearby bike that the NPC can slipstream behind.
 /// Returns `(target_id, target_direction, approach_direction, cut_distance)`.
+/// Favours `preferred`, if it is one of them.
 fn find_slipstream_attack_target(
     arena: &Arena,
     npc_id: PlayerId,
     lightcycle: &Lightcycle,
+    preferred: Option<PlayerId>,
 ) -> Option<(PlayerId, Direction, Direction, f64)> {
     let npc_pos = lightcycle.position;
     let npc_dir = lightcycle.direction;
@@ -1205,6 +1556,11 @@ fn find_slipstream_attack_target(
         }
 
         let total_dist_sq = delta.x * delta.x + delta.y * delta.y;
+        let total_dist_sq = if preferred == Some(*other_id) {
+            total_dist_sq * 0.25
+        } else {
+            total_dist_sq
+        };
         let cut_distance = SLIPSTREAM_DISTANCE;
 
         if npc_dir == target_dir {
@@ -1542,5 +1898,65 @@ mod tests {
             arena.lightcycles[&other].death_cause,
             Some(DeathCause::Trail(npc))
         );
+    }
+
+    #[test]
+    fn npcs_double_back_alongside_their_own_trail_for_speed() {
+        let mut state = NpcState {
+            personality: Personality::new(Style::Racer),
+            ..Default::default()
+        };
+        state.time_remaining = f64::INFINITY;
+        // The other lightcycle is far off, out of the way.
+        let (mut arena, npc, _) = duel(
+            ArenaPoint::new(280.0, 40.0),
+            ArenaPoint::new(20.0, 500.0),
+            state,
+        );
+        run_until_death(&mut arena, 1.5);
+
+        arena
+            .npc_states
+            .get_mut(&npc)
+            .unwrap()
+            .set_behaviour(NpcBehaviour::Hairpin);
+        let mut doubled_back = false;
+        let mut top_speed: f64 = 0.0;
+        for _ in 0..60 {
+            run_until_death(&mut arena, 0.05);
+            let lightcycle = arena.lightcycles[&npc];
+            doubled_back |= lightcycle.direction == Direction::Down;
+            top_speed = top_speed.max(lightcycle.speed);
+        }
+        assert!(doubled_back);
+        assert!(top_speed > LIGHTCYCLE_SPEED + 10.0, "{top_speed}");
+        assert!(!arena.lightcycles[&npc].dead);
+    }
+
+    #[test]
+    fn npcs_sidestep_a_faster_lightcycle_drawing_level() {
+        let mut state = NpcState {
+            personality: Personality::new(Style::Sentinel),
+            ..Default::default()
+        };
+        state.personality.anticipation = 100;
+        state.personality.cutoff_chance = 0;
+        state.time_remaining = f64::INFINITY;
+        let (mut arena, npc, other) = duel(
+            ArenaPoint::new(280.0, 60.0),
+            ArenaPoint::new(290.0, 58.0),
+            state,
+        );
+        arena.lightcycles.get_mut(&other).unwrap().speed = LIGHTCYCLE_BOOST_SPEED;
+
+        run_until_death(&mut arena, 0.05);
+        assert!(matches!(
+            arena.npc_states[&npc].behaviour,
+            NpcBehaviour::LaneChange {
+                toward: Direction::Left,
+                resume: Direction::Up,
+                ..
+            }
+        ));
     }
 }
