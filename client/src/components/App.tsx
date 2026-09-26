@@ -3,6 +3,7 @@ import '@/index.css'
 import { useState } from 'react'
 
 import { unlockAudio } from '@/audio/sound'
+import Floor from '@/components/Floor'
 import SoundToggle from '@/components/SoundToggle'
 import Webtron from '@/components/Webtron'
 import useAddWebtronLoadedClass from '@/hooks/useAddWebtronLoadedClass'
@@ -25,6 +26,7 @@ export default function App() {
 
   return (
     <StoreContext.Provider value={store}>
+      <Floor />
       <Webtron />
       <SoundToggle />
     </StoreContext.Provider>

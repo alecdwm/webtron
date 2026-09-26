@@ -22,27 +22,6 @@ body {
   padding: 0 0 var(--footer-height) 0;
 }
 
-/* Receding grid floor behind the page. */
-body::before {
-  position: fixed;
-  z-index: -1;
-  right: -50%;
-  bottom: 0;
-  left: -50%;
-  height: 55vh;
-  content: '';
-  transform: perspective(40vh) rotateX(60deg);
-  transform-origin: 50% 100%;
-  pointer-events: none;
-  opacity: 0.35;
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--blue) 70%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--blue) 70%, transparent) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: linear-gradient(to top, black 10%, transparent 90%);
-  animation: gridscroll 2.5s linear infinite;
-}
-
 /* CRT scanlines and vignette over everything. */
 body::after {
   position: fixed;
@@ -62,15 +41,6 @@ img {
 button:focus-visible,
 input:focus-visible {
   outline: none;
-}
-
-@keyframes gridscroll {
-  from {
-    background-position: 0 0;
-  }
-  to {
-    background-position: 0 48px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
