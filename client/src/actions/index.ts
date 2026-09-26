@@ -15,10 +15,23 @@ import type {
 import { resetServerClock, sampleServerClock } from '@/utils/clock'
 import { storeControlScheme } from '@/utils/controlScheme'
 import defaultPlayer from '@/utils/defaultPlayer'
+import { storePlayerColor, storePlayerName } from '@/utils/playerSettings'
 
 export const setStage = (stage: Stage): Action => ({ type: 'SET_STAGE', stage })
-export const setPlayerName = (name: string): Action => ({ type: 'SET_PLAYER_NAME', name })
-export const setPlayerColor = (color: Color): Action => ({ type: 'SET_PLAYER_COLOR', color })
+
+export function setPlayerName(name: string): Thunk {
+  return (dispatch) => {
+    storePlayerName(name)
+    dispatch({ type: 'SET_PLAYER_NAME', name })
+  }
+}
+
+export function setPlayerColor(color: Color): Thunk {
+  return (dispatch) => {
+    storePlayerColor(color)
+    dispatch({ type: 'SET_PLAYER_COLOR', color })
+  }
+}
 
 export function setControlScheme(controlScheme: ControlScheme): Thunk {
   return (dispatch) => {
