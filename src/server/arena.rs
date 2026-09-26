@@ -53,6 +53,9 @@ pub struct Arena {
 
     #[serde(skip)]
     pub winner_at: Option<DateTime<Utc>>,
+    /// A winner the server hasn't recorded on the leaderboard yet.
+    #[serde(skip)]
+    pub unrecorded_winner: Option<PlayerId>,
 
     #[serde(skip)]
     pub updates: Vec<ArenaUpdate>,
@@ -426,6 +429,7 @@ impl Arena {
         if let (Some((player_id, _)), None) = (alive_lightcycles.next(), alive_lightcycles.next()) {
             self.updates.push(ArenaUpdate::SetWinner(Some(*player_id)));
             self.winner_at = Some(Utc::now());
+            self.unrecorded_winner = Some(*player_id);
         }
 
         self
@@ -465,6 +469,7 @@ impl Default for Arena {
             npc_states: Default::default(),
 
             winner_at: None,
+            unrecorded_winner: None,
 
             updates: Default::default(),
             updates_applied_so_far: 0,

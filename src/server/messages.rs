@@ -8,7 +8,9 @@ pub use outgoing::Message as MessageOut;
 pub mod outgoing {
     use serde_derive::Serialize;
 
-    use crate::server::{Arena, ArenaId, ArenaOverview, ArenaUpdate, PlayerId};
+    use crate::server::{
+        Arena, ArenaId, ArenaOverview, ArenaUpdate, LeaderboardStandings, PlayerId,
+    };
 
     ///
     /// Outgoing messages
@@ -20,6 +22,8 @@ pub mod outgoing {
 
         ArenaState(Box<Arena>),
         ArenaStatePatch(Vec<ArenaUpdate>),
+
+        Leaderboard(LeaderboardStandings),
     }
 
     impl Message {

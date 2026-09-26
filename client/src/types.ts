@@ -57,9 +57,25 @@ export type ArenaOverview = {
   players: Record<string, Player>
 }
 
+export type LeaderboardEntry = {
+  // null for a player with no wins.
+  rank: number | null
+  name: string
+  wins: number
+  // The colour of the player's last win, if known.
+  color: Color | null
+}
+
+export type Leaderboard = {
+  top: LeaderboardEntry[]
+  // The viewing player's own entry, whether or not it is in top.
+  player: LeaderboardEntry | null
+}
+
 export type Store = {
   arena: Arena | null
   arenaList: ArenaOverview[] | null
+  leaderboard: Leaderboard | null
   config: { debugReducers: boolean }
   player: { id: string | null; name: string; color: Color }
   preloadedImages: HTMLImageElement[]

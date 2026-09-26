@@ -3,6 +3,7 @@ import { type CSSProperties, useCallback, useRef } from 'react'
 import { start, turn } from '@/actions'
 import Countdown from '@/components/Countdown'
 import Hole from '@/components/Hole'
+import Leaderboard from '@/components/Leaderboard'
 import Lightcycle from '@/components/Lightcycle'
 import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
@@ -21,7 +22,7 @@ import styles from './Arena.module.css'
 export default function Arena() {
   usePreloadImages([backgroundPanel, ...Object.values(lightcycleImages)])
 
-  const { arena, player } = useStore()
+  const { arena, leaderboard, player } = useStore()
   useArenaSounds(arena, player.id)
   const dispatch = useStoreDispatch()
 
@@ -33,6 +34,9 @@ export default function Arena() {
 
   const winner = arena.winner && arena.players[arena.winner]
   const playerCount = Object.keys(arena.players).length
+  // The player count is only meaningful before the first round: afterwards
+  // it also counts NPCs from the round that just ended.
+  const roundPlayed = Object.keys(arena.lightcycles).length > 0
 
   return (
     <div ref={arenaRef} className={styles.arena}>
@@ -81,6 +85,7 @@ export default function Arena() {
             <div className={styles.winner} style={{ '--winner': colorToHexString(winner.color) } as CSSProperties}>
               <div className={styles.winnerLabel}>Winner</div>
               <div className={styles.winnerName}>{winner.name.toUpperCase()}</div>
+              {leaderboard ? <Leaderboard leaderboard={leaderboard} playerColor={player.color} /> : null}
             </div>
           )}
 
@@ -90,9 +95,11 @@ export default function Arena() {
               <MenuButton className={styles.startButton} onClick={onStart}>
                 {winner ? 'REMATCH' : 'START'}
               </MenuButton>
-              <div className={styles.lobbyInfo}>
-                {playerCount}/{arena.max_players} players
-              </div>
+              {!roundPlayed && (
+                <div className={styles.lobbyInfo}>
+                  {playerCount}/{arena.max_players} players
+                </div>
+              )}
               <div className={styles.controlsHint}>Arrows / WASD / tap to steer</div>
             </div>
           ) : null}

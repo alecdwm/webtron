@@ -36,6 +36,7 @@ export function receiveSocketMessage(messageType, messageData) {
       ArenaJoined: receiveArenaJoined,
       ArenaState: receiveArenaState,
       ArenaStatePatch: receiveArenaStatePatch,
+      Leaderboard: receiveLeaderboard,
     }
 
     if (typeHandlers[messageType]) return dispatch(typeHandlers[messageType](messageData))
@@ -47,6 +48,7 @@ export const RECEIVE_ARENA_LIST = 'RECEIVE_ARENA_LIST'
 export const RECEIVE_ARENA_JOINED = 'RECEIVE_ARENA_JOINED'
 export const RECEIVE_ARENA_STATE = 'RECEIVE_ARENA_STATE'
 export const RECEIVE_ARENA_STATE_PATCH = 'RECEIVE_ARENA_STATE_PATCH'
+export const RECEIVE_LEADERBOARD = 'RECEIVE_LEADERBOARD'
 
 export function receiveArenaList(arenaList) {
   return (dispatch, getState) => {
@@ -66,3 +68,4 @@ export function receiveArenaJoined([arenaId, playerId]) {
 }
 export const receiveArenaState = createSimpleAction(RECEIVE_ARENA_STATE, 'state')
 export const receiveArenaStatePatch = createSimpleAction(RECEIVE_ARENA_STATE_PATCH, 'statePatch')
+export const receiveLeaderboard = createSimpleAction(RECEIVE_LEADERBOARD, 'leaderboard')

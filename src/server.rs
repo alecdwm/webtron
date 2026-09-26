@@ -1,4 +1,5 @@
 mod arena;
+mod leaderboard;
 mod messages;
 mod primitives;
 
@@ -6,10 +7,11 @@ use anyhow::{Context as ResultContext, Error, anyhow};
 use log::{error, info, warn};
 use std::collections::HashMap;
 use std::time::Duration;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time;
 
 pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate};
+pub use leaderboard::{Leaderboard, LeaderboardStandings};
 pub use messages::{MessageIn, MessageOut};
 pub use primitives::*;
 
@@ -23,14 +25,16 @@ pub struct Server {
     message_queue: Receiver<MessageIn>,
     clients: HashMap<ClientId, Client>,
     arenas: HashMap<ArenaId, Arena>,
+    leaderboard: Leaderboard,
 }
 
 impl Server {
-    pub fn new(message_queue: Receiver<MessageIn>) -> Self {
+    pub fn new(message_queue: Receiver<MessageIn>, leaderboard: Leaderboard) -> Self {
         Self {
             message_queue,
             clients: Default::default(),
             arenas: Default::default(),
+            leaderboard,
         }
     }
 
@@ -63,7 +67,74 @@ impl Server {
 
             // discard arena if all players have left
             !arena.players.is_empty()
-        })
+        });
+
+        let winners: Vec<(ArenaId, PlayerId)> = self
+            .arenas
+            .values_mut()
+            .filter_map(|arena| Some((arena.id, arena.unrecorded_winner.take()?)))
+            .collect();
+        for (arena_id, winner) in winners {
+            if let Some(arena) = self.arenas.get(&arena_id) {
+                self.record_winner(arena, winner);
+            }
+        }
+    }
+
+    /// Adds a win to the leaderboard, with the colour it was won in, if the
+    /// winner is a human player, then sends the leaderboard to everyone in
+    /// the arena. The leaderboard file is
+    /// written off the game loop.
+    fn record_winner(&self, arena: &Arena, winner: PlayerId) {
+        let human_winner = arena
+            .players
+            .get(&winner)
+            .filter(|_| !arena.npc_states.contains_key(&winner))
+            .map(|player| (player.name.clone(), player.color));
+
+        let recipients: Vec<(Sender<MessageOut>, Option<String>)> = self
+            .clients
+            .values()
+            .filter(|client| client.arena == Some(arena.id))
+            .map(|client| {
+                let name = client
+                    .player
+                    .and_then(|id| arena.players.get(&id))
+                    .map(|player| player.name.clone());
+                (client.tx.clone(), name)
+            })
+            .collect();
+
+        let leaderboard = self.leaderboard.clone();
+        tokio::spawn(async move {
+            let standings = tokio::task::spawn_blocking(move || {
+                let wins = match human_winner {
+                    Some((name, color)) => leaderboard.record_win(&name, color)?,
+                    None => leaderboard.wins()?,
+                };
+                Ok::<_, Error>(
+                    recipients
+                        .into_iter()
+                        .map(|(tx, name)| (tx, wins.standings(name.as_deref())))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .await;
+
+            let standings = match standings {
+                Ok(Ok(standings)) => standings,
+                Ok(Err(error)) => {
+                    return error!("Failed to update leaderboard: {}", get_error_chain(error));
+                }
+                Err(error) => return error!("Failed to update leaderboard: {}", error),
+            };
+
+            for (tx, standings) in standings {
+                if let Err(error) = tx.send(MessageOut::Leaderboard(standings)).await {
+                    warn!("Failed to send Leaderboard to client: {}", error);
+                }
+            }
+        });
     }
 
     pub async fn send_updates(&mut self) {
