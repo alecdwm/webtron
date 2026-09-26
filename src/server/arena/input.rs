@@ -22,6 +22,7 @@ impl ArenaInput {
                 // Forget an NPC winner of a round cut short, so the new
                 // round isn't ended when that winner's timeout runs out.
                 arena.winner_at = None;
+                arena.queued_turns.clear();
 
                 let mut updates = Vec::with_capacity(
                     1 + arena.lightcycles.len()
@@ -106,8 +107,8 @@ impl ArenaInput {
                         return vec![];
                     }
                     Some(started) => {
-                        let now = Utc::now();
-                        if now < started {
+                        let earliest = started - OldDuration::milliseconds(EARLY_TURN_MILLISECONDS);
+                        if Utc::now() < earliest {
                             trace!("Refusing to turn lightcycle before arena has started");
                             return vec![];
                         }
@@ -119,20 +120,34 @@ impl ArenaInput {
                     return vec![];
                 }
 
-                if lightcycle.direction.is_opposite(direction) {
+                // Turns are checked against the last one queued, which is
+                // the direction the lightcycle will be going when it's taken.
+                let queued = arena.queued_turns.get(&player_id);
+                let last_direction = queued
+                    .and_then(|turns| turns.back().copied())
+                    .unwrap_or(lightcycle.direction);
+
+                if last_direction.is_opposite(direction) {
                     trace!("Refusing to turn lightcycle in opposite direction");
                     return vec![];
                 }
 
-                if lightcycle.direction == direction {
+                if last_direction == direction {
                     trace!("Refusing to turn lightcycle in the direction it is already going");
                     return vec![];
                 }
 
-                return vec![
-                    ArenaUpdate::UpdateLightribbonAppendPoint(player_id, lightcycle.position),
-                    ArenaUpdate::UpdateLightcycleDirection(player_id, direction),
-                ];
+                if queued.is_some_and(|turns| turns.len() >= MAX_QUEUED_TURNS) {
+                    trace!("Refusing to queue another turn for lightcycle");
+                    return vec![];
+                }
+
+                arena
+                    .queued_turns
+                    .entry(player_id)
+                    .or_default()
+                    .push_back(direction);
+                vec![]
             }
         }
     }

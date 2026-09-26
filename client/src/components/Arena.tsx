@@ -137,15 +137,17 @@ function useStartKeys(enabled: boolean, onStart: () => void) {
   useEventListener('keydown', onKeyDown)
 }
 
+// Keyed by the physical key, so WASD works with Caps Lock or Shift held and on
+// any keyboard layout.
 const turnKeys = {
   ArrowUp: 'up',
-  w: 'up',
+  KeyW: 'up',
   ArrowLeft: 'left',
-  a: 'left',
+  KeyA: 'left',
   ArrowRight: 'right',
-  d: 'right',
+  KeyD: 'right',
   ArrowDown: 'down',
-  s: 'down',
+  KeyS: 'down',
 }
 
 function useKeyControls(started) {
@@ -155,7 +157,7 @@ function useKeyControls(started) {
     (event) => {
       if (!started) return
 
-      const direction = turnKeys[event.key]
+      const direction = turnKeys[event.code]
       if (!direction) return
       event.preventDefault()
       // A held key would otherwise send the same turn over and over.

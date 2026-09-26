@@ -9,7 +9,7 @@ use getrandom::SysRng;
 use log::{error, trace};
 use rand_core::{Rng, UnwrapErr};
 use serde_derive::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::mem;
 
 pub use self::entities::*;
@@ -33,6 +33,11 @@ const SLIPSTREAM_RAMP_DOWN_SECONDS: f64 = 2.0;
 const OWN_SLIPSTREAM_MIN_DISTANCE: f64 = 1.0;
 const HOLE_RADIUS: f64 = 20.0;
 const DEAD_LIGHTRIBBON_SECONDS: i64 = 6;
+/// How many turns a player can have waiting for later updates.
+const MAX_QUEUED_TURNS: usize = 3;
+/// How long before a round starts a player's turns are accepted, to be taken
+/// on its first update.
+const EARLY_TURN_MILLISECONDS: i64 = 100;
 
 /// What a lightcycle crashed into.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -62,6 +67,11 @@ pub struct Arena {
 
     #[serde(skip)]
     pub npc_states: HashMap<PlayerId, npc::NpcState>,
+    /// Turns human players have made that are yet to be taken, oldest first.
+    /// Each update takes one per lightcycle, so turns made close together
+    /// are all kept and each has a segment of trail between them.
+    #[serde(skip)]
+    pub queued_turns: HashMap<PlayerId, VecDeque<Direction>>,
 
     #[serde(skip)]
     pub winner_at: Option<DateTime<Utc>>,
@@ -150,6 +160,8 @@ impl Arena {
             return;
         }
 
+        self.take_queued_turns().apply_updates();
+
         // run NPC AI — extract npc_states so we can mutate it while reading arena immutably
         let mut npc_states = mem::take(&mut self.npc_states);
         let npc_updates = npc::update_npc_inputs(self, &mut npc_states, delta_time);
@@ -184,6 +196,34 @@ impl Arena {
     //
     // update helpers
     //
+
+    /// Turns each living lightcycle with the oldest of its queued turns.
+    fn take_queued_turns(&mut self) -> &mut Self {
+        let lightcycles = &self.lightcycles;
+        self.queued_turns.retain(|id, _| {
+            lightcycles
+                .get(id)
+                .is_some_and(|lightcycle| !lightcycle.dead)
+        });
+
+        for (id, turns) in self.queued_turns.iter_mut() {
+            let Some(direction) = turns.pop_front() else {
+                continue;
+            };
+            let lightcycle = &self.lightcycles[id];
+            if direction == lightcycle.direction || direction.is_opposite(lightcycle.direction) {
+                continue;
+            }
+
+            self.updates.push(ArenaUpdate::UpdateLightribbonAppendPoint(
+                *id,
+                lightcycle.position,
+            ));
+            self.updates
+                .push(ArenaUpdate::UpdateLightcycleDirection(*id, direction));
+        }
+        self
+    }
 
     fn update_lightcycle_speeds(&mut self, delta_time: f64) -> &mut Self {
         let speed_range = LIGHTCYCLE_BOOST_SPEED - LIGHTCYCLE_SPEED;
@@ -495,6 +535,7 @@ impl Default for Arena {
             holes: Default::default(),
 
             npc_states: Default::default(),
+            queued_turns: Default::default(),
 
             winner_at: None,
             unrecorded_winner: None,
@@ -739,23 +780,83 @@ mod tests {
         );
     }
 
-    #[test]
-    fn turning_twice_in_one_update_is_not_a_crash() {
-        let id = PlayerId::default();
-        let mut arena = arena_with_lightcycle(
+    /// A running arena with one lightcycle at (100, 110) going up, and a trail
+    /// from (100, 100).
+    fn arena_going_up(id: PlayerId) -> Arena {
+        arena_with_lightcycle(
             id,
             ArenaPoint::new(100.0, 110.0),
             Direction::Up,
             vec![ArenaPoint::new(100.0, 100.0), ArenaPoint::new(100.0, 110.0)],
-        );
+        )
+    }
 
+    #[test]
+    fn turns_in_one_update_are_taken_one_update_apart() {
+        let id = PlayerId::default();
+        let mut arena = arena_going_up(id);
+
+        // A U-turn, both turns arriving before the next update.
         arena.process_input(id, ArenaInput::Turn(Direction::Left));
-        arena.process_input(id, ArenaInput::Turn(Direction::Right));
+        arena.process_input(id, ArenaInput::Turn(Direction::Down));
+
+        arena.update(0.05);
+        assert_eq!(arena.lightcycles[&id].direction, Direction::Left);
+        arena.update(0.05);
+        assert_eq!(arena.lightcycles[&id].direction, Direction::Down);
         for _ in 0..10 {
             arena.update(0.05);
         }
         assert!(!arena.lightcycles[&id].dead);
-        assert_eq!(arena.lightcycles[&id].direction, Direction::Right);
+        assert_eq!(
+            arena.lightribbons[&id].paths[0][..3],
+            [
+                ArenaPoint::new(100.0, 100.0),
+                ArenaPoint::new(100.0, 110.0),
+                ArenaPoint::new(97.25, 110.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn turns_are_checked_against_the_last_queued_turn() {
+        let id = PlayerId::default();
+        let mut arena = arena_going_up(id);
+
+        arena.process_input(id, ArenaInput::Turn(Direction::Left));
+        // Reverses the queued turn.
+        arena.process_input(id, ArenaInput::Turn(Direction::Right));
+        // The same as the queued turn.
+        arena.process_input(id, ArenaInput::Turn(Direction::Left));
+        // Back the way the lightcycle is going now, which makes a step.
+        arena.process_input(id, ArenaInput::Turn(Direction::Up));
+        assert_eq!(arena.queued_turns[&id], [Direction::Left, Direction::Up]);
+    }
+
+    #[test]
+    fn only_a_few_turns_can_be_queued() {
+        let id = PlayerId::default();
+        let mut arena = arena_going_up(id);
+
+        for direction in [Direction::Left, Direction::Up].repeat(3) {
+            arena.process_input(id, ArenaInput::Turn(direction));
+        }
+        assert_eq!(arena.queued_turns[&id].len(), MAX_QUEUED_TURNS);
+    }
+
+    #[test]
+    fn turns_just_before_the_start_are_taken_at_the_start() {
+        let id = PlayerId::default();
+        let mut arena = arena_going_up(id);
+        arena.started = Some(Utc::now() + OldDuration::milliseconds(50));
+
+        arena.process_input(id, ArenaInput::Turn(Direction::Left));
+        arena.update(0.05);
+        assert_eq!(arena.lightcycles[&id].direction, Direction::Up);
+
+        arena.started = Some(Utc::now());
+        arena.update(0.05);
+        assert_eq!(arena.lightcycles[&id].direction, Direction::Left);
     }
 
     #[test]
@@ -788,15 +889,11 @@ mod tests {
     #[test]
     fn turning_the_way_a_lightcycle_is_going_does_nothing() {
         let id = PlayerId::default();
-        let mut arena = arena_with_lightcycle(
-            id,
-            ArenaPoint::new(100.0, 110.0),
-            Direction::Up,
-            vec![ArenaPoint::new(100.0, 100.0), ArenaPoint::new(100.0, 110.0)],
-        );
+        let mut arena = arena_going_up(id);
 
         arena.process_input(id, ArenaInput::Turn(Direction::Up));
         assert!(arena.updates.is_empty());
+        assert!(arena.queued_turns.is_empty());
     }
 
     #[test]
