@@ -56,8 +56,8 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
     }
 
     const seenNearMisses = new Set(before.nearMisses.map(({ key }) => key))
-    for (const { key, player, point } of arena.nearMisses) {
-      if (!seenNearMisses.has(key)) playNearMiss(player === selfId, panFor(player, point))
+    for (const { key, player, point, perfect } of arena.nearMisses) {
+      if (!seenNearMisses.has(key)) playNearMiss(player === selfId, perfect, panFor(player, point))
     }
 
     for (const [id, { key }] of Object.entries(arena.emotes)) {

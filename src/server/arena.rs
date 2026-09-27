@@ -54,6 +54,9 @@ const BRAKE_RECHARGE_SECONDS: f64 = 6.0;
 /// A lightcycle has a near miss when it passes this close to the end of a
 /// trail, or turns this close to crashing.
 const NEAR_MISS_DISTANCE: f64 = 10.0;
+/// A near miss this close is perfect: about one update's travel at the
+/// lightcycle's usual speed, so any later and it would have crashed.
+const PERFECT_NEAR_MISS_DISTANCE: f64 = 3.0;
 /// The shortest time between two near misses of one lightcycle.
 const NEAR_MISS_COOLDOWN_MILLISECONDS: i64 = 600;
 /// How much of a full brake a near miss gives back.
@@ -335,10 +338,9 @@ impl Arena {
             self.updates
                 .push(ArenaUpdate::UpdateLightcycleDirection(id, direction));
 
-            if self.distance_ahead(id, lightcycle.position, lightcycle.direction)
-                <= NEAR_MISS_DISTANCE
-            {
-                self.near_miss(id, lightcycle.position);
+            let gap = self.distance_ahead(id, lightcycle.position, lightcycle.direction);
+            if gap <= NEAR_MISS_DISTANCE {
+                self.near_miss(id, lightcycle.position, gap);
             }
         }
         self
@@ -366,19 +368,26 @@ impl Arena {
         distance
     }
 
-    /// Gives a lightcycle some brake back for a near miss at `point`, unless
-    /// it had one too recently.
-    fn near_miss(&mut self, id: PlayerId, point: ArenaPoint) {
+    /// Gives a lightcycle some brake back for a near miss at `point`, `gap`
+    /// short of crashing, unless it had one too recently. A perfect near miss
+    /// fills the brake right up, and isn't held back by an earlier one.
+    fn near_miss(&mut self, id: PlayerId, point: ArenaPoint, gap: f64) {
         let now = Utc::now();
-        if self.near_miss_at.get(&id).is_some_and(|at| {
-            now < *at + OldDuration::milliseconds(NEAR_MISS_COOLDOWN_MILLISECONDS)
-        }) {
+        let perfect = gap <= PERFECT_NEAR_MISS_DISTANCE;
+        if !perfect
+            && self.near_miss_at.get(&id).is_some_and(|at| {
+                now < *at + OldDuration::milliseconds(NEAR_MISS_COOLDOWN_MILLISECONDS)
+            })
+        {
             return;
         }
         self.near_miss_at.insert(id, now);
-        self.updates.push(ArenaUpdate::NearMiss(id, point));
+        self.updates.push(ArenaUpdate::NearMiss(id, point, perfect));
         if let Some(lightcycle) = self.lightcycles.get(&id) {
-            let brake = (lightcycle.brake + NEAR_MISS_BRAKE_REFILL).min(1.0);
+            let brake = match perfect {
+                true => 1.0,
+                false => (lightcycle.brake + NEAR_MISS_BRAKE_REFILL).min(1.0),
+            };
             if brake != lightcycle.brake {
                 self.updates
                     .push(ArenaUpdate::UpdateLightcycleBrakeMeter(id, brake));
@@ -561,16 +570,16 @@ impl Arena {
                 continue 'next_lightcycle;
             }
 
-            if let Some(point) = self.near_miss_point(*id, travel, &travels) {
-                near_misses.push((*id, point));
+            if let Some((point, gap)) = self.near_miss_point(*id, travel, &travels) {
+                near_misses.push((*id, point, gap));
             }
         }
 
         // The updates so far are applied first, so near misses see the
         // lightcycles' latest brakes.
         self.apply_updates();
-        for (id, point) in near_misses {
-            self.near_miss(id, point);
+        for (id, point, gap) in near_misses {
+            self.near_miss(id, point, gap);
         }
         for (id, emote) in taunts {
             self.npc_taunt(id, emote);
@@ -684,14 +693,15 @@ impl Arena {
             .push(ArenaUpdate::UpdateLightribbonStartPath(id, entry));
     }
 
-    /// Where a lightcycle's travel this update passed close by the end of a
-    /// trail across its path, if it did.
+    /// Where a lightcycle's travel this update passed closest by the end of a
+    /// trail across its path, and how close, if it passed close by any.
     fn near_miss_point(
         &self,
         id: PlayerId,
         travel: &Travel,
         travels: &HashMap<PlayerId, Travel>,
-    ) -> Option<ArenaPoint> {
+    ) -> Option<(ArenaPoint, f64)> {
+        let mut closest: Option<(ArenaPoint, f64)> = None;
         for &(from, to) in &travel.legs {
             for (ribbon_id, lightribbon) in self.lightribbons.iter() {
                 let live_segments = travels
@@ -700,13 +710,15 @@ impl Arena {
                     .map(|travel| travel.legs.as_slice())
                     .unwrap_or_default();
                 for (a, b) in lightribbon.segments().chain(live_segments.iter().copied()) {
-                    if let Some(point) = passes_end(from, to, a, b) {
-                        return Some(point);
+                    if let Some((point, gap)) = passes_end(from, to, a, b)
+                        && closest.is_none_or(|(_, closest_gap)| gap < closest_gap)
+                    {
+                        closest = Some((point, gap));
                     }
                 }
             }
         }
-        None
+        closest
     }
 
     /// An NPC emotes, now and then.
@@ -1003,15 +1015,15 @@ impl Travel {
 
 /// Where a lightcycle travelling in a straight line from `from` to `to`
 /// crosses the line through the trail segment from `a` to `b`, which is
-/// across its path, if it does so beyond the end of the segment and no more
-/// than `NEAR_MISS_DISTANCE` from it. Crossing at `from` doesn't count, as
-/// that is where a lightcycle's own trail turns.
+/// across its path, and how far from the end of the segment, if it does so
+/// beyond the end and no more than `NEAR_MISS_DISTANCE` from it. Crossing at
+/// `from` doesn't count, as that is where a lightcycle's own trail turns.
 fn passes_end(
     from: ArenaPoint,
     to: ArenaPoint,
     a: ArenaPoint,
     b: ArenaPoint,
-) -> Option<ArenaPoint> {
+) -> Option<(ArenaPoint, f64)> {
     // Swapped round for a vertical path, so the path runs along x.
     let flip = |point: ArenaPoint| ArenaPoint::new(point.y, point.x);
     let horizontal = from.y == to.y && from.x != to.x;
@@ -1035,7 +1047,7 @@ fn passes_end(
         return None;
     }
     let point = ArenaPoint::new(crossing, from.y);
-    Some(if horizontal { point } else { flip(point) })
+    Some((if horizontal { point } else { flip(point) }, gap))
 }
 
 /// Returns true if the bike at `pos` (traveling vertically if `bike_is_vertical`,
@@ -1516,12 +1528,40 @@ mod tests {
         arena.process_input(id, ArenaInput::Turn(Direction::Left));
         arena.update(0.05);
         assert!(
-            arena
-                .updates
-                .iter()
-                .any(|update| matches!(update, ArenaUpdate::NearMiss(near, _) if *near == id))
+            arena.updates.iter().any(
+                |update| matches!(update, ArenaUpdate::NearMiss(near, _, false) if *near == id)
+            )
         );
         assert!(arena.lightcycles[&id].brake > 0.5 + NEAR_MISS_BRAKE_REFILL / 2.0);
+    }
+
+    #[test]
+    fn turning_right_up_against_a_trail_is_a_perfect_near_miss() {
+        let id = PlayerId::default();
+        let other = PlayerId::default();
+        let mut arena = arena_going_up(id);
+        arena.lightcycles.get_mut(&id).unwrap().brake = 0.1;
+        // Just after a near miss, which doesn't hold back a perfect one.
+        arena.near_miss_at.insert(id, Utc::now());
+        arena.lightribbons.insert(
+            other,
+            Lightribbon {
+                paths: vec![vec![
+                    ArenaPoint::new(50.0, 112.0),
+                    ArenaPoint::new(150.0, 112.0),
+                ]],
+            },
+        );
+
+        arena.process_input(id, ArenaInput::Turn(Direction::Left));
+        arena.update(0.05);
+        assert!(!arena.lightcycles[&id].dead);
+        assert!(
+            arena.updates.iter().any(
+                |update| matches!(update, ArenaUpdate::NearMiss(near, _, true) if *near == id)
+            )
+        );
+        assert_eq!(arena.lightcycles[&id].brake, 1.0);
     }
 
     #[test]
@@ -1535,7 +1575,7 @@ mod tests {
             ArenaPoint::new(5.0, 4.0),
             ArenaPoint::new(5.0, 50.0),
         );
-        assert_eq!(near, Some(ArenaPoint::new(5.0, 0.0)));
+        assert_eq!(near, Some((ArenaPoint::new(5.0, 0.0), 4.0)));
         // Too far off, alongside, or behind.
         assert!(
             passes_end(
@@ -1571,7 +1611,7 @@ mod tests {
             ArenaPoint::new(-3.0, 5.0),
             ArenaPoint::new(-30.0, 5.0),
         );
-        assert_eq!(near, Some(ArenaPoint::new(0.0, 5.0)));
+        assert_eq!(near, Some((ArenaPoint::new(0.0, 5.0), 3.0)));
     }
 
     #[test]

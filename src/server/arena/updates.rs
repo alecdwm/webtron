@@ -29,8 +29,9 @@ pub enum ArenaUpdate {
     TrimLightribbon(PlayerId, f64),
 
     /// A lightcycle came close to crashing at the point, and got some brake
-    /// back for it. Clients show it; it changes nothing.
-    NearMiss(PlayerId, ArenaPoint),
+    /// back for it. The flag is set when it was about as close as it could
+    /// have come. Clients show it; it changes nothing.
+    NearMiss(PlayerId, ArenaPoint, bool),
     /// A player flashed up an emote. Clients show it; it changes nothing.
     Emote(PlayerId, Emote),
 

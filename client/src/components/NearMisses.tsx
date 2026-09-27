@@ -13,20 +13,21 @@ type NearMissesProps = {
   height: number
 }
 
-// A spark where each near miss happened, and a word for the player's own.
+// A spark where each near miss happened, and a word for the player's own,
+// both bigger for a perfect one.
 // Each plays its animation once and then stays hidden until it drops off the
 // arena's list.
 function NearMisses({ nearMisses, colorOf, selfId, width, height }: NearMissesProps) {
-  return nearMisses.map(({ key, player, point: [x, y] }) => {
+  return nearMisses.map(({ key, player, point: [x, y], perfect }) => {
     const style = {
       '--spark': colorToCss(colorOf(player)),
       left: `${(x / width) * 100}%`,
       bottom: `${(y / height) * 100}%`,
     } as CSSProperties
     return (
-      <div key={key} className={styles.nearMiss} style={style}>
+      <div key={key} className={styles.nearMiss} data-perfect={perfect || undefined} style={style}>
         <div className={styles.spark} />
-        {player === selfId ? <div className={styles.label}>CLOSE!</div> : null}
+        {player === selfId ? <div className={styles.label}>{perfect ? 'PERFECT!' : 'CLOSE!'}</div> : null}
       </div>
     )
   })

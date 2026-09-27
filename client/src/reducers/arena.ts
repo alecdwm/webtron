@@ -149,8 +149,8 @@ function applyUpdate(arena: Arena, update: ArenaUpdate, time: number): Arena {
   }
 
   if ('NearMiss' in update) {
-    const [player, point] = update.NearMiss
-    const nearMiss = { key: nextEffectKey++, player, point }
+    const [player, point, perfect] = update.NearMiss
+    const nearMiss = { key: nextEffectKey++, player, point, perfect }
     return { ...arena, nearMisses: [...arena.nearMisses, nearMiss].slice(-MAX_NEAR_MISSES) }
   }
   if ('Emote' in update) {

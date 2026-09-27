@@ -358,12 +358,17 @@ export function playTurn(self: boolean, pan = 0) {
   noise({ duration: 0.04, gain: gain * 0.6, pan, filter: { type: 'highpass', freq: 5000 } })
 }
 
-// A near miss: a bright zing that rises twice.
-export function playNearMiss(self: boolean, pan = 0) {
+// A near miss: a bright zing that rises twice, and for a perfect one a third
+// time, with a ring left hanging after.
+export function playNearMiss(self: boolean, perfect: boolean, pan = 0) {
   const gain = self ? 1 : 0.3
   tone({ type: 'triangle', freq: 1200, freqEnd: 2400, duration: 0.09, gain: 0.07 * gain, pan })
   tone({ type: 'triangle', freq: 1800, freqEnd: 3600, duration: 0.14, gain: 0.06 * gain, pan, delay: 0.07 })
   noise({ duration: 0.12, gain: 0.03 * gain, pan, filter: { type: 'highpass', freq: 6000 } })
+  if (perfect) {
+    tone({ type: 'triangle', freq: 2400, freqEnd: 4800, duration: 0.12, gain: 0.06 * gain, pan, delay: 0.14 })
+    tone({ type: 'sine', freq: 3600, duration: 0.4, gain: 0.04 * gain, pan, delay: 0.24 })
+  }
 }
 
 // Braking: a short hiss with a falling whine, like a lightcycle scrubbing speed.

@@ -37,6 +37,26 @@
   animation: label 900ms ease-out both;
 }
 
+/* A perfect near miss gets a wider ring, a white glow and a longer, bigger
+   word. */
+.nearMiss[data-perfect] .spark {
+  width: 40px;
+  height: 40px;
+  border-width: 3px;
+  box-shadow:
+    0 0 8px var(--spark),
+    0 0 16px var(--white);
+  animation-duration: 700ms;
+}
+.nearMiss[data-perfect] .label {
+  font-size: clamp(0.75rem, 3cqi, 1.15rem);
+  text-shadow:
+    0 0 4px var(--white),
+    0 0 10px var(--glow),
+    0 0 18px var(--glow);
+  animation-duration: 1200ms;
+}
+
 @keyframes spark {
   from {
     opacity: 1;

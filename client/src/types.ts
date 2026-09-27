@@ -91,7 +91,7 @@ export type ArenaUpdate =
   | { UpdateLightribbonReplaceLatestPoint: [string, Point] }
   | { UpdateLightribbonStartPath: [string, Point] }
   | { TrimLightribbon: [string, number] }
-  | { NearMiss: [string, Point] }
+  | { NearMiss: [string, Point, boolean] }
   | { Emote: [string, Emote] }
   | { RemovePlayer: string }
   | { RemoveLightcycle: string }
@@ -190,7 +190,7 @@ export type Arena = {
   emotes: Record<string, EmoteShown>
 }
 
-export type NearMiss = { key: number; player: string; point: Point }
+export type NearMiss = { key: number; player: string; point: Point; perfect: boolean }
 export type EmoteShown = { key: number; emote: Emote; at: number }
 
 export type Stage = 'MainMenu' | 'Connect' | 'ArenaSelect' | 'Arena'
