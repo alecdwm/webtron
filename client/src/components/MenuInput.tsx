@@ -94,7 +94,7 @@ export default function MenuInput({
           value === '' && styles.noName,
         ])}
       >
-        <span className={styles.invisibleText} aria-hidden="true">
+        <span className={styles.text} aria-hidden="true">
           {value || '_'}
         </span>
         <input

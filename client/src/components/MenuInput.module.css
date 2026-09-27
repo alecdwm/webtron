@@ -33,7 +33,13 @@
   }
 }
 
-.invisibleText {
+/* The span draws the text, and the input on top of it only takes the typing,
+   because an input clips its text-shadow to its own box and the box is only
+   as wide as the text. */
+.text {
+  white-space: pre;
+}
+.noName .text {
   color: transparent;
 }
 
@@ -48,7 +54,9 @@
   height: 100%;
   padding: 0;
 
+  color: transparent;
   caret-color: transparent;
+  text-shadow: none;
 }
 .input::selection {
   background: none;
