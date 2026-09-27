@@ -39,6 +39,13 @@
 
   /* Layered neon glow. Set --glow on an element to pick its color. */
   --glow: var(--blue);
+}
+/* A custom property's var() references resolve on the element that declares
+   it, so these are declared on every element to pick up that element's --glow
+   rather than the root's. */
+*,
+::before,
+::after {
   --text-glow: 0 0 2px var(--glow), 0 0 8px var(--glow), 0 0 18px color-mix(in srgb, var(--glow) 60%, transparent);
   --box-glow:
     0 0 4px var(--glow), 0 0 14px color-mix(in srgb, var(--glow) 55%, transparent),
