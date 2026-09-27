@@ -21,12 +21,18 @@ struct CliConfig {
         env = "LEADERBOARD_PATH"
     )]
     leaderboard_path: PathBuf,
+
+    /// Sets the ntfy topic url, such as https://ntfy.sh/mytopic, to post to
+    /// when a player connects or disconnects
+    #[arg(short = 'n', long, env = "NTFY_URL")]
+    ntfy_url: Option<String>,
 }
 
 #[derive(Debug)]
 pub struct Config {
     pub bind_address: SocketAddr,
     pub leaderboard_path: PathBuf,
+    pub ntfy_url: Option<String>,
 }
 
 impl Default for Config {
@@ -34,6 +40,7 @@ impl Default for Config {
         Self {
             bind_address: SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 3000),
             leaderboard_path: PathBuf::from("leaderboard.jsonl"),
+            ntfy_url: None,
         }
     }
 }
@@ -45,6 +52,7 @@ impl Config {
         Self {
             bind_address: SocketAddr::new(cli_config.bind_address, cli_config.port),
             leaderboard_path: cli_config.leaderboard_path,
+            ntfy_url: cli_config.ntfy_url,
         }
     }
 }

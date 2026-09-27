@@ -15,6 +15,7 @@ futures = "0.3.34"
 getrandom = { version = "0.4", features = ["sys_rng"] }
 http-body-util = "0.1"
 hyper = { version = "1", features = ["client", "http1"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "tls12", "ring", "webpki-tokio"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 log = "0.4.34"
 lyon_geom = "1"

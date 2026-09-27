@@ -1,6 +1,7 @@
 mod arena;
 mod leaderboard;
 mod messages;
+mod ntfy;
 mod primitives;
 
 use anyhow::{Context as ResultContext, Error, anyhow, bail};
@@ -16,6 +17,7 @@ use tokio::time::{self, Instant, MissedTickBehavior};
 pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate, DeathCause};
 pub use leaderboard::{Leaderboard, LeaderboardStandings, Stat};
 pub use messages::{MessageIn, MessageOut};
+pub use ntfy::Ntfy;
 pub use primitives::*;
 
 use crate::{get_error_chain, truncate_for_log};
@@ -41,18 +43,21 @@ pub struct Server {
     clients: HashMap<ClientId, Client>,
     arenas: HashMap<ArenaId, Arena>,
     leaderboard: Leaderboard,
+    /// Told when a human player connects or disconnects.
+    ntfy: Ntfy,
     /// Clients whose queue of outgoing messages is full, to be disconnected
     /// at the end of the update.
     lagging: Vec<ClientId>,
 }
 
 impl Server {
-    pub fn new(message_queue: Receiver<MessageIn>, leaderboard: Leaderboard) -> Self {
+    pub fn new(message_queue: Receiver<MessageIn>, leaderboard: Leaderboard, ntfy: Ntfy) -> Self {
         Self {
             message_queue,
             clients: Default::default(),
             arenas: Default::default(),
             leaderboard,
+            ntfy,
             lagging: Default::default(),
         }
     }
@@ -232,7 +237,10 @@ impl Server {
 
     fn remove_client(&mut self, client_id: ClientId) {
         self.client_part_arena(client_id);
-        self.clients.remove(&client_id);
+        let client = self.clients.remove(&client_id);
+        if let Some(name) = client.and_then(|client| client.name) {
+            self.ntfy.send(format!("{} disconnected", name));
+        }
     }
 }
 
@@ -286,6 +294,15 @@ impl Server {
             return Ok(false);
         }
 
+        // A client claims its name as soon as it connects, so its first claim
+        // is when a human player can be said to have connected.
+        match client.name.as_deref() {
+            None => self.ntfy.send(format!("{} connected", name)),
+            Some(old_name) if old_name != name => {
+                self.ntfy.send(format!("{} renamed to {}", old_name, name))
+            }
+            Some(_) => {}
+        }
         client.name = Some(name.to_string());
         Ok(true)
     }
@@ -584,7 +601,11 @@ mod tests {
         let (_, message_queue) = mpsc::channel(1);
         let path =
             std::env::temp_dir().join(format!("webtron-server-{}.jsonl", ClientId::default()));
-        Server::new(message_queue, Leaderboard::open(&path).unwrap())
+        Server::new(
+            message_queue,
+            Leaderboard::open(&path).unwrap(),
+            Ntfy::default(),
+        )
     }
 
     /// Connects a client, returning its id and the messages it is sent.

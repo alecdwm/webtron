@@ -24,7 +24,7 @@ use tokio::sync::mpsc;
 use tokio::try_join;
 
 use config::Config;
-use server::{Leaderboard, Server as WebtronServer};
+use server::{Leaderboard, Ntfy, Server as WebtronServer};
 
 ///
 /// Starts up webtron server.
@@ -32,9 +32,10 @@ use server::{Leaderboard, Server as WebtronServer};
 pub async fn start() -> Result<(), Error> {
     let config = Arc::new(Config::new());
     let leaderboard = Leaderboard::open(&config.leaderboard_path)?;
+    let ntfy = Ntfy::new(config.ntfy_url.as_deref())?;
 
     let (server_tx, server_rx) = mpsc::channel(100);
-    let server = tokio::spawn(WebtronServer::new(server_rx, leaderboard).start());
+    let server = tokio::spawn(WebtronServer::new(server_rx, leaderboard, ntfy).start());
     // The web server runs on this task rather than a spawned one: the future
     // returned by warp's server isn't provably `Send`, so it can't be spawned.
     let web = async {
