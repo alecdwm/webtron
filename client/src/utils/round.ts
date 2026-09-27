@@ -25,7 +25,8 @@ export const shapeNames: Record<Shape, string> = {
 }
 
 export const emoteLabels: Record<Emote, string> = { gg: 'GG', lol: 'LOL', rip: 'RIP', wtf: '!?!' }
-export const emotes: Emote[] = ['gg', 'lol', 'rip', 'wtf']
+// The emotes players can send. NPCs also use 'wtf' when they start a grudge.
+export const emotes: Emote[] = ['lol', 'rip', 'gg']
 
 export function hasMutator(round: Round, mutator: Mutator) {
   return round.mutators.includes(mutator)

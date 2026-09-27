@@ -166,7 +166,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
                     ? '← → / A D / tap either side to turn'
                     : 'Arrows / WASD / tap to steer'}
                   <br />
-                  Space / Shift to brake · 1–4 to emote
+                  Space / Shift to brake · 1–3 to emote
                 </div>
               </div>
             ) : null}
@@ -316,7 +316,7 @@ function useKeyControls(inRound: boolean, selfAlive: boolean, controlScheme: Con
   useEventListener('keydown', onKeyDown)
 }
 
-// The number keys 1 to 4, on either the main keyboard or the number pad,
+// The number keys 1 to 3, on either the main keyboard or the number pad,
 // pick the emotes in order.
 const emoteKeys: Record<string, Emote> = Object.fromEntries(
   emotes.flatMap((chosen, index) => [

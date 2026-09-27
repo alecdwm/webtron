@@ -110,6 +110,7 @@ pub enum Emote {
     Gg,
     Lol,
     Rip,
-    /// Shown as "!?!".
+    /// Shown as "!?!". NPCs use it when they start a grudge; the client
+    /// offers it to no one.
     Wtf,
 }
