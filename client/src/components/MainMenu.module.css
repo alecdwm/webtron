@@ -11,6 +11,27 @@
   color: var(--white);
 }
 
+.titleSlot {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.titleHidden {
+  visibility: hidden;
+}
+
+/* Centred over the title's line box and out of flow, so the frame spills
+   into the menu's gaps instead of adding height. */
+.statusText,
+.errorText {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
 .statusText {
   --glow: var(--orange);
   padding: 0.3em 0.9em;
@@ -27,7 +48,6 @@
 }
 .errorText {
   --glow: var(--red);
-  max-width: 90%;
   padding: 0.4em 0.9em;
   text-align: center;
   letter-spacing: 0.08em;

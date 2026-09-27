@@ -97,15 +97,20 @@ export default function MainMenu() {
 
   return (
     <div className={styles.mainMenu} style={{ '--player': colorToCss(player.color) } as CSSProperties}>
-      {joinError ? (
-        <div className={styles.errorText} role="alert">
-          {joinError}
+      {/* A status or error message takes the title's place without taking more
+          of the menu's height, so showing one never squeezes the rest. */}
+      <div className={styles.titleSlot}>
+        <div className={resolveClassName([styles.title, !!(joinError || status) && styles.titleHidden])}>
+          Enter the grid
         </div>
-      ) : status ? (
-        <div className={styles.statusText}>{status}</div>
-      ) : null}
-
-      <div className={styles.title}>Enter the grid</div>
+        {joinError ? (
+          <div className={styles.errorText} role="alert">
+            {joinError}
+          </div>
+        ) : status ? (
+          <div className={styles.statusText}>{status}</div>
+        ) : null}
+      </div>
 
       <div className={styles.field}>
         <div className={styles.label}>Name</div>
