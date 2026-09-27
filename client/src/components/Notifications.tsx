@@ -1,6 +1,8 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 
+import { EMOTE_MS } from '@/hooks/useArenaAnimation'
 import type { Arena, Color, DeathCause, Player } from '@/types'
+import { serverNow } from '@/utils/clock'
 import { colorToCss } from '@/utils/colors'
 import { emoteLabels } from '@/utils/round'
 
@@ -14,9 +16,10 @@ type Part = { text: string; color?: Color }
 type Notification = { id: number; color: Color; parts: Part[] }
 
 // A feed of fading one-line notifications in the corner of the arena, for
-// deaths and for human players joining and leaving. Each line is in the
-// colour of the player it is about, with other players' names in theirs.
-export default function Notifications({ arena }: { arena: Arena }) {
+// deaths, for emotes not shown over a lightcycle, and for human players
+// joining and leaving. Each line is in the colour of the player it is about,
+// with other players' names in theirs.
+export default function Notifications({ arena, serverTimeOffset }: { arena: Arena; serverTimeOffset: number }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const previousArena = useRef(arena)
   const nextId = useRef(0)
@@ -34,7 +37,7 @@ export default function Notifications({ arena }: { arena: Arena }) {
     // diff, or joining an arena would announce everyone already in it.
     if (before === arena || before.width === 0) return
 
-    const added = describeChanges(before, arena).map((notification) => ({
+    const added = describeChanges(before, arena, serverNow(serverTimeOffset)).map((notification) => ({
       ...notification,
       id: nextId.current++,
     }))
@@ -47,7 +50,7 @@ export default function Notifications({ arena }: { arena: Arena }) {
       setNotifications((current) => current.filter(({ id }) => !ids.has(id)))
     }, NOTIFICATION_MS)
     timeouts.current.add(timeout)
-  }, [arena])
+  }, [arena, serverTimeOffset])
 
   return (
     <div className={styles.notifications} aria-live="polite">
@@ -77,13 +80,15 @@ export default function Notifications({ arena }: { arena: Arena }) {
   )
 }
 
-function describeChanges(before: Arena, arena: Arena): Omit<Notification, 'id'>[] {
+// What changed from `before` to `arena`, at server time `now`.
+function describeChanges(before: Arena, arena: Arena, now: number): Omit<Notification, 'id'>[] {
   const lookup = (id: string): Player | undefined => arena.players[id] ?? before.players[id]
   const name = (id: string): Part => {
     const player = lookup(id)
     return player ? { text: player.name.toUpperCase(), color: player.color } : { text: 'UNKNOWN', color: 'white' }
   }
   const notifications: Omit<Notification, 'id'>[] = []
+  const emoteParts = (id: string): Part[] => [name(id), { text: `: ${emoteLabels[arena.emotes[id].emote]}` }]
 
   for (const [id, player] of Object.entries(arena.players)) {
     if (!(id in before.players) && !player.npc) {
@@ -94,6 +99,11 @@ function describeChanges(before: Arena, arena: Arena): Omit<Notification, 'id'>[
   for (const [id, cycle] of Object.entries(arena.lightcycles)) {
     const old = before.lightcycles[id]
     if (!old || old.dead || !cycle.dead) continue
+    // An emote still showing over the lightcycle goes with it, so it is
+    // listed here instead, ahead of the death.
+    const emote = arena.emotes[id]
+    if (emote && before.emotes[id]?.key === emote.key && now - emote.at < EMOTE_MS)
+      notifications.push({ color: lookup(id)?.color ?? 'white', parts: emoteParts(id) })
     notifications.push({
       color: lookup(id)?.color ?? 'white',
       parts: [name(id), ...deathParts(id, cycle.death_cause, name)],
@@ -101,11 +111,11 @@ function describeChanges(before: Arena, arena: Arena): Omit<Notification, 'id'>[
   }
 
   // Emotes show over lightcycles still riding, so only those of players
-  // without one are listed here.
-  for (const [id, { key, emote }] of Object.entries(arena.emotes)) {
+  // without one are listed here, such as an NPC's as it crashes.
+  for (const [id, { key }] of Object.entries(arena.emotes)) {
     const lightcycle = arena.lightcycles[id]
     if (before.emotes[id]?.key === key || (lightcycle && !lightcycle.dead)) continue
-    notifications.push({ color: lookup(id)?.color ?? 'white', parts: [name(id), { text: `: ${emoteLabels[emote]}` }] })
+    notifications.push({ color: lookup(id)?.color ?? 'white', parts: emoteParts(id) })
   }
 
   for (const [id, player] of Object.entries(before.players)) {

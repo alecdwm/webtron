@@ -152,7 +152,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
 
         {inRound && hasMutator(arena.round, 'Fog') ? <Fog lifted={!selfAlive} /> : null}
 
-        <Notifications arena={arena} />
+        <Notifications arena={arena} serverTimeOffset={serverTimeOffset} />
         <RoundBanner round={arena.round} startAt={arena.started} serverTimeOffset={serverTimeOffset} />
         <EmoteBar color={colorOf(player.id ?? '')} />
         {selfAlive ? <BrakeButton /> : null}
