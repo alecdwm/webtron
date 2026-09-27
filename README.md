@@ -2,7 +2,7 @@
 
 # <a href="https://tron.shirls.org"><picture><source media="(prefers-color-scheme: dark)" srcset="client/src/img/webtron.svg"><img src="client/src/img/webtron-light.svg" alt="webtron"></picture></a>
 
-A browser-based multiplayer implementation of the classic Tron Lightcycles arcade game.
+Multiplayer Tron Lightcycles in the browser.
 
 <a href="https://tron.shirls.org"><img src="screenshot.png" width="704" alt="a screenshot of an in-progress webtron game"></a>
 
