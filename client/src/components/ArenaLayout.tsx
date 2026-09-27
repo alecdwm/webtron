@@ -34,19 +34,21 @@ type ArenaLayoutProps = {
 }
 
 // The round's walled-off cells, which sit on the grid beneath the trails, and
-// the edges that the Shrink and Wrap mutators change.
+// the edges that the Shrink and Wrap mutators change. Blocks and ShrinkZone
+// are both keyed by the round's start, so their keys need distinct prefixes:
+// siblings sharing a key can leave one round's cells behind in the next.
 function ArenaLayout({ round, previousBlocked, startAt, serverTimeOffset, width }: ArenaLayoutProps) {
   return (
     <div className={styles.layout}>
       <Blocks
-        key={startAt ?? 'idle'}
+        key={`blocks-${startAt ?? 'idle'}`}
         round={round}
         previous={previousBlocked}
         startAt={startAt}
         serverTimeOffset={serverTimeOffset}
       />
       {startAt !== null && hasMutator(round, 'Shrink') ? (
-        <ShrinkZone key={startAt} startAt={startAt} serverTimeOffset={serverTimeOffset} width={width} />
+        <ShrinkZone key={`shrink-${startAt}`} startAt={startAt} serverTimeOffset={serverTimeOffset} width={width} />
       ) : null}
       {startAt !== null && hasMutator(round, 'Wrap') ? <div className={styles.wrapEdges} /> : null}
     </div>
