@@ -237,6 +237,40 @@ function beyond(eye: Point, a: Point, b: Point): Polygon {
   return [a, b, ...arc]
 }
 
+// A pool of light round `center`, seen only in `region`, or everywhere if
+// that is null, less `holes`.
+export type Light = { center: Point; region: Polygon | null; holes: Polygon[] }
+
+// The pool of light `reach` across round a lightcycle at `center`, and the
+// copies of it seen through gates. Like the headlight (see viewsOf), what is
+// seen from `center` through a gate within reach, on the side facing the
+// pool, is cut out of the pool, and a copy of the pool moved by the gate's
+// shift is seen there instead, moved the same way. Copies go through gates
+// in turn.
+export function lightsOf(center: Point, reach: number, gates: Gate[]): Light[] {
+  const lights: Light[] = [{ center, region: null, holes: [] }]
+  for (let index = 0; index < lights.length; index++) {
+    const light = lights[index]
+    for (const gate of gates) {
+      if (lights.length > MAX_COPIES) return lights
+      const { a, b, normal, shift } = gate
+      if (dot(sub(light.center, a), normal) <= 0) continue
+      if (distanceToSegment(light.center, a, b) > reach) continue
+      // The light only gets to the gate across the part of the arena it is
+      // seen in: a copy that has just come out of a portal is behind the
+      // twin, and none of it is seen on that side.
+      const approach: Polygon = [a, b, add(b, normal), add(a, normal)]
+      if (light.region && area(clip(approach, light.region)) < 0.01) continue
+      const through = beyond(light.center, a, b)
+      const seen = light.region ? clip(through, light.region) : through
+      if (area(seen) < 0.01) continue
+      light.holes.push(seen)
+      lights.push({ center: add(light.center, shift), region: move(seen, shift), holes: [] })
+    }
+  }
+  return lights
+}
+
 // Where the sprite of a lightcycle at `center` going `heading` touches a
 // portal: the stretch of the portal it overlaps, and the same stretch of its
 // twin.

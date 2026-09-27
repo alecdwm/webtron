@@ -29,6 +29,7 @@ import {
   crossingsOf,
   gatesToSee,
   type Polygon,
+  lightsOf,
   type Seen,
   touchOf,
   type View,
@@ -42,9 +43,9 @@ import {
 // cap close to one update would turn into a stall and a jump forward.
 const MAX_EXTRAPOLATION_MS = 150
 
-// How far outside the arena, in arena units, the fog's pool of light around a
-// copy of the player's lightcycle can still light part of it.
-const FOG_POOL_REACH = 150
+// How far the fog's pool of light round the player's lightcycle reaches, as
+// a fraction of the arena's width (see components/Fog.tsx).
+const FOG_POOL_REACH = 0.26
 
 // How long an emote shows for.
 export const EMOTE_MS = 2200
@@ -55,13 +56,6 @@ export const EMOTE_MS = 2200
 const EMOTE_ABOVE = 34
 const EMOTE_FLOAT = 16
 const EMOTE_MARGIN = 4
-
-// Where the fog's pools of light round copies of the player's lightcycle go in
-// an arena that wraps round, in arena widths and heights from it: one past
-// each side and corner of the arena.
-export const ghostOffsets: Point[] = [-1, 0, 1].flatMap((dx) =>
-  [-1, 0, 1].filter((dy) => dx !== 0 || dy !== 0).map((dy): Point => [dx, dy]),
-)
 
 // Where to draw a lightcycle at server time `now`: its last position from the
 // server, carried forward at its speed from the time of the update that set
@@ -117,9 +111,10 @@ export type ArenaAnimation = {
   // of a lightcycle only animates; one on the lightcycle itself is also kept
   // inside the arena if it doesn't wrap round.
   trackEmote: (id: string, element: HTMLElement, at: number, ghost: boolean) => () => void
-  // Cuts pools of light out of the element's mask around the player's
-  // lightcycle.
-  trackFog: (element: HTMLElement) => () => void
+  // Draws the fog's pools of light round the player's lightcycle, and its
+  // copies seen through gates, into the element, filled with the gradient
+  // with the id `${prefix}-pool`.
+  trackFog: (element: SVGGElement, prefix: string) => () => void
 }
 
 export const ArenaAnimationContext = createContext<ArenaAnimation | null>(null)
@@ -137,7 +132,7 @@ export function useArenaAnimationContext(): ArenaAnimation {
 // clip-paths hiding what is seen through gates; a copy of it gets its
 // position and clip-paths showing only what is seen of it through them, or
 // is hidden; a trail's live paths get their
-// `d` attribute; the fog gets pools of light around the player's; an emote
+// `d` attribute; the fog gets pools of light round the player's; an emote
 // bubble gets a --shift to move it sideways inside the arena, and a
 // data-below attribute to put it under its lightcycle. It also draws after
 // every render of the arena, so new elements are placed before they are
@@ -162,7 +157,7 @@ export default function useArenaAnimation(
   })
   const crossedAt = useRef(new Map<string, number>())
   const lightribbons = useRef(new Map<string, SVGPathElement[]>())
-  const fogs = useRef(new Map<string, HTMLElement>())
+  const fogs = useRef(new Map<SVGGElement, string>())
   const emotes = useRef(new Map<HTMLElement, TrackedEmote>())
   // The arena's size in pixels.
   const arenaSize = useRef<Point>([0, 0])
@@ -362,27 +357,34 @@ export default function useArenaAnimation(
     }
 
     const self = selfId !== null ? arena.lightcycles[selfId] : undefined
-    if (self) {
-      const [x, y] = lightcyclePosition(self, started, now, gates)
-      // In an arena that wraps round, the light also comes through the
-      // edges the lightcycle is near, from its copies beyond them.
-      const pools = [[x, y], ...(wrap ? ghostOffsets.map(([dx, dy]) => [x + dx * width, y + dy * height]) : [])]
-        .filter(
-          ([poolX, poolY]) =>
-            poolX > -FOG_POOL_REACH &&
-            poolX < width + FOG_POOL_REACH &&
-            poolY > -FOG_POOL_REACH &&
-            poolY < height + FOG_POOL_REACH,
-        )
-        .map(
-          ([poolX, poolY]) =>
-            `radial-gradient(circle at ${(poolX / width) * 100}% ${(1 - poolY / height) * 100}%, transparent 12cqi, rgba(0, 0, 0, 0.77) 18cqi, #000 26cqi)`,
-        )
-      const value = pools.join(', ')
-      for (const element of fogs.current.values()) {
+    if (self && fogs.current.size > 0) {
+      const reach = FOG_POOL_REACH * width
+      const lights = lightsOf(lightcyclePosition(self, started, now, gates), reach, gatesSeen)
+      // Circles in arena units, with y going up, in the fog's box one unit
+      // across, each masked to where it is seen.
+      const shape = (prefix: string) =>
+        lights
+          .map(({ center: [x, y], region, holes }, index) => {
+            const circle = `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${reach}" fill="url(#${prefix}-pool)"`
+            if (!region && holes.length === 0) return `${circle}/>`
+            const mask = `${prefix}-light${index}`
+            const seen = region
+              ? `<polygon fill="#fff" points="${pointsOf(region)}"/>`
+              : `<rect fill="#fff" x="${-FAR}" y="${-FAR}" width="${2 * FAR}" height="${2 * FAR}"/>`
+            const cut = holes.map((hole) => `<polygon points="${pointsOf(hole)}"/>`).join('')
+            return (
+              `<mask id="${mask}" maskUnits="userSpaceOnUse" x="${-FAR}" y="${-FAR}" width="${2 * FAR}" height="${2 * FAR}">${seen}${cut}</mask>` +
+              `${circle} mask="url(#${mask})"/>`
+            )
+          })
+          .join('')
+      const transform = `matrix(${1 / width} 0 0 ${-1 / height} 0 1)`
+      for (const [element, prefix] of fogs.current) {
+        const value = shape(prefix)
         if (written.current.get(element) === value) continue
         written.current.set(element, value)
-        element.style.maskImage = value
+        element.setAttribute('transform', transform)
+        element.innerHTML = value
       }
     }
   }, [])
@@ -443,7 +445,10 @@ export default function useArenaAnimation(
           emotes.current.delete(element)
         }
       },
-      trackFog: (element) => track(fogs.current, 'fog', element),
+      trackFog: (element, prefix) => {
+        fogs.current.set(element, prefix)
+        return () => fogs.current.delete(element)
+      },
     }),
     [],
   )
@@ -581,6 +586,14 @@ function clipPath(region: Polygon, holes: Polygon[], [fromX, fromY]: Point, [sca
     return `M${ordered.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}Z`
   }
   return `path('${path(region, true)}${holes.map((hole) => path(hole, false)).join('')}')`
+}
+
+// Further than anything in the arena, in arena units.
+const FAR = 10000
+
+// A polygon's points for an SVG polygon's points attribute.
+function pointsOf(polygon: Polygon) {
+  return polygon.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ')
 }
 
 type TrackedEmote = {
