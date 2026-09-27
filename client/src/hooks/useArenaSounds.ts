@@ -11,13 +11,18 @@ import {
   playNearMiss,
   playPlayerJoin,
   playPlayerLeave,
+  playPortal,
+  playPortalSpawn,
+  startPortalHum,
   playSpawn,
   playTurn,
   playWin,
 } from '@/audio/sound'
 import type { Arena, Direction, Lightcycle, Point } from '@/types'
 import { serverNow } from '@/utils/clock'
+import { LAYOUT_CELLS, gatesOf, portalAppearAt, velocities } from '@/utils/round'
 import { spawnDelayMs } from '@/utils/spawn'
+import { LIGHTCYCLE_BUILD_PX, crossingsOf, gatesToSee, touchOf } from '@/utils/views'
 
 // Plays sounds for arena events by diffing each arena state against the
 // previous one, and keeps an engine drone running for every live lightcycle.
@@ -25,6 +30,8 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
   const previousArena = useRef(arena)
   const engines = useRef(new Map<string, Engine>())
   const selfCrashedAt = useRef<number | null>(null)
+  // The hum of each lightcycle touching a portal, which stops it.
+  const hums = useRef(new Map<string, () => void>())
   // Engines are started ENGINE_REV_UP seconds before the round, and time
   // their power-ups to come on just before it begins.
   const revving = useReachedTime(arena.started === null ? null : arena.started - ENGINE_REV_UP * 1000, serverTimeOffset)
@@ -55,6 +62,17 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
       if (cycle.braking && cycle.brake > 0 && !(old.braking && old.brake > 0)) playBrake(self, pan)
     }
 
+    // A lightcycle going through a portal opens a new window in it.
+    if (arena.round.portals.length > 0) {
+      const gates = gatesToSee(gatesOf(arena.round, arena.width, arena.height))
+      const seen = new Set(crossingsOf(before.lightribbons, gates).map(({ key }) => key))
+      for (const { key, player, exit } of crossingsOf(arena.lightribbons, gates)) {
+        if (!seen.has(key) && arena.lightcycles[player] && !arena.lightcycles[player].dead) {
+          playPortal(player === selfId, panFor(player, exit))
+        }
+      }
+    }
+
     const seenNearMisses = new Set(before.nearMisses.map(({ key }) => key))
     for (const { key, player, point, perfect } of arena.nearMisses) {
       if (!seenNearMisses.has(key)) playNearMiss(player === selfId, perfect, panFor(player, point))
@@ -66,11 +84,38 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
       playEmote(cycle ? panFor(id, cycle.position) : 0)
     }
 
-    // Every lightcycle is placed afresh when a round's countdown begins.
+    // Every lightcycle is placed afresh when a round's countdown begins, and
+    // then the portals appear one by one.
     if (arena.started !== null && arena.started !== before.started) {
       Object.entries(arena.lightcycles).forEach(([id, cycle], index) =>
         playSpawn(id === selfId, panFor(id, cycle.position), spawnDelayMs(index) / 1000),
       )
+      const now = serverNow(serverTimeOffset)
+      arena.round.portals
+        .flatMap(({ twins }) => twins)
+        .forEach(({ x, length, upright }, index) => {
+          const delay = (portalAppearAt(arena.started!, index) - now) / 1000
+          const middle = (upright ? x : x + length / 2) / LAYOUT_CELLS
+          if (delay >= 0) playPortalSpawn((middle * 2 - 1) * 0.8, delay)
+        })
+    }
+
+    // A hum for as long as a lightcycle touches a portal. Its size is taken
+    // as if the arena were drawn a pixel to a unit, which is about right.
+    const build = LIGHTCYCLE_BUILD_PX
+    const gates = arena.width === 0 ? [] : gatesToSee(gatesOf(arena.round, arena.width, arena.height))
+    for (const [id, stop] of hums.current) {
+      const cycle = arena.lightcycles[id]
+      if (!cycle || cycle.dead || !touchOf(cycle.position, velocities[cycle.direction], build, gates)) {
+        stop()
+        hums.current.delete(id)
+      }
+    }
+    for (const [id, cycle] of Object.entries(arena.lightcycles)) {
+      if (cycle.dead || hums.current.has(id) || arena.started === null) continue
+      if (touchOf(cycle.position, velocities[cycle.direction], build, gates)) {
+        hums.current.set(id, startPortalHum(id === selfId, panFor(id, cycle.position)))
+      }
     }
 
     for (const [id, { tip }] of Object.entries(arena.derezzing)) {
@@ -88,6 +133,14 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
       else playLose()
     }
   })
+
+  useEffect(() => {
+    const touching = hums.current
+    return () => {
+      touching.forEach((stop) => stop())
+      touching.clear()
+    }
+  }, [])
 
   useEffect(() => {
     const active = engines.current

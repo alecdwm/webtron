@@ -61,6 +61,7 @@ impl ArenaUpdate {
 
             ArenaUpdate::SetRound(round) => {
                 arena.walls = round.walls(arena.width, arena.height);
+                arena.portals = round.portal_rects(arena.width, arena.height);
                 arena.round = round.clone();
             }
             ArenaUpdate::Start(start_at) => {

@@ -10,6 +10,37 @@
   height: 0;
 }
 
+/* The name, a zero-size box at the anchor, which stays above every
+   lightcycle. */
+.namePart {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 0;
+  height: 0;
+}
+/* The headlight and the sprite, each in a box PART_SIZE across centred on the
+   anchor, which the arena animation clips separately (see PART_SIZE in
+   hooks/useArenaAnimation.ts). The box has a size so that browsers clip all
+   of what is in it; its origin is a zero-size box in its middle. */
+.bodyPart {
+  position: absolute;
+  left: -300px;
+  bottom: -300px;
+  z-index: 1;
+  width: 600px;
+  height: 600px;
+  pointer-events: none;
+}
+.partOrigin {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 0;
+  height: 0;
+}
+
 .nameTag {
   --glow: var(--cycle);
   position: absolute;

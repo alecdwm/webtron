@@ -7,15 +7,37 @@ export type Point = [number, number]
 // The arena's shape for a round, and the rules changing how it plays. See
 // src/server/arena/round.rs.
 export type Shape = 'Grid' | 'Circle' | 'Pillars' | 'Cross' | 'Core' | 'Bastions'
-export type Mutator = 'Shrink' | 'Wrap' | 'Snake' | 'Overdrive' | 'Fog' | 'Obstacles'
+export type Mutator = 'Shrink' | 'Wrap' | 'Snake' | 'Overdrive' | 'Fog' | 'Obstacles' | 'Portals'
 export type Round = {
   shape: Shape
   mutators: Mutator[]
   // Walled-off layout cells, as [column, row] from the bottom left.
   blocked: [number, number][]
+  // Pairs of portals joined by the Portals mutator.
+  portals: PortalPair[]
 }
 
+// Two portals joined together, each coming out of the other, drawn in `color`.
+export type PortalPair = { color: Color; twins: [Portal, Portal] }
+
+// Where a portal is on the layout: a line along the edges of cells, from the
+// corner of cells at x and y, counted like Round.blocked, going `length` cells
+// up if it is upright, or across. See src/server/arena/round.rs.
+export type Portal = { x: number; y: number; length: number; upright: boolean }
+
 export type Emote = 'gg' | 'lol' | 'rip' | 'wtf'
+
+// The playing style of an NPC. See src/server/arena/npc.rs.
+export type NpcStyle = 'Hunter' | 'Racer' | 'Trickster' | 'Sentinel' | 'Shadow' | 'Boxer' | 'Kamikaze' | 'Baiter'
+
+// A round set up for testing. Whatever is null is rolled at random as usual.
+// See Scenario in src/server/arena/input.rs.
+export type Scenario = {
+  shape: Shape | null
+  mutators: Mutator[] | null
+  // One style for each NPC.
+  npcs: NpcStyle[] | null
+}
 
 export type Player = {
   name: string
@@ -138,6 +160,7 @@ export type ClientMessage =
   | { GetArenaList: null }
   | { Join: { player: Player; arena_id: string | null } }
   | { Start: null }
+  | { StartScenario: Scenario }
   | { Turn: Direction }
   | { Brake: boolean }
   | { Emote: Emote }

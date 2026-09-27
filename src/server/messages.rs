@@ -55,7 +55,7 @@ pub mod incoming {
     use serde_derive::Deserialize;
     use tokio::sync::mpsc::Sender;
 
-    use crate::server::{ArenaId, ClientId, Direction, Emote, MessageOut, Player};
+    use crate::server::{ArenaId, ClientId, Direction, Emote, MessageOut, Player, Scenario};
 
     ///
     /// Incoming messages
@@ -82,6 +82,9 @@ pub mod incoming {
         },
 
         Start,
+        /// Starts the next round set up for testing. Nothing in the client
+        /// points to it.
+        StartScenario(Scenario),
         Turn(Direction),
         /// The player pressed (true) or let go of (false) the brake.
         Brake(bool),

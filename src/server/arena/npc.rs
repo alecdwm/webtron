@@ -52,14 +52,29 @@ const NPC_CLOSE_IN_TOLERANCE: f64 = 0.45;
 /// How long after a piece of trail is trimmed away by `Mutator::Snake` NPCs
 /// take it to be gone, allowing for its owner slowing down.
 const NPC_SNAKE_MARGIN_SECONDS: f64 = 0.25;
+/// How far to the side of its target's lane a luring NPC rides, ahead of it:
+/// close enough that the target slipstreams the NPC's trail by riding on.
+const NPC_LURE_NEAR: f64 = 6.0;
+const NPC_LURE_FAR: f64 = 14.0;
+/// How far ahead of its target a luring NPC must be before it moves into a
+/// lane beside the target's.
+const NPC_LURE_MIN_AHEAD: f64 = 25.0;
+/// How much sooner than the target's own lightcycle an NPC waiting to spring
+/// a cut-off on it stops braking, beyond the time it needs to get across.
+const NPC_SPRING_MARGIN: f64 = 0.15;
+/// How much shorter a way through a portal must be than the way round, as a
+/// fraction, for an NPC heading something off to take it.
+const NPC_PORTAL_SHORTCUT: f64 = 0.7;
 
 /// Phase within the CutOff behaviour.
 #[derive(Debug, Clone, Copy)]
 pub enum CutOffPhase {
     /// Riding on until the slipstreamer is close enough that the NPC only
     /// just gets across its lane first. `lead` is how many seconds before
-    /// the slipstreamer the NPC aims to cross.
-    Waiting { lead: f64 },
+    /// the slipstreamer the NPC aims to cross. With `spring`, the NPC brakes
+    /// while it waits, so that the slipstreamer comes up on it faster than
+    /// it expects.
+    Waiting { lead: f64, spring: bool },
     /// Crossing the slipstreamer's lane, `distance` in all.
     Crossing { travelled: f64, distance: f64 },
 }
@@ -109,7 +124,7 @@ const INCOMPATIBLE_NPC_SETS: &[&[&str]] = &[
 ];
 
 /// The broad playing style of an NPC, picked at random for each round.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum Style {
     /// Claims space aggressively and heads other lightcycles off.
     Hunter,
@@ -127,10 +142,14 @@ pub enum Style {
     /// Chases other lightcycles and takes every opening to cut them off,
     /// accepting moves that leave it much less room.
     Kamikaze,
+    /// Gets ahead of other lightcycles and offers them its trail to
+    /// slipstream. When one takes it, the NPC brakes to draw it in, then cuts
+    /// across in front of it.
+    Baiter,
 }
 
 impl Style {
-    const ALL: [Style; 7] = [
+    const ALL: [Style; 8] = [
         Style::Hunter,
         Style::Racer,
         Style::Trickster,
@@ -138,6 +157,7 @@ impl Style {
         Style::Shadow,
         Style::Boxer,
         Style::Kamikaze,
+        Style::Baiter,
     ];
 
     fn random() -> Self {
@@ -210,6 +230,12 @@ impl Style {
                 (Plan::Draft, 15),
                 (Plan::Hairpin, 10),
             ],
+            Style::Baiter => &[
+                (Plan::Lure, 60),
+                (Plan::Territory, 20),
+                (Plan::Cruise, 10),
+                (Plan::Draft, 10),
+            ],
         }
     }
 }
@@ -253,6 +279,7 @@ impl Personality {
                 Style::Shadow => (random_between(10.0, 16.0), 0.12, 80, 85, 75, 90, 60),
                 Style::Boxer => (random_between(3.0, 6.0), 0.08, 50, 60, 20, 40, 20),
                 Style::Kamikaze => (random_between(4.0, 8.0), 0.40, 100, 50, 100, 20, 90),
+                Style::Baiter => (random_between(8.0, 14.0), 0.12, 95, 90, 25, 25, 25),
             };
         let vary = |percent: u32| (percent as f64 * random_between(0.8, 1.2)).min(100.0) as u32;
 
@@ -343,6 +370,7 @@ enum Plan {
     Hairpin,
     Shadow,
     Divide,
+    Lure,
 }
 
 impl Plan {
@@ -367,6 +395,7 @@ impl Plan {
             Plan::Hairpin => NpcBehaviour::Hairpin,
             Plan::Shadow => NpcBehaviour::Shadow { target_id: None },
             Plan::Divide => NpcBehaviour::Divide,
+            Plan::Lure => NpcBehaviour::Lure { target_id: None },
         }
     }
 }
@@ -392,6 +421,9 @@ pub enum NpcBehaviour {
     /// Turn onto the longest open line and ride it out, walling off the
     /// arena.
     Divide,
+    /// Get ahead of a lightcycle and ride just to one side of its lane, so
+    /// that it slipstreams the NPC's trail if it rides on.
+    Lure { target_id: Option<PlayerId> },
     /// Insert one random perpendicular turn, then revert to Cruise.
     RandomTurn,
     /// Weave in a staircase, alternating between `side` and `forward` every
@@ -536,6 +568,8 @@ pub struct NpcState {
     pub brake_for: f64,
     /// Cooldown before the NPC will consider braking again.
     pub brake_cooldown: f64,
+    /// An emote the NPC wants to flash up, which the arena takes.
+    pub emote: Option<Emote>,
 }
 
 impl Default for NpcState {
@@ -559,6 +593,7 @@ impl NpcState {
             since_turn: 0.0,
             brake_for: 0.0,
             brake_cooldown: 0.0,
+            emote: None,
         }
     }
 
@@ -571,12 +606,14 @@ impl NpcState {
         self.set_behaviour(NpcBehaviour::Cruise);
     }
 
-    /// Maybe start holding a grudge against `against`, depending on temper.
+    /// Maybe start holding a grudge against `against`, depending on temper,
+    /// and say so.
     fn provoke(&mut self, against: PlayerId) {
         if self.grudge.is_none_or(|(id, _)| id != against)
             && percent_chance(self.personality.temper)
         {
             self.grudge = Some((against, random_between(8.0, 15.0)));
+            self.emote = Some(Emote::Wtf);
         }
     }
 
@@ -610,6 +647,7 @@ fn random_duration_for(behaviour: &NpcBehaviour) -> f64 {
         NpcBehaviour::Intercept { .. } => random_between(2.0, 4.0),
         NpcBehaviour::Draft | NpcBehaviour::Hairpin | NpcBehaviour::Divide => 1.0,
         NpcBehaviour::Shadow { .. } => random_between(5.0, 9.0),
+        NpcBehaviour::Lure { .. } => random_between(6.0, 10.0),
         NpcBehaviour::RandomTurn => 0.5,
         NpcBehaviour::Zigzag { .. } => 6.0,
         NpcBehaviour::BuildTrap { .. } => 5.0,
@@ -882,11 +920,14 @@ fn react_to_slipstreamer(
         return;
     }
 
-    let lead = if percent_chance(personality.cutoff_accuracy) {
-        random_between(0.1, 0.3)
-    } else {
+    let spring = personality.style == Style::Baiter;
+    let lead = if !percent_chance(personality.cutoff_accuracy) {
         // Too early: the slipstreamer has time to see it coming and turn.
         random_between(0.7, 1.1)
+    } else if spring {
+        random_between(0.08, 0.2)
+    } else {
+        random_between(0.1, 0.3)
     };
 
     state.set_behaviour(NpcBehaviour::CutOff {
@@ -894,7 +935,7 @@ fn react_to_slipstreamer(
         cut_direction,
         original_direction: lightcycle.direction,
         overshoot: random_between(10.0, 20.0),
-        phase: CutOffPhase::Waiting { lead },
+        phase: CutOffPhase::Waiting { lead, spring },
     });
 }
 
@@ -1073,12 +1114,7 @@ fn find_crossing_to_yield(
             let ahead = |position, direction, ignoring, speed| {
                 look_ahead_distance(arena, position, direction, Some(ignoring), speed)
             };
-            let turning_point = lightcycle.position + forward * room;
-            let turning_point = if arena.round.has(Mutator::Wrap) {
-                wrap_point(arena, turning_point)
-            } else {
-                turning_point
-            };
+            let turning_point = arena.advance(lightcycle.position, lightcycle.direction, room);
             (ahead(
                 lightcycle.position,
                 lightcycle.direction,
@@ -1235,6 +1271,7 @@ fn choose_direction(context: &Context, state: &mut NpcState) -> Option<Direction
             choose_direction(context, state)
         }
         NpcBehaviour::Shadow { target_id } => choose_shadow(context, target_id, state),
+        NpcBehaviour::Lure { target_id } => choose_lure(context, target_id, state),
         NpcBehaviour::Yield {
             target_id,
             lane,
@@ -1403,6 +1440,7 @@ fn head_off(context: &Context, target: &Lightcycle) -> Option<Direction> {
             aim.y.clamp(0.0, arena.height),
         )
     };
+    let aim = portal_shortcut(arena, lightcycle.position, aim).unwrap_or(aim);
 
     let delta = offset(arena, lightcycle.position, aim);
     let forward = lightcycle.direction.as_velocity().dot(delta);
@@ -1430,6 +1468,53 @@ fn head_off(context: &Context, target: &Lightcycle) -> Option<Direction> {
         return None;
     }
     Some(toward)
+}
+
+/// Where to steer to get from `from` to `aim` through a portal, when that is
+/// clearly shorter than going there directly: just inside the side of a
+/// portal that comes out of its twin facing `aim`. Distances are counted
+/// across and up, as lightcycles ride.
+fn portal_shortcut(arena: &Arena, from: ArenaPoint, aim: ArenaPoint) -> Option<ArenaPoint> {
+    let manhattan = |v: ArenaVector| v.x.abs() + v.y.abs();
+    let direct = manhattan(offset(arena, from, aim));
+    let mut best: Option<(f64, ArenaPoint)> = None;
+    for &[a, b] in &arena.portals {
+        for (entry, exit) in [(a, b), (b, a)] {
+            for direction in [
+                Direction::Up,
+                Direction::Down,
+                Direction::Left,
+                Direction::Right,
+            ] {
+                let velocity = direction.as_velocity();
+                // The middle of the side gone into, and of the side of the
+                // twin come out of.
+                let side = |(min, max): (ArenaPoint, ArenaPoint), ahead: bool| {
+                    let center = min.lerp(max, 0.5);
+                    let half = (max - min) * 0.5;
+                    let reach = ArenaVector::new(velocity.x * half.x, velocity.y * half.y);
+                    if ahead {
+                        center + reach
+                    } else {
+                        center - reach
+                    }
+                };
+                let (door, out) = (side(entry, false), side(exit, true));
+                // The NPC must come at the door from outside, and `aim` be
+                // beyond the far side.
+                if velocity.dot(door - from) <= 0.0 || velocity.dot(aim - out) <= 0.0 {
+                    continue;
+                }
+                let through = manhattan(door - from) + manhattan(aim - out);
+                if through < direct * NPC_PORTAL_SHORTCUT
+                    && best.is_none_or(|(shortest, _)| through < shortest)
+                {
+                    best = Some((through, door + velocity));
+                }
+            }
+        }
+    }
+    best.map(|(_, door)| door)
 }
 
 /// `preferred` if it is alive, or else the nearest other lightcycle,
@@ -1565,6 +1650,69 @@ fn choose_shadow(
             to_lane <= -NPC_SHADOW_OFFSET * 0.5
         };
         turn.then_some(target.direction)
+    }
+}
+
+/// Get well ahead of a lightcycle, then ride on in a lane just to one side
+/// of its lane, `NPC_LURE_NEAR` to `NPC_LURE_FAR` from it, so that it only
+/// has to ride on to slipstream the NPC's trail. The NPC springs its trap
+/// when it does (see `react_to_slipstreamer`).
+fn choose_lure(
+    context: &Context,
+    target_id: Option<PlayerId>,
+    state: &mut NpcState,
+) -> Option<Direction> {
+    let lightcycle = context.lightcycle;
+    let alive = |id: &PlayerId| {
+        context
+            .arena
+            .lightcycles
+            .get(id)
+            .is_some_and(|lightcycle| !lightcycle.dead)
+    };
+    let Some(target_id) = target_id
+        .filter(alive)
+        .or_else(|| find_intercept_target(context, state.grudge_target(context.arena)))
+    else {
+        state.cruise();
+        return None;
+    };
+    state.behaviour = NpcBehaviour::Lure {
+        target_id: Some(target_id),
+    };
+
+    let target = &context.arena.lightcycles[&target_id];
+    let to_target = offset(context.arena, lightcycle.position, target.position);
+    let ahead = -target.direction.as_velocity().dot(to_target);
+    if ahead < NPC_LURE_MIN_AHEAD {
+        return head_off(context, target);
+    }
+
+    let [a, b] = lightcycle.direction.perpendicular_directions();
+    let toward = if a.as_velocity().dot(to_target) > 0.0 {
+        a
+    } else {
+        b
+    };
+    let lateral = toward.as_velocity().dot(to_target);
+    if lightcycle.direction == target.direction {
+        if lateral > NPC_LURE_FAR {
+            Some(toward)
+        } else if lateral < NPC_LURE_NEAR {
+            Some(opposite(toward))
+        } else {
+            None
+        }
+    } else if lightcycle.direction.is_opposite(target.direction) {
+        // Heading back at it: turn off, and come round into a lane from
+        // there.
+        Some(opposite(toward))
+    } else {
+        // Heading across its lane: straighten up in a lane on this side of
+        // it, or once far enough across.
+        let to_lane = lightcycle.direction.as_velocity().dot(to_target);
+        let in_lane = (NPC_LURE_NEAR..=NPC_LURE_FAR).contains(&to_lane);
+        (in_lane || to_lane <= -NPC_LURE_NEAR).then_some(target.direction)
     }
 }
 
@@ -1832,7 +1980,7 @@ fn choose_cutoff(
     let lightcycle = context.lightcycle;
 
     match phase {
-        CutOffPhase::Waiting { lead } => {
+        CutOffPhase::Waiting { lead, spring } => {
             let target = context
                 .arena
                 .lightcycles
@@ -1858,6 +2006,17 @@ fn choose_cutoff(
             match target_time {
                 Some(target_time) if in_reach && target_time > cross_time + 0.05 => {
                     if target_time > cross_time + lead {
+                        // Braked right down, the NPC still has time to get
+                        // across when it lets go.
+                        let slowest = LIGHTCYCLE_BRAKE_SPEED * context.arena.round.speed_scale();
+                        let slowest_cross_time = (aside + 2.0) / slowest;
+                        if spring
+                            && target_time > slowest_cross_time + lead + NPC_SPRING_MARGIN
+                            && lightcycle.brake > 0.0
+                            && (lightcycle.braking || state.brake_cooldown <= 0.0)
+                        {
+                            state.brake_for = state.brake_for.max(0.1);
+                        }
                         return None;
                     }
                     state.behaviour = NpcBehaviour::CutOff {
@@ -2189,18 +2348,22 @@ fn look_ahead_distance(
         (true, Direction::Left | Direction::Right) => arena.width,
         (false, _) => arena.width + arena.height,
     };
-    let ray = stretches(arena, position, direction, length);
+    let ray = arena.stretches(position, direction, length);
     let edges = (!wrap).then(|| arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS));
     let speed = speed.max(LIGHTCYCLE_SPEED * arena.round.speed_scale());
     let mut min_dist = f64::INFINITY;
 
-    // Walls, and coming back in at an edge into a walled-off cell.
-    for (index, &(from, _, along)) in ray.iter().enumerate() {
+    // Walls, and coming back in at an edge into a walled-off cell. A wall
+    // past where a stretch goes into a portal isn't in the way.
+    for (index, &(from, to, along)) in ray.iter().enumerate() {
         if index > 0 && arena.round.is_blocked_at(from, arena.width, arena.height) {
             min_dist = min_dist.min(along);
             break;
         }
-        min_dist = min_dist.min(along + arena.wall_distance(from, direction, edges));
+        let wall = arena.wall_distance(from, direction, edges);
+        if index + 1 == ray.len() || wall <= (to - from).length() {
+            min_dist = min_dist.min(along + wall);
+        }
     }
 
     // A trail touching the ray only where it starts is left out already, so
@@ -2268,8 +2431,7 @@ fn look_ahead_distance(
         if ignoring == Some(*other_id) {
             continue;
         }
-        let projected = stretches(
-            arena,
+        let projected = arena.stretches(
             other_cycle.position,
             other_cycle.direction,
             NPC_LOOK_AHEAD_DISTANCE,
@@ -2288,47 +2450,6 @@ fn look_ahead_distance(
 
 /// How far ahead NPCs look for walls that are closing in.
 const NPC_SHRINK_LOOK_AHEAD_SECONDS: f64 = 1.5;
-
-/// A straight line `length` long from `position` in `direction`, as the
-/// stretches it runs through the arena, each with how far along the line it
-/// starts. It is all one stretch unless the arena wraps round and the line
-/// runs off an edge, when it comes back in at the opposite edge.
-fn stretches(
-    arena: &Arena,
-    position: ArenaPoint,
-    direction: Direction,
-    length: f64,
-) -> Vec<(ArenaPoint, ArenaPoint, f64)> {
-    let velocity = direction.as_velocity();
-    if !arena.round.has(Mutator::Wrap) {
-        return vec![(position, position + velocity * length, 0.0)];
-    }
-
-    let mut stretches = Vec::new();
-    let mut from = position;
-    let mut along = 0.0;
-    loop {
-        let to_edge = match direction {
-            Direction::Up => arena.height - from.y,
-            Direction::Down => from.y,
-            Direction::Right => arena.width - from.x,
-            Direction::Left => from.x,
-        }
-        .max(0.0);
-        let stretch = to_edge.min(length - along);
-        stretches.push((from, from + velocity * stretch, along));
-        along += stretch;
-        if along >= length {
-            return stretches;
-        }
-        from = match direction {
-            Direction::Up => ArenaPoint::new(from.x, 0.0),
-            Direction::Down => ArenaPoint::new(from.x, arena.height),
-            Direction::Right => ArenaPoint::new(0.0, from.y),
-            Direction::Left => ArenaPoint::new(arena.width, from.y),
-        };
-    }
-}
 
 /// The part of the path from `from` to `to` that touches the trail segment
 /// from `a` to `b`, as its nearest and furthest points from `from`. Like
@@ -2423,7 +2544,7 @@ mod tests {
                     name: "A".to_string(),
                     ..Default::default()
                 });
-                arena.process_input(human, ArenaInput::Start);
+                arena.process_input(human, ArenaInput::Start(None));
                 arena.apply_updates();
                 ArenaUpdate::SetRound(Round::new(shape, vec![Mutator::Obstacles, Mutator::Shrink]))
                     .apply(&mut arena);
@@ -2701,6 +2822,238 @@ mod tests {
         );
         assert_eq!(direction, Direction::Up);
         assert!(options.straight.ray > 400.0, "{}", options.straight.ray);
+    }
+
+    /// A running arena with one pair of portals, upright lines from (80, 80)
+    /// to (80, 160) and from (400, 440) to (400, 520), and no lightcycles.
+    fn arena_with_portals() -> Arena {
+        let mut arena = Arena {
+            started: Some(Utc::now() - chrono::Duration::seconds(1)),
+            ..Default::default()
+        };
+        ArenaUpdate::SetRound(Round {
+            mutators: vec![Mutator::Portals],
+            portals: vec![PortalPair::from([
+                Portal {
+                    x: 2,
+                    y: 2,
+                    length: 2,
+                    upright: true,
+                },
+                Portal {
+                    x: 10,
+                    y: 11,
+                    length: 2,
+                    upright: true,
+                },
+            ])],
+            ..Default::default()
+        })
+        .apply(&mut arena);
+        arena
+    }
+
+    #[test]
+    fn npcs_see_trails_through_a_portal() {
+        let mut arena = arena_with_portals();
+        let npc = cycle(40.0, 100.0, Direction::Right);
+        add(
+            &mut arena,
+            npc,
+            vec![ArenaPoint::new(20.0, 100.0), npc.position],
+        );
+        // 50 past the side of the twin the NPC would come out of.
+        add(
+            &mut arena,
+            cycle(450.0, 540.0, Direction::Up),
+            vec![ArenaPoint::new(450.0, 400.0), ArenaPoint::new(450.0, 540.0)],
+        );
+        let ray = look_ahead_distance(&arena, npc.position, npc.direction, None, npc.speed);
+        assert!((ray - 90.0).abs() < 1e-6, "{ray}");
+    }
+
+    /// An NPC heading up a corridor of trail 20 wide, capped at y = 100,
+    /// with a portal across it at y = 80, which is the only way out. Its
+    /// twin runs across from (360, 440) to (400, 440).
+    fn corridor(portals: bool) -> (Arena, PlayerId) {
+        let mut arena = arena_with(vec![]);
+        let line = |x, y| Portal {
+            x,
+            y,
+            length: 1,
+            upright: false,
+        };
+        if portals {
+            ArenaUpdate::SetRound(Round {
+                mutators: vec![Mutator::Portals],
+                portals: vec![PortalPair::from([line(2, 2), line(9, 11)])],
+                ..Default::default()
+            })
+            .apply(&mut arena);
+        }
+        let npc = cycle(100.0, 20.0, Direction::Up);
+        let npc_id = add(
+            &mut arena,
+            npc,
+            vec![ArenaPoint::new(100.0, 10.0), npc.position],
+        );
+        add(
+            &mut arena,
+            cycle(500.0, 20.0, Direction::Right),
+            vec![
+                ArenaPoint::new(90.0, 0.0),
+                ArenaPoint::new(90.0, 100.0),
+                ArenaPoint::new(110.0, 100.0),
+                ArenaPoint::new(110.0, 0.0),
+            ],
+        );
+        (arena, npc_id)
+    }
+
+    #[test]
+    fn npcs_count_the_space_through_a_portal() {
+        for portals in [true, false] {
+            let (arena, npc_id) = corridor(portals);
+            let npc = arena.lightcycles[&npc_id];
+            let options = Planner::new(&arena).options(npc_id, &npc, 0.05, None);
+            assert_eq!(
+                options.straight.space > 500.0,
+                portals,
+                "{}",
+                options.straight.space
+            );
+            if portals {
+                // Up to the portal, then from its twin to the top edge.
+                assert!(
+                    (options.straight.ray - 180.0).abs() < 1e-6,
+                    "{}",
+                    options.straight.ray
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn npcs_ride_through_a_portal_out_of_a_dead_end() {
+        let (mut arena, npc_id) = corridor(true);
+        arena.npc_states.insert(
+            npc_id,
+            NpcState {
+                time_remaining: f64::INFINITY,
+                ..NpcState::new(Style::Sentinel)
+            },
+        );
+        run_until_death(&mut arena, 2.0);
+        let lightcycle = arena.lightcycles[&npc_id];
+        assert!(!lightcycle.dead);
+        assert!(lightcycle.position.y > 440.0, "{:?}", lightcycle.position);
+    }
+
+    #[test]
+    fn npcs_head_things_off_through_a_portal_when_it_is_shorter() {
+        let arena = arena_with_portals();
+        // Just short of the portal, and just past its twin.
+        let door = portal_shortcut(
+            &arena,
+            ArenaPoint::new(60.0, 100.0),
+            ArenaPoint::new(420.0, 470.0),
+        );
+        assert_eq!(door, Some(ArenaPoint::new(81.0, 120.0)));
+        // Close by, the direct way is shorter.
+        let door = portal_shortcut(
+            &arena,
+            ArenaPoint::new(300.0, 300.0),
+            ArenaPoint::new(340.0, 330.0),
+        );
+        assert_eq!(door, None);
+    }
+
+    #[test]
+    fn baiters_ride_ahead_of_a_lightcycle_where_it_can_slipstream_them() {
+        let mut arena = arena_with(vec![]);
+        let npc = cycle(200.0, 200.0, Direction::Right);
+        let npc_id = add(
+            &mut arena,
+            npc,
+            vec![ArenaPoint::new(180.0, 200.0), npc.position],
+        );
+        let other = cycle(300.0, 60.0, Direction::Up);
+        let other_id = add(
+            &mut arena,
+            other,
+            vec![ArenaPoint::new(300.0, 30.0), other.position],
+        );
+        let mut state = NpcState::new(Style::Baiter);
+        // Only luring: no springing the trap yet.
+        state.cutoff_cooldown = f64::INFINITY;
+        state.sidestep_cooldown = f64::INFINITY;
+        state.attack_cooldown = f64::INFINITY;
+        state.brake_cooldown = f64::INFINITY;
+        state.set_behaviour(NpcBehaviour::Lure {
+            target_id: Some(other_id),
+        });
+        state.time_remaining = f64::INFINITY;
+        arena.npc_states.insert(npc_id, state);
+
+        let mut slipstreamed = false;
+        for _ in 0..100 {
+            run_until_death(&mut arena, 0.05);
+            slipstreamed |= arena.lightcycles[&other_id].speed > LIGHTCYCLE_SPEED + 5.0;
+        }
+        assert!(slipstreamed);
+        assert!(
+            arena
+                .lightcycles
+                .values()
+                .all(|lightcycle| !lightcycle.dead)
+        );
+        let (npc, other) = (arena.lightcycles[&npc_id], arena.lightcycles[&other_id]);
+        assert_eq!(npc.direction, Direction::Up);
+        assert!(npc.position.y > other.position.y);
+    }
+
+    #[test]
+    fn baiters_brake_to_draw_in_a_slipstreamer_then_cut_it_off() {
+        let mut state = NpcState::new(Style::Baiter);
+        state.personality.cutoff_chance = 100;
+        state.personality.cutoff_accuracy = 100;
+        state.time_remaining = f64::INFINITY;
+        let (mut arena, npc, other) = duel(
+            ArenaPoint::new(280.0, 140.0),
+            ArenaPoint::new(288.0, 60.0),
+            state,
+        );
+        arena.lightribbons.get_mut(&npc).unwrap().paths = vec![vec![
+            ArenaPoint::new(280.0, 20.0),
+            ArenaPoint::new(280.0, 140.0),
+        ]];
+
+        let mut braked = false;
+        for _ in 0..100 {
+            run_until_death(&mut arena, 0.05);
+            braked |= arena.lightcycles[&npc].braking;
+            if arena.lightcycles[&other].dead {
+                break;
+            }
+        }
+        assert!(braked);
+        assert_eq!(
+            arena.lightcycles[&other].death_cause,
+            Some(DeathCause::Trail(npc))
+        );
+    }
+
+    #[test]
+    fn npcs_say_so_when_they_start_a_grudge() {
+        let mut state = NpcState::new(Style::Kamikaze);
+        state.personality.temper = 100;
+        let other = PlayerId::default();
+        state.provoke(other);
+        assert_eq!(state.emote, Some(Emote::Wtf));
+        // Not again for the same lightcycle.
+        state.emote = None;
+        state.provoke(other);
+        assert_eq!(state.emote, None);
     }
 
     #[test]

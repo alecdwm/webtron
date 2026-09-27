@@ -15,13 +15,32 @@ pub const SNAKE_TRAIL_LENGTH: f64 = 420.0;
 pub const OVERDRIVE_SPEED_SCALE: f64 = 1.6;
 /// With `Mutator::Obstacles`, how many single cells are walled off.
 const OBSTACLE_COUNT: usize = 10;
+/// With `Mutator::Portals`, how likely each number of pairs of portals is,
+/// three on average, and how far apart the two of a pair are at least, in
+/// layout cells across and up.
+const PORTAL_PAIR_COUNTS: [(usize, u32); 5] = [(1, 1), (2, 3), (3, 5), (4, 3), (5, 1)];
+const PORTAL_MIN_APART: u8 = 6;
+/// The colours pairs of portals can be, each pair a different one: as many as
+/// there can be pairs.
+const PORTAL_COLORS: [PlayerColor; 5] = [
+    PlayerColor::Blue,
+    PlayerColor::Green,
+    PlayerColor::Orange,
+    PlayerColor::Purple,
+    PlayerColor::Red,
+];
+/// How likely each length of portal is, in layout cells.
+const PORTAL_LENGTHS: [(u8, u32); 5] = [(1, 3), (2, 3), (3, 2), (4, 2), (5, 1)];
+/// How far along its way from its spawn point each lightcycle is kept clear
+/// of portals, so that none goes through one at the start of a round.
+const SPAWN_RUN: f64 = 120.0;
 
 /// Rows and columns kept clear of obstacles: those the lightcycles spawn in
 /// and ride along at the start of a round (see `SPAWNPOINTS`).
 const SPAWN_LANES: [u8; 4] = [3, 6, 7, 10];
 
 /// The shape of the arena for a round, made of walled-off layout cells.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Shape {
     /// No walls: the whole square.
     #[default]
@@ -38,22 +57,20 @@ pub enum Shape {
     Bastions,
 }
 
-const SHAPES: [Shape; 5] = [
-    Shape::Circle,
-    Shape::Pillars,
-    Shape::Cross,
-    Shape::Core,
-    Shape::Bastions,
+/// How likely each shape is to be rolled for a round, relative to the
+/// others: the plain grid about a third of the time.
+const SHAPE_WEIGHTS: [(Shape, u32); 6] = [
+    (Shape::Grid, 35),
+    (Shape::Circle, 13),
+    (Shape::Pillars, 13),
+    (Shape::Cross, 13),
+    (Shape::Core, 13),
+    (Shape::Bastions, 13),
 ];
 
 impl Shape {
-    /// The shape for a new round: the plain grid about a third of the time.
     fn roll() -> Self {
-        if random_below(100) < 35 {
-            Shape::Grid
-        } else {
-            SHAPES[random_below(SHAPES.len() as u32) as usize]
-        }
+        weighted_pick(&SHAPE_WEIGHTS).unwrap_or_default()
     }
 
     fn cells(self) -> Vec<(u8, u8)> {
@@ -109,7 +126,7 @@ impl Shape {
 }
 
 /// A rule that changes how a round plays.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Mutator {
     /// The walls close in, after `SHRINK_DELAY_SECONDS`.
     Shrink,
@@ -124,20 +141,29 @@ pub enum Mutator {
     Fog,
     /// Single cells walled off at random.
     Obstacles,
+    /// Pairs of single cells joined together: riding into one side of a
+    /// portal comes out of the opposite side of its twin, going the same way.
+    Portals,
 }
 
-const MUTATORS: [Mutator; 6] = [
-    Mutator::Shrink,
-    Mutator::Wrap,
-    Mutator::Snake,
-    Mutator::Overdrive,
-    Mutator::Fog,
-    Mutator::Obstacles,
+/// How likely each mutator is to be rolled for a round, relative to the
+/// others.
+const MUTATOR_WEIGHTS: [(Mutator, u32); 7] = [
+    (Mutator::Shrink, 10),
+    (Mutator::Wrap, 10),
+    (Mutator::Snake, 10),
+    (Mutator::Overdrive, 10),
+    (Mutator::Fog, 4),
+    (Mutator::Obstacles, 10),
+    (Mutator::Portals, 10),
 ];
 
 /// Pairs of mutators that aren't rolled together. Walls closing in would
-/// have to wrap lightcycles round a moving edge.
-const CLASHING_MUTATORS: [(Mutator, Mutator); 1] = [(Mutator::Shrink, Mutator::Wrap)];
+/// have to wrap lightcycles round a moving edge, and would cover portals.
+const CLASHING_MUTATORS: [(Mutator, Mutator); 2] = [
+    (Mutator::Shrink, Mutator::Wrap),
+    (Mutator::Shrink, Mutator::Portals),
+];
 
 /// The layout and rules of one round, rolled when it starts.
 #[derive(Debug, Default, Clone, PartialEq, Serialize)]
@@ -147,30 +173,117 @@ pub struct Round {
     /// The walled-off layout cells, as (column, row) counted from the bottom
     /// left, from both the shape and `Mutator::Obstacles`.
     pub blocked: Vec<(u8, u8)>,
+    /// The pairs of portals joined by `Mutator::Portals`.
+    pub portals: Vec<PortalPair>,
+}
+
+/// Two portals joined together, each coming out of the other, drawn in
+/// `color`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PortalPair {
+    pub color: PlayerColor,
+    pub twins: [Portal; 2],
+}
+
+#[cfg(test)]
+impl From<[Portal; 2]> for PortalPair {
+    fn from(twins: [Portal; 2]) -> Self {
+        Self {
+            color: PlayerColor::Blue,
+            twins,
+        }
+    }
+}
+
+/// Where a portal is on the layout: a line along the edges of cells, from
+/// the corner of cells at `x` and `y`, counted like `Round::blocked`, going
+/// `length` cells up if it is `upright`, or across. Lightcycles go through it
+/// from either side. Both portals of a pair are the same length and way up.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Portal {
+    pub x: u8,
+    pub y: u8,
+    pub length: u8,
+    pub upright: bool,
+}
+
+impl Portal {
+    /// The cells either side of the line, which must be open.
+    fn footprint(self) -> Vec<(u8, u8)> {
+        (0..self.length)
+            .flat_map(|along| {
+                if self.upright {
+                    [(self.x - 1, self.y + along), (self.x, self.y + along)]
+                } else {
+                    [(self.x + along, self.y - 1), (self.x + along, self.y)]
+                }
+            })
+            .collect()
+    }
+
+    fn center(self) -> (f64, f64) {
+        let half = self.length as f64 / 2.0;
+        if self.upright {
+            (self.x as f64, self.y as f64 + half)
+        } else {
+            (self.x as f64 + half, self.y as f64)
+        }
+    }
+
+    /// The ends of the line, the lowest first.
+    fn ends(self, width: f64, height: f64) -> (ArenaPoint, ArenaPoint) {
+        let (cell_width, cell_height) = cell_size(width, height);
+        let start = ArenaPoint::new(self.x as f64 * cell_width, self.y as f64 * cell_height);
+        let length = self.length as f64;
+        let end = if self.upright {
+            start + ArenaVector::new(0.0, length * cell_height)
+        } else {
+            start + ArenaVector::new(length * cell_width, 0.0)
+        };
+        (start, end)
+    }
 }
 
 impl Round {
-    /// A shape and up to two mutators, at random. A quarter of rounds have
-    /// no mutators and a quarter have two.
+    /// A shape and up to two mutators, at random, each weighted by how
+    /// likely it is (see `SHAPE_WEIGHTS` and `MUTATOR_WEIGHTS`). A quarter of
+    /// rounds have no mutators and a quarter have two.
     pub fn roll() -> Self {
-        let count = match random_below(4) {
-            0 => 0,
-            3 => 2,
-            _ => 1,
-        };
-        let mut mutators: Vec<Mutator> = Vec::with_capacity(count);
-        while mutators.len() < count {
-            let mutator = MUTATORS[random_below(MUTATORS.len() as u32) as usize];
-            let clashes = mutators.iter().any(|&other| {
-                other == mutator
-                    || CLASHING_MUTATORS.contains(&(other, mutator))
-                    || CLASHING_MUTATORS.contains(&(mutator, other))
-            });
-            if !clashes {
-                mutators.push(mutator);
+        Self::scenario(None, None)
+    }
+
+    /// The shape and mutators given, or those left out rolled at random as
+    /// by `roll`. Mutators given twice, or that clash with one given before
+    /// them, are left out.
+    pub fn scenario(shape: Option<Shape>, mutators: Option<Vec<Mutator>>) -> Self {
+        let mutators = match mutators {
+            Some(given) => given.into_iter().fold(Vec::new(), |mut kept, mutator| {
+                if !clashes(&kept, mutator) {
+                    kept.push(mutator);
+                }
+                kept
+            }),
+            None => {
+                let count = match random_below(4) {
+                    0 => 0,
+                    3 => 2,
+                    _ => 1,
+                };
+                let mut mutators: Vec<Mutator> = Vec::with_capacity(count);
+                while mutators.len() < count {
+                    let open: Vec<(Mutator, u32)> = MUTATOR_WEIGHTS
+                        .into_iter()
+                        .filter(|(mutator, _)| !clashes(&mutators, *mutator))
+                        .collect();
+                    let Some(mutator) = weighted_pick(&open) else {
+                        break;
+                    };
+                    mutators.push(mutator);
+                }
+                mutators
             }
-        }
-        Self::new(Shape::roll(), mutators)
+        };
+        Self::new(shape.unwrap_or_else(Shape::roll), mutators)
     }
 
     pub fn new(shape: Shape, mutators: Vec<Mutator>) -> Self {
@@ -193,10 +306,16 @@ impl Round {
                 placed += 1;
             }
         }
+        let portals = if mutators.contains(&Mutator::Portals) {
+            place_portals(&blocked)
+        } else {
+            Vec::new()
+        };
         Self {
             shape,
             mutators,
             blocked,
+            portals,
         }
     }
 
@@ -272,6 +391,14 @@ impl Round {
         walls
     }
 
+    /// The ends of each pair of portals, the lowest first.
+    pub fn portal_rects(&self, width: f64, height: f64) -> Vec<[(ArenaPoint, ArenaPoint); 2]> {
+        self.portals
+            .iter()
+            .map(|PortalPair { twins: [a, b], .. }| [a.ends(width, height), b.ends(width, height)])
+            .collect()
+    }
+
     /// Whether `point` is in a walled-off cell or on its edge.
     pub fn is_blocked_at(&self, point: ArenaPoint, width: f64, height: f64) -> bool {
         let (cell_width, cell_height) = cell_size(width, height);
@@ -292,6 +419,139 @@ impl Round {
     }
 }
 
+/// A random number of pairs of portals (see `PORTAL_PAIR_COUNTS`), as many
+/// of them as fit, each a different colour and of a random length and way up
+/// that no other pair has, in open cells at
+/// random. Each is kept off the edges of the arena and out of the way of
+/// lightcycles riding away from their spawn points, and has open cells all
+/// round it, so that a lightcycle coming out of it has somewhere to go and
+/// can't ride straight from one portal into another.
+fn place_portals(blocked: &[(u8, u8)]) -> Vec<PortalPair> {
+    let inside = 1..LAYOUT_CELLS - 1;
+    let fits = |portal: Portal| {
+        let open = portal.footprint().iter().all(|&(x, y)| {
+            inside.contains(&x)
+                && inside.contains(&y)
+                && [(x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                    .iter()
+                    .all(|cell| !blocked.contains(cell))
+        });
+        let (start, end) = portal.ends(ARENA_WIDTH, ARENA_HEIGHT);
+        let clear = SPAWNPOINTS.iter().all(|&(x, y, direction)| {
+            let spawn = ArenaPoint::new(x, y);
+            !overlaps(
+                start,
+                end,
+                spawn,
+                spawn + direction.as_velocity() * SPAWN_RUN,
+            )
+        });
+        open && clear
+    };
+    // Portals are kept a cell apart, corners included.
+    let clear_of = |placed: &[Portal], portal: Portal| {
+        let cells = portal.footprint();
+        placed
+            .iter()
+            .flat_map(|other| other.footprint())
+            .all(|(px, py)| {
+                cells
+                    .iter()
+                    .all(|&(x, y)| px.abs_diff(x) > 1 || py.abs_diff(y) > 1)
+            })
+    };
+    let spots = |length: u8, upright: bool| -> Vec<Portal> {
+        (1..LAYOUT_CELLS)
+            .flat_map(|x| (1..LAYOUT_CELLS).map(move |y| (x, y)))
+            .map(|(x, y)| Portal {
+                x,
+                y,
+                length,
+                upright,
+            })
+            .filter(|portal| fits(*portal))
+            .collect()
+    };
+
+    let count = weighted_pick(&PORTAL_PAIR_COUNTS).unwrap_or(3);
+    let mut colors = PORTAL_COLORS.to_vec();
+    let mut pairs: Vec<PortalPair> = Vec::with_capacity(count);
+    for _ in 0..count * 10 {
+        if pairs.len() == count {
+            break;
+        }
+        let placed: Vec<Portal> = pairs.iter().flat_map(|pair| pair.twins).collect();
+        // A length and way up that no other pair has, so that each pair can
+        // be told by its shape alone.
+        let upright = random_below(2) == 0;
+        let unused: Vec<(u8, u32)> = PORTAL_LENGTHS
+            .into_iter()
+            .filter(|&(length, _)| {
+                pairs
+                    .iter()
+                    .all(|pair| (pair.twins[0].length, pair.twins[0].upright) != (length, upright))
+            })
+            .collect();
+        let Some(length) = weighted_pick(&unused) else {
+            continue;
+        };
+        let open: Vec<Portal> = spots(length, upright)
+            .into_iter()
+            .filter(|portal| clear_of(&placed, *portal))
+            .collect();
+        let pick = || open[random_below(open.len() as u32) as usize];
+        for _ in 0..(if open.is_empty() { 0 } else { 50 }) {
+            let (a, b) = (pick(), pick());
+            let ((ax, ay), (bx, by)) = (a.center(), b.center());
+            let apart = (ax - bx).abs() + (ay - by).abs() >= PORTAL_MIN_APART as f64;
+            if apart && clear_of(&[a], b) {
+                let color = colors.remove(random_below(colors.len() as u32) as usize);
+                pairs.push(PortalPair {
+                    color,
+                    twins: [a, b],
+                });
+                break;
+            }
+        }
+    }
+    pairs
+}
+
+/// Whether the horizontal or vertical segments from `a` to `b` and from `c`
+/// to `d` meet.
+fn overlaps(a: ArenaPoint, b: ArenaPoint, c: ArenaPoint, d: ArenaPoint) -> bool {
+    a.x.min(b.x) <= c.x.max(d.x)
+        && c.x.min(d.x) <= a.x.max(b.x)
+        && a.y.min(b.y) <= c.y.max(d.y)
+        && c.y.min(d.y) <= a.y.max(b.y)
+}
+
+/// Whether `mutator` is one of `chosen` or clashes with one of them.
+fn clashes(chosen: &[Mutator], mutator: Mutator) -> bool {
+    chosen.iter().any(|&other| {
+        other == mutator
+            || CLASHING_MUTATORS.contains(&(other, mutator))
+            || CLASHING_MUTATORS.contains(&(mutator, other))
+    })
+}
+
+/// One of `choices` at random, each as likely as its weight makes it
+/// relative to the others, or `None` if they all weigh nothing.
+fn weighted_pick<T: Copy>(choices: &[(T, u32)]) -> Option<T> {
+    let total: u32 = choices.iter().map(|(_, weight)| weight).sum();
+    if total == 0 {
+        return None;
+    }
+    let mut roll = random_below(total);
+    choices.iter().find_map(|&(choice, weight)| {
+        if roll < weight {
+            return Some(choice);
+        }
+        roll -= weight;
+        None
+    })
+}
+
 fn cell_size(width: f64, height: f64) -> (f64, f64) {
     (width / LAYOUT_CELLS as f64, height / LAYOUT_CELLS as f64)
 }
@@ -306,7 +566,7 @@ mod tests {
 
     #[test]
     fn spawnpoints_and_the_lanes_ahead_of_them_are_open_in_every_shape() {
-        for shape in SHAPES {
+        for (shape, _) in SHAPE_WEIGHTS {
             let round = Round::new(shape, vec![Mutator::Obstacles]);
             for (x, y, direction) in SPAWNPOINTS {
                 let spawn = ArenaPoint::new(x, y);
@@ -339,10 +599,89 @@ mod tests {
     }
 
     #[test]
+    fn portals_have_open_cells_all_round_and_keep_clear_of_spawns() {
+        let mut longest = 0;
+        for (shape, _) in SHAPE_WEIGHTS {
+            for _ in 0..100 {
+                let round = Round::new(shape, vec![Mutator::Obstacles, Mutator::Portals]);
+                assert!(!round.portals.is_empty(), "{shape:?} has no portals");
+                for PortalPair { twins: [a, b], .. } in &round.portals {
+                    assert_eq!((a.length, a.upright), (b.length, b.upright));
+                }
+                let portals: Vec<Portal> =
+                    round.portals.iter().flat_map(|pair| pair.twins).collect();
+                longest = portals
+                    .iter()
+                    .map(|portal| portal.length)
+                    .fold(longest, u8::max);
+                for (index, portal) in portals.iter().enumerate() {
+                    let (start, end) = portal.ends(ARENA_WIDTH, ARENA_HEIGHT);
+                    for (x, y, direction) in SPAWNPOINTS {
+                        let spawn = ArenaPoint::new(x, y);
+                        let run = spawn + direction.as_velocity() * SPAWN_RUN;
+                        assert!(!overlaps(start, end, spawn, run), "{portal:?}");
+                    }
+                    for (x, y) in portal.footprint() {
+                        for side in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+                            assert!(!round.blocked.contains(&side), "{shape:?} walls in {x},{y}");
+                            for other in &portals[index + 1..] {
+                                assert!(!other.footprint().contains(&side));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(longest >= 4, "{longest}");
+    }
+
+    #[test]
+    fn portal_rounds_have_three_pairs_of_different_colours_and_shapes_on_average() {
+        let mut counts = [0; 6];
+        for _ in 0..1000 {
+            let round = Round::new(Shape::Grid, vec![Mutator::Portals]);
+            counts[round.portals.len()] += 1;
+            let shape = |pair: &PortalPair| (pair.twins[0].length, pair.twins[0].upright);
+            for (index, pair) in round.portals.iter().enumerate() {
+                for other in &round.portals[index + 1..] {
+                    assert_ne!(other.color, pair.color);
+                    assert_ne!(shape(other), shape(pair));
+                }
+            }
+        }
+        assert_eq!(counts[0], 0);
+        assert!(counts[3] > counts[2] && counts[3] > counts[4], "{counts:?}");
+        assert!(counts[2] > counts[1] && counts[4] > counts[5], "{counts:?}");
+    }
+
+    #[test]
+    fn fog_is_rolled_less_often_than_other_mutators() {
+        let count = |mutator| (0..4000).filter(|_| Round::roll().has(mutator)).count();
+        let (fog, snake) = (count(Mutator::Fog), count(Mutator::Snake));
+        assert!(fog * 3 < snake * 2, "fog {fog}, snake {snake}");
+    }
+
+    #[test]
+    fn scenarios_keep_the_mutators_given_that_dont_clash() {
+        let round = Round::scenario(
+            Some(Shape::Core),
+            Some(vec![
+                Mutator::Portals,
+                Mutator::Shrink,
+                Mutator::Wrap,
+                Mutator::Portals,
+            ]),
+        );
+        assert_eq!(round.shape, Shape::Core);
+        assert_eq!(round.mutators, vec![Mutator::Portals, Mutator::Wrap]);
+    }
+
+    #[test]
     fn shrink_and_wrap_are_never_rolled_together() {
         for _ in 0..500 {
             let round = Round::roll();
             assert!(!(round.has(Mutator::Shrink) && round.has(Mutator::Wrap)));
+            assert!(!(round.has(Mutator::Shrink) && round.has(Mutator::Portals)));
             assert!(round.mutators.len() <= 2);
         }
     }

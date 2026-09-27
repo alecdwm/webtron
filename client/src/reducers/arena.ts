@@ -1,7 +1,7 @@
 import type { Arena, ArenaUpdate, Lightcycle, Lightribbon, Point, Round, ServerArena, ServerLightribbon } from '@/types'
 import createReducer from '@/utils/createReducer'
 
-const emptyRound: Round = { shape: 'Grid', mutators: [], blocked: [] }
+const emptyRound: Round = { shape: 'Grid', mutators: [], blocked: [], portals: [] }
 // How many recent near misses are kept to be shown.
 const MAX_NEAR_MISSES = 12
 // Numbers near misses and emotes, so each is shown once.

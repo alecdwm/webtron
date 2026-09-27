@@ -1,0 +1,133 @@
+/* A window a trail holds open in the side of a portal: a bright slit along
+   the side with a shimmering pool of the trail's colour round it. It is
+   placed at its centre, and is 8px thick across the side. */
+.window {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, 50%);
+  pointer-events: none;
+  border-radius: 50%;
+  background:
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--white) 35%, transparent) 0 1px, transparent 1px 3px),
+    radial-gradient(closest-side, color-mix(in srgb, var(--cycle) 85%, transparent), transparent);
+  background-size:
+    100% 6px,
+    100% 100%;
+  box-shadow: 0 0 10px var(--cycle);
+  mix-blend-mode: screen;
+  animation:
+    windowopen 450ms ease-out both,
+    windowshimmer 700ms linear 450ms infinite;
+}
+.across {
+  background:
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--white) 35%, transparent) 0 1px, transparent 1px 3px),
+    radial-gradient(closest-side, color-mix(in srgb, var(--cycle) 85%, transparent), transparent);
+  background-size:
+    6px 100%,
+    100% 100%;
+  animation-name: windowopenacross, windowshimmeracross;
+}
+/* The slit itself. */
+.window::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc(50% - 1px);
+  border-radius: 1px;
+  background: var(--white);
+  box-shadow:
+    0 0 4px var(--cycle),
+    0 0 8px var(--cycle);
+}
+.across::before {
+  inset: calc(50% - 1px) 0;
+}
+.closing {
+  animation: windowclose 600ms ease-in both;
+}
+.closing.across {
+  animation-name: windowcloseacross;
+}
+
+@keyframes windowopen {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 50%) scale(1.8, 0);
+    filter: brightness(3);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, 50%) scale(1.4, 1.25);
+    filter: brightness(2);
+  }
+  100% {
+    transform: translate(-50%, 50%) scale(1, 1);
+    filter: none;
+  }
+}
+@keyframes windowopenacross {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 50%) scale(0, 1.8);
+    filter: brightness(3);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, 50%) scale(1.25, 1.4);
+    filter: brightness(2);
+  }
+  100% {
+    transform: translate(-50%, 50%) scale(1, 1);
+    filter: none;
+  }
+}
+@keyframes windowshimmer {
+  to {
+    background-position:
+      0 6px,
+      0 0;
+  }
+}
+@keyframes windowshimmeracross {
+  to {
+    background-position:
+      6px 0,
+      0 0;
+  }
+}
+@keyframes windowclose {
+  0% {
+    transform: translate(-50%, 50%) scale(1, 1);
+    filter: brightness(2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 50%) scale(0.4, 0);
+  }
+}
+@keyframes windowcloseacross {
+  0% {
+    transform: translate(-50%, 50%) scale(1, 1);
+    filter: brightness(2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 50%) scale(0, 0.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window,
+  .across {
+    animation-name: none;
+  }
+  .closing {
+    animation: windowfade 600ms ease-in both;
+  }
+}
+@keyframes windowfade {
+  to {
+    opacity: 0;
+  }
+}

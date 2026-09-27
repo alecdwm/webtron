@@ -1,9 +1,21 @@
 use super::npc;
 use super::*;
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+/// A round set up for testing. Whatever is left out is rolled at random as
+/// usual.
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+pub struct Scenario {
+    pub shape: Option<Shape>,
+    pub mutators: Option<Vec<Mutator>>,
+    /// The styles of the round's NPCs, one for each NPC, as many as there is
+    /// room for alongside the human players.
+    pub npcs: Option<Vec<npc::Style>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArenaInput {
-    Start,
+    /// Starts the next round, set up as the scenario says if one is given.
+    Start(Option<Scenario>),
     Turn(Direction),
     /// The player pressed (true) or let go of (false) the brake.
     Brake(bool),
@@ -13,7 +25,8 @@ pub enum ArenaInput {
 impl ArenaInput {
     pub fn process_into_updates(self, arena: &mut Arena, player_id: PlayerId) -> Vec<ArenaUpdate> {
         match self {
-            ArenaInput::Start => {
+            ArenaInput::Start(scenario) => {
+                let scenario = scenario.unwrap_or_default();
                 // A round can be cut short once only NPCs are left in it.
                 if arena.started.is_some() && arena.any_human_alive() {
                     trace!(
@@ -58,9 +71,16 @@ impl ArenaInput {
                     updates.push(ArenaUpdate::RemovePlayer(npc_id));
                 }
                 arena.unrecorded_round_players.extend(&human_ids);
-                let npc_count = npc::npc_count_for_arena(human_ids.len());
+                let room = ARENA_MAX_PLAYERS.saturating_sub(human_ids.len());
+                let npc_count = match &scenario.npcs {
+                    Some(styles) => styles.len().min(room),
+                    None => npc::npc_count_for_arena(human_ids.len()),
+                };
                 let npc_players = npc::create_npc_players(npc_count);
-                let npc_styles = npc::Style::for_round(npc_players.len());
+                let npc_styles = match scenario.npcs {
+                    Some(styles) => styles,
+                    None => npc::Style::for_round(npc_players.len()),
+                };
                 for (npc_player, style) in npc_players.iter().zip(npc_styles) {
                     arena
                         .npc_states
@@ -68,7 +88,7 @@ impl ArenaInput {
                     updates.push(ArenaUpdate::AddPlayer(npc_player.id, npc_player.clone()));
                 }
 
-                let round = Round::roll();
+                let round = Round::scenario(scenario.shape, scenario.mutators);
                 let speed = LIGHTCYCLE_SPEED * round.speed_scale();
                 updates.push(ArenaUpdate::SetRound(round));
 

@@ -393,6 +393,92 @@ export function playBrake(self: boolean, pan = 0) {
 }
 
 // An emote popping up over a lightcycle.
+// Going through a portal: a rising sweep with a shimmer falling away and a
+// rush of air, as a window opens in the portal.
+export function playPortal(self: boolean, pan = 0) {
+  const gain = self ? 1 : 0.35
+  tone({ type: 'sine', freq: 220, freqEnd: 880, duration: 0.25, gain: 0.08 * gain, pan })
+  tone({ type: 'triangle', freq: 1760, freqEnd: 660, duration: 0.35, gain: 0.035 * gain, pan, delay: 0.06 })
+  noise({
+    duration: 0.3,
+    gain: 0.05 * gain,
+    pan,
+    attack: 0.05,
+    filter: { type: 'bandpass', freq: 600, freqEnd: 4000, q: 3 },
+  })
+}
+
+// A portal appearing: a watery swell that rises, with a few bubbling blips
+// and a shimmer falling away as its surface ripples in.
+export function playPortalSpawn(pan = 0, delay = 0) {
+  tone({ type: 'sine', freq: 150, freqEnd: 420, duration: 0.5, gain: 0.05, attack: 0.15, delay, pan })
+  noise({
+    duration: 0.6,
+    gain: 0.025,
+    attack: 0.25,
+    delay,
+    pan,
+    filter: { type: 'bandpass', freq: 300, freqEnd: 1800, q: 6 },
+  })
+  for (let i = 0; i < 4; i++) {
+    const freq = 500 + Math.random() * 400
+    tone({ type: 'sine', freq, freqEnd: freq * 1.6, duration: 0.06, gain: 0.02, delay: delay + 0.2 + i * 0.08, pan })
+  }
+  tone({ type: 'triangle', freq: 1100, freqEnd: 700, duration: 0.4, gain: 0.015, delay: delay + 0.4, pan })
+}
+
+// A lightcycle touching a portal: a quiet, low, wobbling hum that fades in and
+// goes on until the returned function is called, when it fades out. It is
+// only a hint, well under the sound of going through (see playPortal).
+export function startPortalHum(self: boolean, pan = 0): () => void {
+  const a = audio()
+  if (!a) return () => {}
+  const { ctx, out } = a
+  const now = ctx.currentTime
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0, now)
+  gain.gain.linearRampToValueAtTime(self ? 0.012 : 0.004, now + 0.12)
+  gain.connect(output(ctx, out, pan))
+
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 700
+  filter.Q.value = 2
+  filter.connect(gain)
+  // Two detuned tones beating against each other, with a deep wobble in
+  // their pitch and brightness.
+  const tones = [220, 223].map((frequency) => {
+    const oscillator = ctx.createOscillator()
+    oscillator.type = 'triangle'
+    oscillator.frequency.value = frequency
+    oscillator.connect(filter)
+    oscillator.start(now)
+    return oscillator
+  })
+  const wobble = ctx.createOscillator()
+  const depth = ctx.createGain()
+  const bend = ctx.createGain()
+  wobble.frequency.value = 3.5
+  depth.gain.value = 350
+  bend.gain.value = 9
+  wobble.connect(depth)
+  wobble.connect(bend)
+  depth.connect(filter.frequency)
+  for (const oscillator of tones) bend.connect(oscillator.frequency)
+  wobble.start(now)
+
+  let stopped = false
+  return () => {
+    if (stopped) return
+    stopped = true
+    const end = ctx.currentTime
+    gain.gain.cancelScheduledValues(end)
+    gain.gain.setValueAtTime(gain.gain.value, end)
+    gain.gain.linearRampToValueAtTime(0, end + 0.15)
+    for (const oscillator of [...tones, wobble]) oscillator.stop(end + 0.2)
+  }
+}
+
 export function playEmote(pan = 0) {
   tone({ type: 'sine', freq: 520, freqEnd: 1040, duration: 0.08, gain: 0.06, pan })
   tone({ type: 'triangle', freq: 1560, duration: 0.1, gain: 0.03, pan, delay: 0.05 })

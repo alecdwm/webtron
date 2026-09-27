@@ -9,7 +9,7 @@ use chrono::{DateTime, Duration as OldDuration, Utc};
 use getrandom::SysRng;
 use log::{error, trace};
 use rand_core::{Rng, UnwrapErr};
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::mem;
 
@@ -66,6 +66,9 @@ const EMOTE_COOLDOWN_MILLISECONDS: i64 = 250;
 /// Chance, in percent, of an NPC taunting a lightcycle that crashes into its
 /// trail, or saying GG when it wins.
 const NPC_TAUNT_PERCENT: u32 = 30;
+/// The most stretches a straight line is followed through, going through
+/// portals and round the edges of an arena that wraps round.
+const MAX_STRETCHES: usize = 32;
 
 /// What a lightcycle crashed into.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -98,6 +101,10 @@ pub struct Arena {
     /// into, worked out when the round is set.
     #[serde(skip)]
     pub walls: Vec<(ArenaPoint, ArenaPoint)>,
+    /// The ends of each of the round's pairs of portals, worked out when the
+    /// round is set.
+    #[serde(skip)]
+    pub portals: Vec<[(ArenaPoint, ArenaPoint); 2]>,
     /// When each lightcycle last had a near miss.
     #[serde(skip)]
     pub near_miss_at: HashMap<PlayerId, DateTime<Utc>>,
@@ -233,6 +240,105 @@ impl Arena {
         distance
     }
 
+    /// A straight line `length` long from `position` in `direction`, as the
+    /// stretches it runs through the arena, each with how far along the line
+    /// it starts. It is all one stretch unless it goes into a portal, or off
+    /// an edge of an arena that wraps round, and comes out somewhere else.
+    pub fn stretches(
+        &self,
+        position: ArenaPoint,
+        direction: Direction,
+        length: f64,
+    ) -> Vec<(ArenaPoint, ArenaPoint, f64)> {
+        let velocity = direction.as_velocity();
+        let mut stretches = Vec::new();
+        let mut from = position;
+        let mut along = 0.0;
+        for _ in 1..MAX_STRETCHES {
+            let Some((distance, exit)) = self.next_gate(from, direction, length - along) else {
+                break;
+            };
+            stretches.push((from, from + velocity * distance, along));
+            along += distance;
+            from = exit;
+        }
+        stretches.push((from, from + velocity * (length - along).max(0.0), along));
+        stretches
+    }
+
+    /// Where a lightcycle at `position` ends up after going `distance` in
+    /// `direction`, through any portals or edges of the arena on the way.
+    pub fn advance(&self, position: ArenaPoint, direction: Direction, distance: f64) -> ArenaPoint {
+        self.stretches(position, direction, distance)
+            .last()
+            .map_or(position, |&(_, to, _)| to)
+    }
+
+    /// How far from `from` in `direction` the nearest portal or wrapping edge
+    /// within `reach` is, and where a lightcycle going into it comes out. A
+    /// portal is only gone through across it, not along it.
+    ///
+    /// A portal is gone through once a lightcycle reaches it, even at the
+    /// end of its reach, and not when it starts on it: it has just come out
+    /// of the portal, and would otherwise go straight back in. An edge is
+    /// only gone off with some reach left, and from on it.
+    fn next_gate(
+        &self,
+        from: ArenaPoint,
+        direction: Direction,
+        reach: f64,
+    ) -> Option<(f64, ArenaPoint)> {
+        let mut nearest: Option<(f64, ArenaPoint)> = None;
+        let mut consider = |gate: Option<(f64, ArenaPoint)>, portal: bool| {
+            if let Some((distance, exit)) = gate
+                && (if portal {
+                    distance > 0.0 && distance <= reach
+                } else {
+                    distance < reach
+                })
+                && nearest.is_none_or(|(nearest, _)| distance < nearest)
+            {
+                nearest = Some((distance, exit));
+            }
+        };
+
+        if self.round.has(Mutator::Wrap) {
+            let (width, height) = (self.width, self.height);
+            consider(
+                Some(match direction {
+                    Direction::Up => ((height - from.y).max(0.0), ArenaPoint::new(from.x, 0.0)),
+                    Direction::Down => (from.y.max(0.0), ArenaPoint::new(from.x, height)),
+                    Direction::Right => ((width - from.x).max(0.0), ArenaPoint::new(0.0, from.y)),
+                    Direction::Left => (from.x.max(0.0), ArenaPoint::new(width, from.y)),
+                }),
+                false,
+            );
+        }
+
+        for &[a, b] in &self.portals {
+            for ((min, max), (out_min, out_max)) in [(a, b), (b, a)] {
+                // The same place on the twin, relative to its corner.
+                let across = |x: f64| x - min.x + out_min.x;
+                let up = |y: f64| y - min.y + out_min.y;
+                let beside_x = min.x < from.x && from.x < max.x;
+                let beside_y = min.y < from.y && from.y < max.y;
+                let gate = match direction {
+                    Direction::Right => (beside_y && from.x <= min.x)
+                        .then(|| (min.x - from.x, ArenaPoint::new(out_max.x, up(from.y)))),
+                    Direction::Left => (beside_y && from.x >= max.x)
+                        .then(|| (from.x - max.x, ArenaPoint::new(out_min.x, up(from.y)))),
+                    Direction::Up => (beside_x && from.y <= min.y)
+                        .then(|| (min.y - from.y, ArenaPoint::new(across(from.x), out_max.y))),
+                    Direction::Down => (beside_x && from.y >= max.y)
+                        .then(|| (from.y - max.y, ArenaPoint::new(across(from.x), out_min.y))),
+                };
+                consider(gate, true);
+            }
+        }
+
+        nearest
+    }
+
     pub fn clear_updates(&mut self) {
         self.updates.clear();
         self.updates_applied_so_far = 0;
@@ -275,8 +381,15 @@ impl Arena {
         // run NPC AI — extract npc_states so we can mutate it while reading arena immutably
         let mut npc_states = mem::take(&mut self.npc_states);
         let npc_updates = npc::update_npc_inputs(self, &mut npc_states, delta_time);
+        let emotes: Vec<(PlayerId, Emote)> = npc_states
+            .iter_mut()
+            .filter_map(|(id, state)| Some((*id, state.emote.take()?)))
+            .collect();
         self.npc_states = npc_states;
         self.updates.extend(npc_updates);
+        for (id, emote) in emotes {
+            self.npc_emote(id, emote);
+        }
         self.apply_updates();
 
         self.update_lightcycle_speeds(delta_time).apply_updates();
@@ -350,19 +463,33 @@ impl Arena {
     /// crashing into a trail, a wall, or the edge of the arena.
     fn distance_ahead(&self, id: PlayerId, position: ArenaPoint, direction: Direction) -> f64 {
         let edges = (!self.round.has(Mutator::Wrap)).then(|| self.bounds(0.0));
-        let mut distance = self.wall_distance(position, direction, edges);
-        let far = position + direction.as_velocity() * (self.width + self.height);
-        for (ribbon_id, lightribbon) in self.lightribbons.iter() {
-            let live_segment = self
-                .lightcycles
-                .get(ribbon_id)
-                .filter(|other| *ribbon_id != id && !other.dead)
-                .zip(lightribbon.last_point())
-                .map(|(other, last_point)| (last_point, other.position));
-            for (a, b) in lightribbon.segments().chain(live_segment) {
-                if let Some(contact) = first_contact(position, far, a, b) {
-                    distance = distance.min((contact - position).length());
+        let ray = self.stretches(position, direction, self.width + self.height);
+        let mut distance = f64::INFINITY;
+        for (index, &(from, to, along)) in ray.iter().enumerate() {
+            // Anything past where a stretch goes into a portal or off an edge
+            // isn't in the way. The last stretch looks as far as it can.
+            let reach = if index + 1 == ray.len() {
+                f64::INFINITY
+            } else {
+                (to - from).length()
+            };
+            let far = from + direction.as_velocity() * (self.width + self.height);
+            let mut ahead = self.wall_distance(from, direction, edges);
+            for (ribbon_id, lightribbon) in self.lightribbons.iter() {
+                let live_segment = self
+                    .lightcycles
+                    .get(ribbon_id)
+                    .filter(|other| *ribbon_id != id && !other.dead)
+                    .zip(lightribbon.last_point())
+                    .map(|(other, last_point)| (last_point, other.position));
+                for (a, b) in lightribbon.segments().chain(live_segment) {
+                    if let Some(contact) = first_contact(from, far, a, b) {
+                        ahead = ahead.min((contact - from).length());
+                    }
                 }
+            }
+            if ahead <= reach {
+                distance = distance.min(along + ahead);
             }
         }
         distance
@@ -514,7 +641,6 @@ impl Arena {
         &mut self,
         starts: &HashMap<PlayerId, ArenaPoint>,
     ) -> &mut Self {
-        let wrap = self.round.has(Mutator::Wrap);
         let travels: HashMap<PlayerId, Travel> = self
             .lightcycles
             .iter()
@@ -522,40 +648,32 @@ impl Arena {
             .map(|(id, lightcycle)| {
                 let to = lightcycle.position;
                 let from = starts.get(id).copied().unwrap_or(to);
-                (*id, Travel::new(from, to, wrap, self.width, self.height))
+                (*id, Travel::new(self, from, to))
             })
             .collect();
-        let bounds = (!wrap).then(|| self.bounds(0.0));
+        let bounds = (!self.round.has(Mutator::Wrap)).then(|| self.bounds(0.0));
 
         let mut near_misses = Vec::new();
-        let mut taunts = Vec::new();
+        let mut emotes = Vec::new();
         'next_lightcycle: for (id, travel) in travels.iter() {
             for (leg, &(from, to)) in travel.legs.iter().enumerate() {
                 let Some((contact, cause)) = self.first_crash(*id, leg, from, to, &travels, bounds)
                 else {
                     continue;
                 };
-                if leg > 0 {
-                    self.push_wrap(*id, travel);
-                }
+                self.push_gates(*id, travel, leg);
                 self.updates
                     .push(ArenaUpdate::UpdateLightcyclePosition(*id, contact));
                 self.updates
                     .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id, cause));
-                if let DeathCause::Trail(owner) = cause
-                    && owner != *id
-                    && self.npc_states.contains_key(&owner)
-                    && travels.contains_key(&owner)
-                {
-                    taunts.push((owner, Emote::Lol));
-                }
+                emotes.extend(self.npc_death_emotes(*id, cause, &travels));
                 continue 'next_lightcycle;
             }
 
             if travel.legs.len() > 1 {
                 self.updates
                     .push(ArenaUpdate::UpdateLightcyclePosition(*id, travel.end()));
-                self.push_wrap(*id, travel);
+                self.push_gates(*id, travel, travel.legs.len() - 1);
             }
 
             // test for lightcycles arriving at the same point from the side
@@ -563,10 +681,10 @@ impl Arena {
                 .iter()
                 .find(|(other_id, other)| *other_id != id && other.end() == travel.end())
             {
-                self.updates.push(ArenaUpdate::UpdateLightcycleApplyDeath(
-                    *id,
-                    DeathCause::Lightcycle(*other_id),
-                ));
+                let cause = DeathCause::Lightcycle(*other_id);
+                self.updates
+                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id, cause));
+                emotes.extend(self.npc_death_emotes(*id, cause, &travels));
                 continue 'next_lightcycle;
             }
 
@@ -581,10 +699,53 @@ impl Arena {
         for (id, point, gap) in near_misses {
             self.near_miss(id, point, gap);
         }
-        for (id, emote) in taunts {
-            self.npc_taunt(id, emote);
+        for (id, emote, always) in emotes {
+            if always {
+                self.npc_emote(id, emote);
+            } else {
+                self.npc_taunt(id, emote);
+            }
         }
         self
+    }
+
+    /// What NPCs say about a lightcycle dying of `cause`, and whether they
+    /// always say it or only now and then. An NPC laughs at a lightcycle
+    /// that crashes into its trail, or says GG if it held a grudge against
+    /// it. An NPC killed by a lightcycle it held a grudge against says RIP.
+    fn npc_death_emotes(
+        &self,
+        id: PlayerId,
+        cause: DeathCause,
+        travels: &HashMap<PlayerId, Travel>,
+    ) -> Vec<(PlayerId, Emote, bool)> {
+        let grudge = |npc: PlayerId| {
+            self.npc_states
+                .get(&npc)
+                .and_then(|state| state.grudge)
+                .map(|(against, _)| against)
+        };
+        let killer = match cause {
+            DeathCause::Trail(owner) | DeathCause::Lightcycle(owner) if owner != id => Some(owner),
+            _ => None,
+        };
+
+        let mut emotes = Vec::new();
+        if let DeathCause::Trail(owner) = cause
+            && owner != id
+            && self.npc_states.contains_key(&owner)
+            && travels.contains_key(&owner)
+        {
+            if grudge(owner) == Some(id) {
+                emotes.push((owner, Emote::Gg, true));
+            } else {
+                emotes.push((owner, Emote::Lol, false));
+            }
+        }
+        if killer.is_some() && grudge(id) == killer {
+            emotes.push((id, Emote::Rip, true));
+        }
+        emotes
     }
 
     /// Where a lightcycle first crashes, and into what, on one leg of its
@@ -603,6 +764,25 @@ impl Arena {
         // Coming back in at the edge of the arena, into a walled-off cell.
         if leg > 0 && self.round.is_blocked_at(from, self.width, self.height) {
             return Some((from, DeathCause::Boundary));
+        }
+
+        // Coming out of a portal, or back in at an edge, onto a trail.
+        // `first_contact` leaves out touching where a leg starts.
+        if leg > 0 {
+            for (ribbon_id, lightribbon) in self.lightribbons.iter() {
+                let live_segments = travels
+                    .get(ribbon_id)
+                    .filter(|_| ribbon_id != &id)
+                    .map(|travel| travel.legs.as_slice())
+                    .unwrap_or_default();
+                if lightribbon
+                    .segments()
+                    .chain(live_segments.iter().copied())
+                    .any(|(a, b)| touches(from, a, b))
+                {
+                    return Some((from, DeathCause::Trail(*ribbon_id)));
+                }
+            }
         }
 
         // test for head-on collisions with lightcycles coming the other
@@ -683,14 +863,17 @@ impl Arena {
         crash.map(|(_, contact, cause)| (contact, cause))
     }
 
-    /// Ends a lightcycle's trail where it rode off the edge of the arena,
-    /// and starts a new path where it comes back in.
-    fn push_wrap(&mut self, id: PlayerId, travel: &Travel) {
-        let (exit, entry) = (travel.legs[0].1, travel.legs[1].0);
-        self.updates
-            .push(ArenaUpdate::UpdateLightribbonReplaceLatestPoint(id, exit));
-        self.updates
-            .push(ArenaUpdate::UpdateLightribbonStartPath(id, entry));
+    /// Ends a lightcycle's trail where it went into each portal or off the
+    /// edge of the arena, and starts a new path where it came out, for the
+    /// first `gates` of its travel's legs.
+    fn push_gates(&mut self, id: PlayerId, travel: &Travel, gates: usize) {
+        for pair in travel.legs.windows(2).take(gates) {
+            let (exit, entry) = (pair[0].1, pair[1].0);
+            self.updates
+                .push(ArenaUpdate::UpdateLightribbonReplaceLatestPoint(id, exit));
+            self.updates
+                .push(ArenaUpdate::UpdateLightribbonStartPath(id, entry));
+        }
     }
 
     /// Where a lightcycle's travel this update passed closest by the end of a
@@ -723,7 +906,14 @@ impl Arena {
 
     /// An NPC emotes, now and then.
     fn npc_taunt(&mut self, id: PlayerId, emote: Emote) {
-        if UnwrapErr(SysRng).next_u32() % 100 < NPC_TAUNT_PERCENT && self.take_emote_turn(id) {
+        if UnwrapErr(SysRng).next_u32() % 100 < NPC_TAUNT_PERCENT {
+            self.npc_emote(id, emote);
+        }
+    }
+
+    /// An NPC emotes, unless it did so too recently.
+    fn npc_emote(&mut self, id: PlayerId, emote: Emote) {
+        if self.take_emote_turn(id) {
             self.updates.push(ArenaUpdate::Emote(id, emote));
         }
     }
@@ -891,6 +1081,7 @@ impl Default for Arena {
             round: Default::default(),
 
             walls: Default::default(),
+            portals: Default::default(),
             near_miss_at: Default::default(),
             emote_at: Default::default(),
 
@@ -974,36 +1165,43 @@ fn first_contact(
     Some(near)
 }
 
-/// A lightcycle's travel in one update: a single leg, or two when it rides
-/// off an edge of the arena and wraps round to the opposite edge.
+/// Whether `point` is on the horizontal or vertical segment from `a` to `b`.
+fn touches(point: ArenaPoint, a: ArenaPoint, b: ArenaPoint) -> bool {
+    (a.x.min(b.x)..=a.x.max(b.x)).contains(&point.x)
+        && (a.y.min(b.y)..=a.y.max(b.y)).contains(&point.y)
+}
+
+/// A lightcycle's travel in one update: a single leg, or one more for each
+/// portal it goes into or edge of the arena it wraps round.
 struct Travel {
     legs: Vec<(ArenaPoint, ArenaPoint)>,
 }
 
 impl Travel {
-    fn new(from: ArenaPoint, to: ArenaPoint, wrap: bool, width: f64, height: f64) -> Self {
-        let max = ArenaPoint::new(width, height);
-        let exit = to.clamp(ArenaPoint::origin(), max);
-        if !wrap || exit == to {
+    fn new(arena: &Arena, from: ArenaPoint, to: ArenaPoint) -> Self {
+        let delta = to - from;
+        let direction = if delta.x > 0.0 {
+            Direction::Right
+        } else if delta.x < 0.0 {
+            Direction::Left
+        } else if delta.y > 0.0 {
+            Direction::Up
+        } else {
+            Direction::Down
+        };
+        let stretches = arena.stretches(from, direction, delta.length());
+        // A single leg ends exactly where the lightcycle is, which its trail
+        // is drawn to.
+        if stretches.len() == 1 {
             return Self {
                 legs: vec![(from, to)],
             };
         }
-        let (entry, end) = if to.x != exit.x {
-            let entry_x = if to.x < 0.0 { width } else { 0.0 };
-            (
-                ArenaPoint::new(entry_x, exit.y),
-                ArenaPoint::new(to.x.rem_euclid(width), to.y),
-            )
-        } else {
-            let entry_y = if to.y < 0.0 { height } else { 0.0 };
-            (
-                ArenaPoint::new(exit.x, entry_y),
-                ArenaPoint::new(to.x, to.y.rem_euclid(height)),
-            )
-        };
         Self {
-            legs: vec![(from, exit), (entry, end)],
+            legs: stretches
+                .into_iter()
+                .map(|(from, to, _)| (from, to))
+                .collect(),
         }
     }
 
@@ -1470,6 +1668,225 @@ mod tests {
         );
     }
 
+    /// A round on the plain grid with one pair of portals, upright lines
+    /// from (80, 80) to (80, 160) and from (400, 440) to (400, 520).
+    fn portal_round() -> ArenaUpdate {
+        ArenaUpdate::SetRound(Round {
+            mutators: vec![Mutator::Portals],
+            portals: vec![PortalPair::from([
+                Portal {
+                    x: 2,
+                    y: 2,
+                    length: 2,
+                    upright: true,
+                },
+                Portal {
+                    x: 10,
+                    y: 11,
+                    length: 2,
+                    upright: true,
+                },
+            ])],
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn lightcycles_come_out_of_the_far_side_of_a_portals_twin() {
+        let id = PlayerId::default();
+        let mut arena = arena_with_lightcycle(
+            id,
+            ArenaPoint::new(78.0, 100.0),
+            Direction::Right,
+            vec![ArenaPoint::new(50.0, 100.0), ArenaPoint::new(78.0, 100.0)],
+        );
+        portal_round().apply(&mut arena);
+
+        arena.update(0.05);
+        let lightcycle = arena.lightcycles[&id];
+        assert!(!lightcycle.dead);
+        assert!((lightcycle.position - ArenaPoint::new(400.75, 460.0)).length() < 1e-9);
+        assert_eq!(
+            arena.lightribbons[&id].paths,
+            vec![
+                vec![ArenaPoint::new(50.0, 100.0), ArenaPoint::new(80.0, 100.0)],
+                vec![ArenaPoint::new(400.0, 460.0), lightcycle.position],
+            ]
+        );
+    }
+
+    #[test]
+    fn lightcycles_crash_into_trails_beyond_a_portal() {
+        // A trail 1 past the twin, and one right along it.
+        for (x, contact) in [(401.0, 401.0), (400.0, 400.0)] {
+            let id = PlayerId::default();
+            let other = PlayerId::default();
+            let mut arena = arena_with_lightcycle(
+                id,
+                ArenaPoint::new(79.0, 100.0),
+                Direction::Right,
+                vec![ArenaPoint::new(50.0, 100.0), ArenaPoint::new(79.0, 100.0)],
+            );
+            arena.lightribbons.insert(
+                other,
+                Lightribbon {
+                    paths: vec![vec![ArenaPoint::new(x, 400.0), ArenaPoint::new(x, 500.0)]],
+                },
+            );
+            portal_round().apply(&mut arena);
+
+            arena.update(0.05);
+            let lightcycle = arena.lightcycles[&id];
+            assert_eq!(lightcycle.death_cause, Some(DeathCause::Trail(other)));
+            assert_eq!(lightcycle.position, ArenaPoint::new(contact, 460.0));
+        }
+    }
+
+    #[test]
+    fn lightcycles_ride_past_the_side_of_a_portal() {
+        let id = PlayerId::default();
+        // Along the line of the portal, which isn't going through it.
+        let mut arena = arena_with_lightcycle(
+            id,
+            ArenaPoint::new(78.0, 80.0),
+            Direction::Right,
+            vec![ArenaPoint::new(50.0, 80.0), ArenaPoint::new(78.0, 80.0)],
+        );
+        portal_round().apply(&mut arena);
+
+        arena.update(0.05);
+        assert_eq!(
+            arena.lightcycles[&id].position,
+            ArenaPoint::new(80.75, 80.0)
+        );
+    }
+
+    #[test]
+    fn lightcycles_go_through_line_portals_from_either_side_and_only_once() {
+        // Vertical lines 80 long at x = 120 and x = 400.
+        let line = |x| Portal {
+            x,
+            y: 2,
+            length: 2,
+            upright: true,
+        };
+        // Right through the first, left through the second, and landing
+        // exactly on the first.
+        for (start, direction, end) in [
+            (118.0, Direction::Right, 400.75),
+            (401.0, Direction::Left, 118.25),
+            (117.25, Direction::Right, 400.0),
+        ] {
+            let id = PlayerId::default();
+            let mut arena = arena_with_lightcycle(
+                id,
+                ArenaPoint::new(start, 100.0),
+                direction,
+                vec![ArenaPoint::new(start, 100.0), ArenaPoint::new(start, 100.0)],
+            );
+            ArenaUpdate::SetRound(Round {
+                mutators: vec![Mutator::Portals],
+                portals: vec![PortalPair::from([line(3), line(10)])],
+                ..Default::default()
+            })
+            .apply(&mut arena);
+
+            arena.update(0.05);
+            let lightcycle = arena.lightcycles[&id];
+            assert!(!lightcycle.dead);
+            assert!(
+                (lightcycle.position.x - end).abs() < 1e-9,
+                "{start}: {:?}",
+                lightcycle.position
+            );
+            // Riding on from on the line doesn't go back through.
+            arena.update(0.05);
+            assert!((arena.lightcycles[&id].position.x - end).abs() > 2.0);
+            assert!((arena.lightcycles[&id].position.x - end).abs() < 3.0);
+        }
+    }
+
+    /// An NPC heading up into the end of another lightcycle's trail across
+    /// its path, holding a grudge against that lightcycle or not.
+    fn npc_grudge_crash(grudge: bool) -> (Arena, PlayerId, PlayerId) {
+        let npc = PlayerId::default();
+        let other = PlayerId::default();
+        let mut arena = arena_going_up(npc);
+        arena.lightcycles.insert(
+            other,
+            Lightcycle {
+                position: ArenaPoint::new(20.0, 500.0),
+                direction: Direction::Left,
+                ..Default::default()
+            },
+        );
+        arena.lightribbons.insert(
+            other,
+            Lightribbon {
+                paths: vec![vec![
+                    ArenaPoint::new(90.0, 111.0),
+                    ArenaPoint::new(110.0, 111.0),
+                ]],
+            },
+        );
+        let mut state = npc::NpcState::new(npc::Style::Sentinel);
+        state.time_remaining = f64::INFINITY;
+        if grudge {
+            state.grudge = Some((other, 10.0));
+        }
+        arena.npc_states.insert(npc, state);
+        (arena, npc, other)
+    }
+
+    #[test]
+    fn npcs_killed_by_a_lightcycle_they_hold_a_grudge_against_say_rip() {
+        for grudge in [true, false] {
+            let (mut arena, npc, other) = npc_grudge_crash(grudge);
+            // Too close to turn off.
+            let starts = HashMap::from([(npc, ArenaPoint::new(100.0, 110.0))]);
+            arena.lightcycles.get_mut(&npc).unwrap().position = ArenaPoint::new(100.0, 112.75);
+            arena
+                .calculate_lightcycle_collisions(&starts)
+                .apply_updates();
+            assert_eq!(
+                arena.lightcycles[&npc].death_cause,
+                Some(DeathCause::Trail(other))
+            );
+            assert_eq!(
+                arena.updates.contains(&ArenaUpdate::Emote(npc, Emote::Rip)),
+                grudge
+            );
+        }
+    }
+
+    #[test]
+    fn npcs_say_gg_when_a_lightcycle_they_hold_a_grudge_against_hits_their_trail() {
+        let (mut arena, npc, other) = npc_grudge_crash(false);
+        let state = arena.npc_states.remove(&npc).unwrap();
+        // The other way round: the lightcycle going up is the victim.
+        arena.npc_states.insert(
+            other,
+            npc::NpcState {
+                grudge: Some((npc, 10.0)),
+                ..state
+            },
+        );
+        let starts = HashMap::from([
+            (npc, ArenaPoint::new(100.0, 110.0)),
+            (other, ArenaPoint::new(20.0, 500.0)),
+        ]);
+        arena.lightcycles.get_mut(&npc).unwrap().position = ArenaPoint::new(100.0, 112.75);
+        arena.lightcycles.get_mut(&other).unwrap().position = ArenaPoint::new(17.25, 500.0);
+        arena
+            .calculate_lightcycle_collisions(&starts)
+            .apply_updates();
+        assert!(
+            arena
+                .updates
+                .contains(&ArenaUpdate::Emote(other, Emote::Gg))
+        );
+    }
+
     #[test]
     fn lightcycles_crash_into_walled_off_cells() {
         let id = PlayerId::default();
@@ -1662,7 +2079,7 @@ mod tests {
         arena.apply_updates();
 
         for _ in 0..3 {
-            arena.process_input(human.id, ArenaInput::Start);
+            arena.process_input(human.id, ArenaInput::Start(None));
             arena.apply_updates();
             arena.updates.push(ArenaUpdate::End);
             arena.apply_updates();
@@ -1685,6 +2102,35 @@ mod tests {
     }
 
     #[test]
+    fn scenarios_start_rounds_set_up_as_they_say() {
+        let mut arena = Arena::default();
+        let human = Player {
+            id: PlayerId::default(),
+            name: "A".to_string(),
+            ..Default::default()
+        };
+        arena.add_player(human.clone());
+        let scenario = Scenario {
+            shape: Some(Shape::Pillars),
+            mutators: Some(vec![Mutator::Portals]),
+            npcs: Some(vec![npc::Style::Baiter; 9]),
+        };
+        arena.process_input(human.id, ArenaInput::Start(Some(scenario)));
+        arena.apply_updates();
+
+        assert_eq!(arena.round.shape, Shape::Pillars);
+        assert_eq!(arena.round.mutators, vec![Mutator::Portals]);
+        // As many as there is room for alongside the human.
+        assert_eq!(arena.npc_states.len(), ARENA_MAX_PLAYERS - 1);
+        assert!(
+            arena
+                .npc_states
+                .values()
+                .all(|state| state.personality.style == npc::Style::Baiter)
+        );
+    }
+
+    #[test]
     fn arena_overview_lists_human_players_only() {
         let mut arena = Arena::default();
         let human = Player {
@@ -1693,7 +2139,7 @@ mod tests {
             ..Default::default()
         };
         arena.add_player(human.clone());
-        arena.process_input(human.id, ArenaInput::Start);
+        arena.process_input(human.id, ArenaInput::Start(None));
         arena.apply_updates();
         assert!(!arena.npc_states.is_empty());
 
@@ -1711,13 +2157,13 @@ mod tests {
         };
         arena.add_player(human.clone());
         arena.apply_updates();
-        arena.process_input(human.id, ArenaInput::Start);
+        arena.process_input(human.id, ArenaInput::Start(None));
         arena.apply_updates();
         let first_start = arena.started;
         let first_npcs: Vec<PlayerId> = arena.npc_states.keys().copied().collect();
 
         // Refused while the human is alive.
-        arena.process_input(human.id, ArenaInput::Start);
+        arena.process_input(human.id, ArenaInput::Start(None));
         arena.apply_updates();
         assert_eq!(arena.started, first_start);
 
@@ -1727,7 +2173,7 @@ mod tests {
         ));
         arena.apply_updates();
         arena.winner_at = Some(Utc::now());
-        arena.process_input(human.id, ArenaInput::Start);
+        arena.process_input(human.id, ArenaInput::Start(None));
         arena.apply_updates();
 
         assert_ne!(arena.started, first_start);

@@ -1,0 +1,48 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2cqi;
+  max-width: 78cqi;
+  padding-top: 1.6cqi;
+  border-top: 1px dashed color-mix(in srgb, var(--orange) 50%, transparent);
+  font-family: var(--font-mono);
+  font-size: clamp(0.55rem, 2cqi, 0.75rem);
+  text-transform: uppercase;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: 0.15em;
+  color: var(--orange);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8cqi;
+}
+.label {
+  min-width: 11cqi;
+  color: color-mix(in srgb, var(--white) 50%, transparent);
+}
+.chip,
+.chipOn,
+.close {
+  padding: 0.2em 0.6em;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--white) 75%, transparent);
+  font: inherit;
+  text-transform: inherit;
+}
+.chipOn {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 20%, transparent);
+  color: var(--orange);
+}
+.close {
+  border-color: color-mix(in srgb, var(--orange) 50%, transparent);
+}

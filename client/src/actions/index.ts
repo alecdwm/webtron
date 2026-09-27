@@ -8,6 +8,7 @@ import type {
   Direction,
   Emote,
   Leaderboard,
+  Scenario,
   ServerMessage,
   SocketState,
   Stage,
@@ -84,8 +85,9 @@ export function join(arenaId: string | null = null): Thunk {
   return (_, getState) => send({ Join: { player: defaultPlayer(getState().player), arena_id: arenaId } })
 }
 
-export function start(): Thunk {
-  return () => send({ Start: null })
+// Starts the next round, set up as `scenario` says if one is given.
+export function start(scenario: Scenario | null = null): Thunk {
+  return () => send(scenario ? { StartScenario: scenario } : { Start: null })
 }
 
 export function turn(direction: Direction): Thunk {

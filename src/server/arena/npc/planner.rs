@@ -13,7 +13,8 @@ const SCORE_SLACK: f64 = 10.0;
 /// move leaves a lightcycle. It has a border of blocked cells one cell wide,
 /// so neighbouring cells can be found without bounds checks. In an arena that
 /// wraps round, the cells along each edge neighbour those along the opposite
-/// edge instead.
+/// edge instead. The cells either side of a portal neighbour those on the
+/// opposite side of its twin.
 struct Grid {
     /// Width including the border.
     stride: usize,
@@ -25,8 +26,21 @@ struct Grid {
     /// trimmed away.
     free_at: Vec<f32>,
     wrap: bool,
+    /// For each cell, whether it is beside a portal, going into which from
+    /// it comes out at another cell: that cell, keyed by the cell and the
+    /// side of it the portal is on, as `neighbours` orders them.
+    linked: Vec<bool>,
+    links: HashMap<(usize, usize), usize>,
     /// Working space for `distances`, kept between searches.
     search: RefCell<Search>,
+}
+
+/// A block of cells, from the columns and rows at `min` up to but not
+/// including those at `max`, counted without the border.
+#[derive(Debug, Clone, Copy)]
+struct CellRect {
+    min: (usize, usize),
+    max: (usize, usize),
 }
 
 /// The cells a breadth-first search has entered. A cell has been entered by
@@ -62,9 +76,27 @@ impl Grid {
                 entered: vec![0; free_at.len()],
                 ..Default::default()
             }),
+            linked: vec![false; free_at.len()],
+            links: HashMap::new(),
             free_at,
             wrap: arena.round.has(Mutator::Wrap),
         };
+
+        let cells = |(min, max): (ArenaPoint, ArenaPoint)| CellRect {
+            min: (
+                (min.x / CELL_SIZE).round() as usize,
+                (min.y / CELL_SIZE).round() as usize,
+            ),
+            max: (
+                (max.x / CELL_SIZE).round() as usize,
+                (max.y / CELL_SIZE).round() as usize,
+            ),
+        };
+        for &[a, b] in &arena.portals {
+            for (entry, exit) in [(a, b), (b, a)] {
+                grid.add_portal(cells(entry), cells(exit));
+            }
+        }
 
         let (min, max) = arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS);
         let outside = [
@@ -161,8 +193,54 @@ impl Grid {
         (x < self.columns && y < self.rows).then_some((y + 1) * self.stride + x + 1)
     }
 
+    /// Links the cells either side of portal `entry` to those on the
+    /// opposite side of `exit`, level with them. Each portal is a line along
+    /// the edges of cells, given as the columns and rows of cells it runs
+    /// between.
+    fn add_portal(&mut self, entry: CellRect, exit: CellRect) {
+        let index = |x: usize, y: usize| (y + 1) * self.stride + x + 1;
+
+        let mut link = |from: (usize, usize), side: usize, to: (usize, usize)| {
+            let fits = |(x, y): (usize, usize)| x < self.columns && y < self.rows;
+            if fits(from) && fits(to) {
+                let cell = index(from.0, from.1);
+                self.linked[cell] = true;
+                self.links.insert((cell, side), index(to.0, to.1));
+            }
+        };
+        // Portals are kept off the edges, so none of these go below 0.
+        for y in entry.min.1..entry.max.1 {
+            let up = y - entry.min.1 + exit.min.1;
+            link((entry.min.0 - 1, y), 1, (exit.max.0, up));
+            link((entry.max.0, y), 0, (exit.min.0 - 1, up));
+        }
+        for x in entry.min.0..entry.max.0 {
+            let across = x - entry.min.0 + exit.min.0;
+            link((x, entry.min.1 - 1), 3, (across, exit.max.1));
+            link((x, entry.max.1), 2, (across, exit.min.1 - 1));
+        }
+    }
+
+    /// The cell a lightcycle at `point` going in `direction` is in. One on a
+    /// portal has just come out of it, and is taken to be a little further
+    /// on, in the cell on the side it is going.
+    fn cell_of(&self, point: ArenaPoint, direction: Direction) -> Option<usize> {
+        if self.links.is_empty() {
+            return self.cell(point);
+        }
+        self.cell(point + direction.as_velocity() * 0.01)
+            .or_else(|| self.cell(point))
+    }
+
     fn neighbours(&self, cell: usize) -> [usize; 4] {
         let mut neighbours = [cell - 1, cell + 1, cell - self.stride, cell + self.stride];
+        if self.linked[cell] {
+            for (side, neighbour) in neighbours.iter_mut().enumerate() {
+                if let Some(&through) = self.links.get(&(cell, side)) {
+                    *neighbour = through;
+                }
+            }
+        }
         if self.wrap {
             let (x, y) = (cell % self.stride, cell / self.stride);
             let last_row = (self.rows - 1) * self.stride;
@@ -284,7 +362,10 @@ impl<'a> Planner<'a> {
             if lightcycle.dead {
                 continue;
             }
-            let Some(start) = planner.grid.cell(lightcycle.position) else {
+            let Some(start) = planner
+                .grid
+                .cell_of(lightcycle.position, lightcycle.direction)
+            else {
                 continue;
             };
 
@@ -354,17 +435,14 @@ impl<'a> Planner<'a> {
             ignoring,
             lightcycle.speed,
         );
-        let velocity = direction.as_velocity();
 
         // Start from the first free cell ahead. Where a trail runs through
         // the cells right ahead, start in the nearest one anyway.
         let ahead = |steps: f64| {
-            let point = lightcycle.position + velocity * CELL_SIZE * steps;
-            self.grid.cell(if self.grid.wrap {
-                wrap_point(self.arena, point)
-            } else {
-                point
-            })
+            let point = self
+                .arena
+                .advance(lightcycle.position, direction, CELL_SIZE * steps);
+            self.grid.cell_of(point, direction)
         };
         let seconds_per_cell = CELL_SIZE / lightcycle.speed.max(1.0);
         let start = (1..=3)

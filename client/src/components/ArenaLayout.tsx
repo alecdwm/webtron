@@ -1,8 +1,10 @@
-import { type CSSProperties, memo, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import { playLayoutMorph } from '@/audio/sound'
-import type { Round } from '@/types'
+import { PORTAL_WIDTH_PX, useArenaAnimationContext } from '@/hooks/useArenaAnimation'
+import type { Portal, Round } from '@/types'
 import { serverNow } from '@/utils/clock'
+import { colorToCss } from '@/utils/colors'
 import { mulberry32 } from '@/utils/random'
 import {
   LAYOUT_CELLS,
@@ -11,6 +13,7 @@ import {
   SHRINK_RATE,
   cellKey,
   hasMutator,
+  portalAppearAt,
   wallOutline,
 } from '@/utils/round'
 
@@ -33,10 +36,12 @@ type ArenaLayoutProps = {
   width: number
 }
 
-// The round's walled-off cells, which sit on the grid beneath the trails, and
-// the edges that the Shrink and Wrap mutators change. Blocks and ShrinkZone
-// are both keyed by the round's start, so their keys need distinct prefixes:
-// siblings sharing a key can leave one round's cells behind in the next.
+// The round's walled-off cells and portals, which sit on the grid beneath the
+// trails, and the edges that the Shrink and Wrap mutators change. Blocks and
+// ShrinkZone are keyed by the round's start, and Portals by where the portals
+// are, so that they only rise in afresh for a round with new ones, not when a
+// round ends. Their keys need distinct prefixes: siblings sharing a key can
+// leave one round's cells behind in the next.
 function ArenaLayout({ round, previousBlocked, startAt, serverTimeOffset, width }: ArenaLayoutProps) {
   return (
     <div className={styles.layout}>
@@ -47,6 +52,14 @@ function ArenaLayout({ round, previousBlocked, startAt, serverTimeOffset, width 
         startAt={startAt}
         serverTimeOffset={serverTimeOffset}
       />
+      {round.portals.length > 0 ? (
+        <Portals
+          key={`portals-${portalsKey(round.portals)}`}
+          portals={round.portals}
+          startAt={startAt}
+          serverTimeOffset={serverTimeOffset}
+        />
+      ) : null}
       {startAt !== null && hasMutator(round, 'Shrink') ? (
         <ShrinkZone key={`shrink-${startAt}`} startAt={startAt} serverTimeOffset={serverTimeOffset} width={width} />
       ) : null}
@@ -56,6 +69,13 @@ function ArenaLayout({ round, previousBlocked, startAt, serverTimeOffset, width 
 }
 
 export default memo(ArenaLayout)
+
+// Where a round's portals are, as a string that changes with them.
+function portalsKey(portals: Round['portals']) {
+  return portals
+    .flatMap(({ twins }) => twins.map(({ x, y, length, upright }) => `${x},${y},${length},${upright}`))
+    .join(';')
+}
 
 type BlocksProps = {
   round: Round
@@ -110,6 +130,82 @@ function Blocks({ round, previous, startAt, serverTimeOffset }: BlocksProps) {
         />
       </svg>
     </>
+  )
+}
+
+// Each pair of portals in its own colour; pairs can also be told apart by
+// their length and which way they run (see place_portals in
+// src/server/arena/round.rs). Each is drawn upright and turned on its side if
+// it runs across. Both portals of a pair are mounted together, so their
+// animations run in step.
+function Portals({
+  portals,
+  startAt,
+  serverTimeOffset,
+}: {
+  portals: Round['portals']
+  startAt: number | null
+  serverTimeOffset: number
+}) {
+  const size = 100 / LAYOUT_CELLS
+  // Portals mounted for a round that is counting down appear one after
+  // another (see portalAppearAt). Ones mounted between rounds are already
+  // there.
+  const [mountedAt] = useState(() => serverNow(serverTimeOffset))
+  return (
+    <>
+      {portals.flatMap(({ color, twins }, pair) =>
+        twins.map((portal, side) => {
+          const { x, y, length, upright } = portal
+          const middle = upright ? [x, y + length / 2] : [x + length / 2, y]
+          const appearAt = startAt === null ? null : portalAppearAt(startAt, pair * 2 + side)
+          const ends = appearAt === null ? undefined : { animationDelay: `${appearAt - mountedAt}ms` }
+          return (
+            <div
+              key={`${pair}-${x},${y}`}
+              className={upright ? styles.portal : `${styles.portal} ${styles.portalAcross}`}
+              style={
+                {
+                  left: `${middle[0] * size}%`,
+                  bottom: `${middle[1] * size}%`,
+                  height: `${length * size}%`,
+                  '--portal': colorToCss(color),
+                } as CSSProperties
+              }
+            >
+              <PortalSurface portal={portal} twin={twins[1 - side]} appearAt={appearAt} />
+              <div className={`${styles.portalEnd} ${styles.portalStart}`} style={ends} />
+              <div className={`${styles.portalEnd} ${styles.portalFinish}`} style={ends} />
+            </div>
+          )
+        }),
+      )}
+    </>
+  )
+}
+
+// The surface of a portal: a band of its colour either side of a line, drawn
+// upright, whose shape the arena animation sets every frame (see
+// trackPortal), rippling like water along with its twin's. The drawing is
+// PORTAL_WIDTH_PX across and 100 units long, stretched to the portal's
+// length.
+function PortalSurface({ portal, twin, appearAt }: { portal: Portal; twin: Portal; appearAt: number | null }) {
+  const animation = useArenaAnimationContext()
+  const ref = useCallback(
+    (element: SVGSVGElement | null) => (element ? animation.trackPortal(element, portal, twin, appearAt) : undefined),
+    [animation, portal, twin, appearAt],
+  )
+  return (
+    <svg
+      ref={ref}
+      className={styles.portalSurface}
+      viewBox={`0 0 ${PORTAL_WIDTH_PX} 100`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path className={styles.portalBand} />
+      <path className={styles.portalCore} vectorEffect="non-scaling-stroke" />
+    </svg>
   )
 }
 

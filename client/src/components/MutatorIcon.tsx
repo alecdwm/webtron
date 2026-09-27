@@ -55,6 +55,16 @@ const icons: Record<Mutator, ReactNode> = {
       <rect x="6.5" y="15" width="5" height="5" rx="0.5" />
     </>
   ),
+  // A trail going into one portal and out of its twin.
+  Portals: (
+    <>
+      <rect x="6" y="3" width="6" height="7" rx="1.5" />
+      <rect x="12" y="14" width="6" height="7" rx="1.5" />
+      <path d="M1 6.5h5" />
+      <path d="M18 17.5h4M20 15.5l2 2-2 2" />
+      <path d="M12 6.5h3.5v5" strokeDasharray="1.5 2" strokeWidth="1.5" strokeOpacity="0.6" />
+    </>
+  ),
 }
 
 export default function MutatorIcon({ mutator, className }: { mutator: Mutator; className?: string }) {

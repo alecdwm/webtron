@@ -14,7 +14,9 @@ import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
 import NearMisses from '@/components/NearMisses'
 import Notifications from '@/components/Notifications'
+import PortalWindows from '@/components/PortalWindows'
 import RoundBanner from '@/components/RoundBanner'
+import ScenarioPanel from '@/components/ScenarioPanel'
 import useArenaAnimation, { ArenaAnimationContext, EMOTE_MS } from '@/hooks/useArenaAnimation'
 import useArenaSounds from '@/hooks/useArenaSounds'
 import useEventListener from '@/hooks/useEventListener'
@@ -22,11 +24,12 @@ import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
-import type { Arena as ArenaType, Color, ControlScheme, Direction, Emote, EmoteShown, Side } from '@/types'
+import type { Arena as ArenaType, Color, ControlScheme, Direction, Emote, EmoteShown, Scenario, Side } from '@/types'
 import { serverNow } from '@/utils/clock'
 import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 import { emoteLabels, emotes, hasMutator } from '@/utils/round'
+import { readScenario, storeScenario } from '@/utils/scenario'
 import { spawnDelayMs } from '@/utils/spawn'
 
 import styles from './Arena.module.css'
@@ -47,7 +50,15 @@ function ArenaView({ arena }: { arena: ArenaType }) {
   const animation = useArenaAnimation(arena, serverTimeOffset, player.id, arenaRef)
   const dispatch = useStoreDispatch()
 
-  const onStart = useCallback(() => dispatch(start()), [dispatch])
+  // A test scenario for the next round, set up in the hidden scenario panel,
+  // which is open while there is one.
+  const [scenario, setScenario] = useState<Scenario | null>(readScenario)
+  const changeScenario = useCallback((scenario: Scenario | null) => {
+    setScenario(scenario)
+    storeScenario(scenario)
+  }, [])
+  const onHintTap = useSecretTaps(() => changeScenario(scenario ?? { shape: null, mutators: null, npcs: null }))
+  const onStart = useCallback(() => dispatch(start(scenario)), [dispatch, scenario])
 
   const inRound = arena.started !== null
   const self = player.id !== null ? arena.lightcycles[player.id] : undefined
@@ -97,6 +108,13 @@ function ArenaView({ arena }: { arena: ArenaType }) {
         {Object.entries(arena.lightribbons).map(([id, { fixed }]) => (
           <Lightribbon key={id} id={id} color={colorOf(id)} fixed={fixed} width={width} height={height} />
         ))}
+        <PortalWindows
+          lightribbons={arena.lightribbons}
+          round={arena.round}
+          width={width}
+          height={height}
+          colorOf={colorOf}
+        />
         {Object.entries(arena.derezzing).map(([id, { fixed, tip }]) => (
           <Lightribbon
             key={`derez-${id}`}
@@ -124,7 +142,8 @@ function ArenaView({ arena }: { arena: ArenaType }) {
             braking={braking && brake > 0}
             brake={id === player.id && inRound ? brake : null}
             emote={dead ? undefined : recentEmote(arena.emotes[id], serverTimeOffset)}
-            wrap={hasMutator(arena.round, 'Wrap')}
+            copies={hasMutator(arena.round, 'Wrap') || arena.round.portals.length > 0}
+            portals={arena.round.portals.length > 0}
           />
         ))}
         <NearMisses nearMisses={arena.nearMisses} colorOf={colorOf} selfId={player.id} width={width} height={height} />
@@ -161,13 +180,16 @@ function ArenaView({ arena }: { arena: ArenaType }) {
                     {playerCount}/{arena.max_players} players
                   </div>
                 )}
-                <div className={styles.controlsHint}>
+                <div className={styles.controlsHint} onClick={onHintTap}>
                   {controlScheme === 'steering'
                     ? '← → / A D / tap either side to turn'
                     : 'Arrows / WASD / tap to steer'}
                   <br />
                   Space / Shift to brake · 1–3 to emote
                 </div>
+                {scenario ? (
+                  <ScenarioPanel scenario={scenario} onChange={changeScenario} onClose={() => changeScenario(null)} />
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -215,6 +237,22 @@ function useCaptureGameKeys() {
     event.preventDefault()
   }, [])
   useEventListener('keydown', onKeyDown)
+}
+
+// How many taps in a row, each within SECRET_TAP_MS of the last, open the
+// scenario panel.
+const SECRET_TAPS = 5
+const SECRET_TAP_MS = 400
+
+// A tap handler that calls `onUnlock` after SECRET_TAPS quick taps.
+function useSecretTaps(onUnlock: () => void) {
+  const taps = useRef({ count: 0, at: 0 })
+  return useCallback(() => {
+    const now = performance.now()
+    const count = now - taps.current.at < SECRET_TAP_MS ? taps.current.count + 1 : 1
+    taps.current = { count: count >= SECRET_TAPS ? 0 : count, at: now }
+    if (count >= SECRET_TAPS) onUnlock()
+  }, [onUnlock])
 }
 
 // Enter or Space presses the START / REMATCH button while it is shown.

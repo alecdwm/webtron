@@ -1,13 +1,15 @@
-import { type CSSProperties, memo, useCallback } from 'react'
+import { type CSSProperties, memo, type ReactNode, useCallback } from 'react'
 
-import { ghostOffsets, useArenaAnimationContext } from '@/hooks/useArenaAnimation'
-import type { Color, Direction, EmoteShown, Point } from '@/types'
+import { useArenaAnimationContext } from '@/hooks/useArenaAnimation'
+import type { Color, Direction, EmoteShown } from '@/types'
 import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
 import resolveClassName from '@/utils/resolveClassName'
 import { emoteLabels } from '@/utils/round'
+import { MAX_COPIES } from '@/utils/views'
 
 import styles from './Lightcycle.module.css'
+import { TouchWindow } from './PortalWindows'
 
 type LightcycleProps = {
   id: string
@@ -31,8 +33,11 @@ type LightcycleProps = {
   // The player's latest emote, if it's recent enough to still show over the
   // lightcycle.
   emote: EmoteShown | undefined
-  // Whether the arena wraps round, so the headlight shines through its edges.
-  wrap: boolean
+  // Whether the arena wraps round or has portals, so the lightcycle, its
+  // headlight and its name can be seen through them, and whether it has
+  // portals, which the lightcycle opens a window in while it touches one.
+  copies: boolean
+  portals: boolean
 }
 
 // Base speed from src/server/arena.rs.
@@ -61,7 +66,8 @@ function Lightcycle({
   braking,
   brake,
   emote,
-  wrap,
+  copies,
+  portals,
 }: LightcycleProps) {
   const animation = useArenaAnimationContext()
   const anchorRef = useCallback(
@@ -80,31 +86,44 @@ function Lightcycle({
   const headlightClassName = resolveClassName([styles.headlight, rezzing && styles.fadeIn])
   const headlightStyle = { ...beamVars, transform: `rotate(${rotationMap[direction]})` }
 
+  const nameTag = (
+    <div className={resolveClassName([styles.nameTag, dead && styles.nameTagDead, rezzing && styles.fadeIn])}>
+      {isSelf && inLobby ? `${name} (you)` : name}
+    </div>
+  )
+  const headlight = !dead ? (
+    <div className={headlightClassName} style={headlightStyle}>
+      <div className={styles.beam} />
+      {braking ? <div className={styles.brakeLight} /> : null}
+    </div>
+  ) : null
+  const spriteClassName = resolveClassName([styles.lightcycle, dead && styles.dead, rezzing && styles.spawning])
+  const sprite = <img className={spriteClassName} src={lightcycleImages[color]} style={{ transform }} alt="" />
+
+  // The headlight and the sprite each have their own part, which the arena
+  // animation clips separately where they are seen through a gate (see
+  // utils/views.ts). The name and the emote bubble aren't clipped: through a
+  // portal they stay with the lightcycle itself, and only copies seen through
+  // the edges of an arena that wraps round show them too.
   return (
     <>
       <div ref={anchorRef} className={styles.anchor} style={colorVars}>
         {isSelf && inLobby && !dead ? <div className={styles.selfMarker} /> : null}
-        <div className={resolveClassName([styles.nameTag, dead && styles.nameTagDead, rezzing && styles.fadeIn])}>
-          {isSelf && inLobby ? `${name} (you)` : name}
+        <div className={styles.namePart} data-part="name">
+          {nameTag}
         </div>
-        {!dead ? (
-          <div className={headlightClassName} style={headlightStyle}>
-            <div className={styles.beam} />
-            {braking ? <div className={styles.brakeLight} /> : null}
-          </div>
-        ) : null}
+        <div className={styles.bodyPart} data-part="beam">
+          <div className={styles.partOrigin}>{headlight}</div>
+        </div>
+        <div className={styles.bodyPart} data-part="sprite">
+          <div className={styles.partOrigin}>{sprite}</div>
+        </div>
         {brake !== null && !dead && (brake < 1 || braking) ? (
           <div className={styles.brakeMeter}>
             <div className={styles.brakeFill} style={{ transform: `scaleX(${brake})` }} />
           </div>
         ) : null}
         {emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost={false} /> : null}
-        <img
-          className={resolveClassName([styles.lightcycle, dead && styles.dead, rezzing && styles.spawning])}
-          src={lightcycleImages[color]}
-          style={{ transform }}
-          alt=""
-        />
         {rezzing ? (
           <div className={styles.effect}>
             <div className={resolveClassName([styles.ring, styles.spawnRing])} />
@@ -132,72 +151,59 @@ function Lightcycle({
           </div>
         ) : null}
       </div>
-      {wrap && !dead
-        ? ghostOffsets.map((offset) => (
-            <GhostLightcycle
-              key={offset.join()}
-              id={id}
-              offset={offset}
-              colorVars={colorVars}
-              headlightClassName={headlightClassName}
-              headlightStyle={headlightStyle}
-              braking={braking}
-              spriteClassName={resolveClassName([styles.lightcycle, rezzing && styles.spawning])}
-              sprite={lightcycleImages[color]}
-              spriteTransform={transform}
-              emote={emote}
-            />
+      {copies && !dead
+        ? Array.from({ length: MAX_COPIES }, (_, index) => (
+            <Copy key={index} id={id} index={index} colorVars={colorVars} emote={emote}>
+              {nameTag}
+              {headlight}
+              {sprite}
+            </Copy>
           ))
         : null}
+      {portals && !dead ? (
+        <>
+          <TouchWindow id={id} twin={false} color={color} />
+          <TouchWindow id={id} twin color={color} />
+        </>
+      ) : null}
     </>
   )
 }
 
 export default memo(Lightcycle)
 
-type GhostLightcycleProps = {
+type CopyProps = {
   id: string
-  offset: Point
+  index: number
   colorVars: CSSProperties
-  headlightClassName?: string
-  headlightStyle: CSSProperties
-  braking: boolean
-  spriteClassName?: string
-  sprite: string
-  spriteTransform: string
   emote: EmoteShown | undefined
+  // The name tag, headlight and sprite, in that order.
+  children: [ReactNode, ReactNode, ReactNode]
 }
 
-// A copy of a lightcycle and its headlight a whole arena away, for an arena
-// that wraps round, so a lightcycle riding through an edge, and its beam, come
-// in at the opposite edge a bit at a time. The arena clips each copy to the
-// part of it that has crossed back in. The arena animation hides copies
-// that are nowhere near the arena.
-function GhostLightcycle({
-  id,
-  offset,
-  colorVars,
-  headlightClassName,
-  headlightStyle,
-  braking,
-  spriteClassName,
-  sprite,
-  spriteTransform,
-  emote,
-}: GhostLightcycleProps) {
+// A copy of a lightcycle and its headlight, seen through a portal or an edge
+// of an arena that wraps round. The arena animation places each of a
+// lightcycle's copies where the next of its views puts it, clips its parts to
+// where the view sees them, and hides copies it has no view for. The name and
+// emote bubble are only shown on copies seen through edges alone.
+function Copy({ id, index, colorVars, emote, children: [nameTag, headlight, sprite] }: CopyProps) {
   const animation = useArenaAnimationContext()
   const ref = useCallback(
-    (element: HTMLDivElement | null) => (element ? animation.trackGhost(id, element, offset) : undefined),
-    [animation, id, offset],
+    (element: HTMLDivElement | null) => (element ? animation.trackCopy(id, element, index) : undefined),
+    [animation, id, index],
   )
   return (
-    <div ref={ref} className={styles.anchor} style={colorVars}>
-      <div className={headlightClassName} style={headlightStyle}>
-        <div className={styles.beam} />
-        {braking ? <div className={styles.brakeLight} /> : null}
+    <div ref={ref} className={styles.anchor} style={{ ...colorVars, display: 'none' }}>
+      <div className={styles.namePart} data-part="name">
+        {nameTag}
       </div>
-      <img className={spriteClassName} src={sprite} style={{ transform: spriteTransform }} alt="" />
-      {emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost /> : null}
+      <div className={styles.bodyPart} data-part="beam">
+        <div className={styles.partOrigin}>{headlight}</div>
+      </div>
+      <div className={styles.bodyPart} data-part="sprite">
+        <div className={styles.partOrigin}>{sprite}</div>
+      </div>
+      <div data-part="emote">{emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost /> : null}</div>
     </div>
   )
 }

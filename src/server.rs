@@ -14,7 +14,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{self, Instant, MissedTickBehavior};
 
-pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate, DeathCause};
+pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate, DeathCause, Scenario};
 pub use leaderboard::{Leaderboard, LeaderboardStandings, Stat};
 pub use messages::{MessageIn, MessageOut};
 pub use ntfy::{Notification, Ntfy, Priority};
@@ -558,7 +558,10 @@ impl Server {
             }
 
             MessageInPayload::Start => {
-                self.client_input(client_id, ArenaInput::Start)?;
+                self.client_input(client_id, ArenaInput::Start(None))?;
+            }
+            MessageInPayload::StartScenario(scenario) => {
+                self.client_input(client_id, ArenaInput::Start(Some(scenario)))?;
             }
             MessageInPayload::Turn(direction) => {
                 self.client_input(client_id, ArenaInput::Turn(direction))?;
