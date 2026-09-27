@@ -6,12 +6,7 @@ html {
   position: relative;
   min-height: 100%;
   color: var(--blue);
-  background:
-    radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 70%),
-    radial-gradient(ellipse 120% 60% at 50% 100%, color-mix(in srgb, var(--purple) 18%, transparent), transparent 70%),
-    linear-gradient(var(--black), var(--darkaqua));
   background-color: var(--black);
-  background-attachment: fixed;
   font-family: var(--font-mono);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -20,6 +15,21 @@ html {
 body {
   margin: 0;
   padding: 0 0 var(--footer-height) 0;
+}
+
+/* Sky and floor haze behind the page, fixed to the viewport like the floor.
+   A fixed element rather than a fixed html background, which iOS Safari
+   scrolls with the page, overscroll included. */
+body::before {
+  position: fixed;
+  z-index: -2;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 70%),
+    radial-gradient(ellipse 120% 60% at 50% 100%, color-mix(in srgb, var(--purple) 18%, transparent), transparent 70%),
+    linear-gradient(var(--black), var(--darkaqua));
 }
 
 /* CRT scanlines and vignette over everything. */
