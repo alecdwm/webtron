@@ -103,7 +103,7 @@ impl Lightribbon {
             let (from, to) = (path[0], path[1]);
             let segment = (to - from).length();
             if segment > length {
-                path[0] = from.lerp(to, length / segment);
+                path[0] = point_along(from, to, length / segment);
                 return;
             }
             length -= segment;
@@ -171,7 +171,7 @@ fn cut_path(path: &[ArenaPoint], center: ArenaPoint, radius: f64) -> Vec<Vec<Are
             if current.is_empty() {
                 current.push(from);
             }
-            current.push(from.lerp(to, enter));
+            current.push(point_along(from, to, enter));
         }
         if current.len() >= 2 {
             pieces.push(mem::take(&mut current));
@@ -179,7 +179,7 @@ fn cut_path(path: &[ArenaPoint], center: ArenaPoint, radius: f64) -> Vec<Vec<Are
             current.clear();
         }
         if exit < 1.0 {
-            current.push(from.lerp(to, exit));
+            current.push(point_along(from, to, exit));
             current.push(to);
         }
     }
@@ -189,6 +189,14 @@ fn cut_path(path: &[ArenaPoint], center: ArenaPoint, radius: f64) -> Vec<Vec<Are
     }
 
     pieces
+}
+
+/// The point `t` of the way from `from` to `to`. Along a horizontal or
+/// vertical segment, the coordinate the two ends share is kept exactly, so
+/// the piece of trail left stays straight: a lightcycle turning off the end
+/// of a trail that leans by a rounding error would be crashing into it.
+fn point_along(from: ArenaPoint, to: ArenaPoint, t: f64) -> ArenaPoint {
+    from + (to - from) * t
 }
 
 /// Returns the range of `t` in `0..=1` for which `from + (to - from) * t` lies
@@ -246,6 +254,18 @@ mod tests {
             vec![vec![p(35.0, 0.0), p(40.0, 0.0), p(40.0, 30.0)]]
         );
         assert_eq!(ribbon.length(), 35.0);
+    }
+
+    #[test]
+    fn trimming_a_straight_trail_keeps_it_straight() {
+        let x = 13.449999999999989;
+        let mut ribbon = Lightribbon {
+            paths: vec![vec![p(x, 100.0), p(x, 515.25)]],
+        };
+        for _ in 0..50 {
+            ribbon.trim_front(2.75);
+        }
+        assert!(ribbon.paths[0].iter().all(|point| point.x == x));
     }
 
     #[test]
