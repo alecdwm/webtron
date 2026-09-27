@@ -1,10 +1,10 @@
 <div align="center">
 
-# <a href="https://tron.shirls.org"><picture><source media="(prefers-color-scheme: dark)" srcset="client/src/img/webtron.svg"><img src="client/src/img/webtron-light.svg" alt="webtron"></picture></a>
+# <a href="https://webtron.shirls.org"><img src="client/src/img/webtron.svg" alt="webtron"></a>
 
-Multiplayer Tron Lightcycles in the browser.
+Multiplayer Tron Lightcycles on the web.
 
-<a href="https://tron.shirls.org"><img src="screenshot.png" width="704" alt="a screenshot of an in-progress webtron game"></a>
+<a href="https://webtron.shirls.org"><img src="screenshot.png" width="560" alt="a screenshot of an in-progress webtron game"></a>
 
 </div>
 
