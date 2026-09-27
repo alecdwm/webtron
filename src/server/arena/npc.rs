@@ -1,7 +1,6 @@
 mod planner;
 
 use super::*;
-use crate::server::ArenaLine;
 use getrandom::SysRng;
 use rand_core::{Rng, UnwrapErr};
 
@@ -32,6 +31,27 @@ const NPC_SHADOW_OFFSET: f64 = 22.0;
 const NPC_DRAFT_OFFSET: f64 = 7.0;
 /// A Territory NPC only turns when a turn gains this much over going straight.
 const NPC_TERRITORY_TURN_GAIN: f64 = 1.05;
+/// How long after letting go of the brake an NPC waits before braking again.
+const NPC_BRAKE_COOLDOWN: f64 = 4.0;
+/// How many seconds ahead of its target an NPC aims to cross the target's
+/// lane when it brakes to time a cut-off: too little for a player to react.
+const NPC_CUT_LEAD: f64 = 0.3;
+/// How far to the side of a crossing lightcycle's lane an NPC that yields to
+/// it turns in behind it: close enough to slipstream it.
+const NPC_YIELD_OFFSET: f64 = 11.0;
+/// How far past the crossing a lightcycle an NPC yields to must be before
+/// the NPC turns in behind it.
+const NPC_YIELD_GAP: f64 = 4.0;
+/// How close an encircling NPC gets to its target before it starts herding
+/// it, rather than heading it off.
+const NPC_ENCIRCLE_RANGE: f64 = 120.0;
+/// The least tolerance an NPC has for moves that leave it less space while
+/// encircling a lightcycle or turning in behind one it yielded to, both of
+/// which mean riding into space that lightcycle is in.
+const NPC_CLOSE_IN_TOLERANCE: f64 = 0.45;
+/// How long after a piece of trail is trimmed away by `Mutator::Snake` NPCs
+/// take it to be gone, allowing for its owner slowing down.
+const NPC_SNAKE_MARGIN_SECONDS: f64 = 0.25;
 
 /// Phase within the CutOff behaviour.
 #[derive(Debug, Clone, Copy)]
@@ -255,7 +275,30 @@ impl Personality {
 
     /// Picks the next behaviour at random, weighted by this NPC's plans. An
     /// NPC with a grudge often goes after whoever it holds it against.
-    fn pick_behaviour(&self, lightcycle: &Lightcycle, grudge: Option<PlayerId>) -> NpcBehaviour {
+    ///
+    /// `snake` is how many seconds a round with `Mutator::Snake` has run.
+    /// Trails never fill up the arena in such a round, so it only ends when
+    /// lightcycles are hemmed in, and NPCs mostly go after others to do it,
+    /// more and more as the round goes on.
+    fn pick_behaviour(
+        &self,
+        lightcycle: &Lightcycle,
+        grudge: Option<PlayerId>,
+        snake: Option<f64>,
+    ) -> NpcBehaviour {
+        if let Some(elapsed) = snake
+            && percent_chance((60.0 + elapsed * 2.0).min(95.0) as u32)
+        {
+            return if percent_chance(75) {
+                NpcBehaviour::Encircle {
+                    target_id: grudge,
+                    clockwise: percent_chance(50),
+                }
+            } else {
+                NpcBehaviour::Intercept { target_id: grudge }
+            };
+        }
+
         if let Some(target_id) = grudge
             && percent_chance(60)
         {
@@ -386,6 +429,22 @@ pub enum NpcBehaviour {
         cut_distance: f64,
         phase: SlipstreamAttackPhase,
     },
+    /// Brake to let a lightcycle going `lane` across the NPC's path get
+    /// across first, then turn in behind it to slipstream it, rather than
+    /// race it to the crossing and lose.
+    Yield {
+        target_id: PlayerId,
+        lane: Direction,
+        toward: Direction,
+    },
+    /// Herd a lightcycle round in a spiral, `clockwise` or not, by cutting
+    /// across in front of it each time it turns, so that it is hemmed in by
+    /// the NPC's trail. With `Mutator::Snake` nothing else ends a round, as
+    /// trails never fill up the arena.
+    Encircle {
+        target_id: Option<PlayerId>,
+        clockwise: bool,
+    },
 }
 
 impl NpcBehaviour {
@@ -396,7 +455,9 @@ impl NpcBehaviour {
         match self {
             NpcBehaviour::LaneChange { .. }
             | NpcBehaviour::CutOff { .. }
-            | NpcBehaviour::SlipstreamAttack { .. } => Caution::Bold,
+            | NpcBehaviour::SlipstreamAttack { .. }
+            | NpcBehaviour::Yield { .. }
+            | NpcBehaviour::Encircle { .. } => Caution::Bold,
             _ => Caution::Contested,
         }
     }
@@ -406,9 +467,37 @@ impl NpcBehaviour {
     fn target(&self) -> Option<PlayerId> {
         match self {
             NpcBehaviour::CutOff { target_id, .. }
-            | NpcBehaviour::SlipstreamAttack { target_id, .. } => Some(*target_id),
+            | NpcBehaviour::SlipstreamAttack { target_id, .. }
+            | NpcBehaviour::Yield { target_id, .. } => Some(*target_id),
+            NpcBehaviour::Encircle { target_id, .. } => *target_id,
             _ => None,
         }
+    }
+
+    /// The lightcycle this behaviour is heading off, whose lane the NPC may
+    /// brake to cross just ahead of it.
+    fn quarry(&self) -> Option<PlayerId> {
+        match self {
+            NpcBehaviour::Intercept { target_id } | NpcBehaviour::Encircle { target_id, .. } => {
+                *target_id
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the NPC is in the middle of an attack it shouldn't break off
+    /// to start another.
+    fn is_engaged(&self) -> bool {
+        matches!(
+            self,
+            NpcBehaviour::CutOff { .. }
+                | NpcBehaviour::SlipstreamAttack { .. }
+                | NpcBehaviour::Yield { .. }
+                | NpcBehaviour::Encircle {
+                    target_id: Some(_),
+                    ..
+                }
+        )
     }
 
     /// Whether this is a sequence of planned turns, which no longer makes
@@ -421,6 +510,7 @@ impl NpcBehaviour {
                 | NpcBehaviour::LaneChange { .. }
                 | NpcBehaviour::CutOff { .. }
                 | NpcBehaviour::SlipstreamAttack { .. }
+                | NpcBehaviour::Yield { .. }
         )
     }
 }
@@ -442,6 +532,10 @@ pub struct NpcState {
     pub grudge: Option<(PlayerId, f64)>,
     /// Seconds since the NPC last turned.
     pub since_turn: f64,
+    /// How much longer to hold the brake. Turning lets go of it.
+    pub brake_for: f64,
+    /// Cooldown before the NPC will consider braking again.
+    pub brake_cooldown: f64,
 }
 
 impl Default for NpcState {
@@ -463,6 +557,8 @@ impl NpcState {
             sidestep_cooldown: 0.0,
             grudge: None,
             since_turn: 0.0,
+            brake_for: 0.0,
+            brake_cooldown: 0.0,
         }
     }
 
@@ -497,6 +593,7 @@ impl NpcState {
     /// Gives up the current behaviour, holding off from starting the same
     /// kind of attack again straight away.
     fn abort(&mut self) {
+        self.brake_for = 0.0;
         match self.behaviour {
             NpcBehaviour::CutOff { .. } => self.cutoff_cooldown = NPC_CUTOFF_COOLDOWN,
             NpcBehaviour::SlipstreamAttack { .. } => self.attack_cooldown = NPC_ATTACK_COOLDOWN,
@@ -519,6 +616,8 @@ fn random_duration_for(behaviour: &NpcBehaviour) -> f64 {
         NpcBehaviour::LaneChange { .. } => 4.0,
         NpcBehaviour::CutOff { .. } => 10.0,
         NpcBehaviour::SlipstreamAttack { .. } => 15.0,
+        NpcBehaviour::Yield { .. } => 4.0,
+        NpcBehaviour::Encircle { .. } => random_between(8.0, 14.0),
     }
 }
 
@@ -620,6 +719,7 @@ pub fn update_npc_inputs(
     }
 
     let planner = Planner::new(arena);
+    let snake = arena.round.has(Mutator::Snake).then(|| arena.elapsed());
 
     for (npc_id, state) in npc_states.iter_mut() {
         let lightcycle = match arena.lightcycles.get(npc_id) {
@@ -636,15 +736,18 @@ pub fn update_npc_inputs(
         if state.time_remaining <= 0.0 {
             state.abort();
             let grudge = state.grudge_target(arena);
-            let behaviour = state.personality.pick_behaviour(lightcycle, grudge);
+            let behaviour = state.personality.pick_behaviour(lightcycle, grudge, snake);
             state.set_behaviour(behaviour);
         }
 
         state.cutoff_cooldown = (state.cutoff_cooldown - delta_time).max(0.0);
         state.attack_cooldown = (state.attack_cooldown - delta_time).max(0.0);
         state.sidestep_cooldown = (state.sidestep_cooldown - delta_time).max(0.0);
+        state.brake_cooldown = (state.brake_cooldown - delta_time).max(0.0);
+        state.brake_for = (state.brake_for - delta_time).max(0.0);
         react_to_slipstreamer(arena, *npc_id, lightcycle, state);
         react_to_overtaker(arena, *npc_id, lightcycle, state);
+        react_to_crossing(arena, *npc_id, lightcycle, state);
         look_for_slipstream_attack(arena, *npc_id, lightcycle, state);
 
         let options = planner.options(*npc_id, lightcycle, delta_time, state.behaviour.target());
@@ -656,9 +759,24 @@ pub fn update_npc_inputs(
             options: &options,
             delta_time,
         };
-        let request = choose_direction(&context, state);
+        // Taken before the behaviour moves on to its next one.
+        let caution = state.behaviour.caution();
+        let tolerance = match state.behaviour {
+            NpcBehaviour::Encircle { .. } | NpcBehaviour::Yield { .. } => {
+                state.personality.tolerance.max(NPC_CLOSE_IN_TOLERANCE)
+            }
+            _ => state.personality.tolerance,
+        };
+        // Shortly after a turn, only a planned sequence of turns may turn
+        // again. Otherwise a behaviour chasing a point behind it turns twice
+        // in a row, doubling back right alongside its own trail.
+        let request = if state.since_turn < NPC_SETTLE_TIME && !state.behaviour.is_maneuver() {
+            None
+        } else {
+            choose_direction(&context, state)
+        };
         let (direction, overruled) =
-            options.vet(request, &state.personality, state.behaviour.caution());
+            options.vet(request, state.personality.clearance, tolerance, caution);
         let settling = request.is_none()
             && state.since_turn < NPC_SETTLE_TIME
             && options.is_safe(&options.straight);
@@ -674,11 +792,25 @@ pub fn update_npc_inputs(
         state.since_turn += delta_time;
         if direction != lightcycle.direction {
             state.since_turn = 0.0;
+            state.brake_for = 0.0;
             updates.push(ArenaUpdate::UpdateLightribbonAppendPoint(
                 *npc_id,
                 lightcycle.position,
             ));
             updates.push(ArenaUpdate::UpdateLightcycleDirection(*npc_id, direction));
+        } else if let Some(quarry) = state.behaviour.quarry() {
+            time_cut(&context, quarry, state);
+        }
+
+        // The brake is only ever held for one of the moves above, never to
+        // put off a crash, and not again for a while after letting go.
+        let braking = state.brake_for > 0.0 && lightcycle.brake > 0.0;
+        if braking != lightcycle.braking {
+            if !braking {
+                state.brake_for = 0.0;
+                state.brake_cooldown = state.brake_cooldown.max(NPC_BRAKE_COOLDOWN);
+            }
+            updates.push(ArenaUpdate::UpdateLightcycleBraking(*npc_id, braking));
         }
     }
 
@@ -697,7 +829,9 @@ fn react_to_slipstreamer(
     // its target falls in behind it.
     let attacking = matches!(
         state.behaviour,
-        NpcBehaviour::CutOff { .. } | NpcBehaviour::SlipstreamAttack { .. }
+        NpcBehaviour::CutOff { .. }
+            | NpcBehaviour::SlipstreamAttack { .. }
+            | NpcBehaviour::Yield { .. }
     );
     if attacking || state.cutoff_cooldown > 0.0 {
         return;
@@ -773,13 +907,8 @@ fn react_to_overtaker(
     lightcycle: &Lightcycle,
     state: &mut NpcState,
 ) {
-    let committed = matches!(
-        state.behaviour,
-        NpcBehaviour::CutOff { .. }
-            | NpcBehaviour::SlipstreamAttack { .. }
-            | NpcBehaviour::LaneChange { .. }
-    );
-    if committed || state.sidestep_cooldown > 0.0 {
+    let changing_lane = matches!(state.behaviour, NpcBehaviour::LaneChange { .. });
+    if state.behaviour.is_engaged() || changing_lane || state.sidestep_cooldown > 0.0 {
         return;
     }
     let Some((overtaker_id, away)) = find_overtaker(arena, npc_id, lightcycle) else {
@@ -861,6 +990,186 @@ fn catch_up_time(distance: f64, speed: f64, slipstreamer_speed: f64) -> Option<f
         .then(|| ramp_time + (distance - ramp_distance) / final_closing_speed)
 }
 
+/// When a lightcycle crossing the NPC's path will narrowly get across first,
+/// maybe brake to let it, and turn in behind it to slipstream it.
+fn react_to_crossing(
+    arena: &Arena,
+    npc_id: PlayerId,
+    lightcycle: &Lightcycle,
+    state: &mut NpcState,
+) {
+    let changing_lane = matches!(state.behaviour, NpcBehaviour::LaneChange { .. });
+    if state.behaviour.is_engaged()
+        || changing_lane
+        || state.brake_cooldown > 0.0
+        || lightcycle.braking
+    {
+        return;
+    }
+    let Some((target_id, lane)) = find_crossing_to_yield(arena, npc_id, lightcycle) else {
+        return;
+    };
+
+    // Decided once for each crossing.
+    state.brake_cooldown = 1.0;
+    if !percent_chance(state.personality.anticipation) {
+        return;
+    }
+    state.set_behaviour(NpcBehaviour::Yield {
+        target_id,
+        lane,
+        toward: lightcycle.direction,
+    });
+}
+
+/// Finds a lightcycle crossing the NPC's path close ahead that will get
+/// across before the NPC can, where the NPC could brake, let it by and turn
+/// in behind it. Returns it and the direction it is going.
+fn find_crossing_to_yield(
+    arena: &Arena,
+    npc_id: PlayerId,
+    lightcycle: &Lightcycle,
+) -> Option<(PlayerId, Direction)> {
+    let forward = lightcycle.direction.as_velocity();
+    let brake_time = lightcycle.brake * BRAKE_SECONDS;
+
+    arena
+        .lightcycles
+        .iter()
+        .filter(|(id, other)| {
+            **id != npc_id
+                && !other.dead
+                && lightcycle
+                    .direction
+                    .perpendicular_directions()
+                    .contains(&other.direction)
+        })
+        .find_map(|(id, other)| {
+            let delta = offset(arena, lightcycle.position, other.position);
+            // How far each is from where their paths cross.
+            let to_lane = forward.dot(delta);
+            let to_crossing = -other.direction.as_velocity().dot(delta);
+            if !(NPC_YIELD_OFFSET + 5.0..=70.0).contains(&to_lane)
+                || !(0.0..=90.0).contains(&to_crossing)
+            {
+                return None;
+            }
+
+            // A close race the NPC would lose: it can't get across first,
+            // and would reach its turning point before the other is past.
+            let cross_time = (to_lane + 3.0) / lightcycle.speed;
+            let pass_time = (to_crossing + NPC_YIELD_GAP) / other.speed;
+            let room = to_lane - NPC_YIELD_OFFSET;
+            if cross_time < to_crossing / other.speed - 0.25
+                || lightcycle.speed * pass_time <= room
+                || pass_time > brake_time
+                || braking_distance(arena, lightcycle.speed, pass_time) > room - 1.0
+            {
+                return None;
+            }
+
+            // The way to the turning point and on from it are clear, and
+            // nothing will turn the other lightcycle off before it crosses.
+            let ahead = |position, direction, ignoring, speed| {
+                look_ahead_distance(arena, position, direction, Some(ignoring), speed)
+            };
+            let turning_point = lightcycle.position + forward * room;
+            let turning_point = if arena.round.has(Mutator::Wrap) {
+                wrap_point(arena, turning_point)
+            } else {
+                turning_point
+            };
+            (ahead(
+                lightcycle.position,
+                lightcycle.direction,
+                *id,
+                lightcycle.speed,
+            ) > room + 2.0
+                && ahead(turning_point, other.direction, *id, lightcycle.speed) > 40.0
+                && ahead(other.position, other.direction, npc_id, other.speed) > to_crossing + 10.0)
+                .then_some((*id, other.direction))
+        })
+}
+
+/// How far a lightcycle going at `speed` goes in `time` seconds of braking.
+fn braking_distance(arena: &Arena, speed: f64, time: f64) -> f64 {
+    let scale = arena.round.speed_scale();
+    let floor = LIGHTCYCLE_BRAKE_SPEED * scale;
+    let slowing = ((speed - floor).max(0.0) / (BRAKE_DECELERATION * scale)).min(time);
+    let slowed = speed - BRAKE_DECELERATION * scale * slowing;
+    (speed + slowed) / 2.0 * slowing + slowed * (time - slowing)
+}
+
+/// How many seconds later a lightcycle going at `speed` gets somewhere ahead
+/// for braking `time` seconds and speeding back up after.
+fn braking_delay(arena: &Arena, speed: f64, time: f64) -> f64 {
+    let scale = arena.round.speed_scale();
+    let floor = LIGHTCYCLE_BRAKE_SPEED * scale;
+    let normal = LIGHTCYCLE_SPEED * scale;
+    let slowed = (speed - BRAKE_DECELERATION * scale * time).max(floor);
+    let recovery = (normal - slowed).max(0.0) / (BRAKE_RECOVERY * scale);
+    let covered = braking_distance(arena, speed, time) + (slowed + normal) / 2.0 * recovery;
+    (speed * (time + recovery) - covered) / speed
+}
+
+/// Brake to cross the quarry's lane just ahead of it, when the NPC would
+/// otherwise get there so early that the quarry sees the trail in time to
+/// turn off.
+fn time_cut(context: &Context, quarry: PlayerId, state: &mut NpcState) {
+    let arena = context.arena;
+    let lightcycle = context.lightcycle;
+    if state.brake_cooldown > 0.0 || state.brake_for > 0.0 || lightcycle.brake < 0.5 {
+        return;
+    }
+    let Some(target) = arena.lightcycles.get(&quarry).filter(|target| {
+        !target.dead
+            && lightcycle
+                .direction
+                .perpendicular_directions()
+                .contains(&target.direction)
+    }) else {
+        return;
+    };
+
+    let delta = offset(arena, lightcycle.position, target.position);
+    let to_lane = lightcycle.direction.as_velocity().dot(delta);
+    let to_crossing = -target.direction.as_velocity().dot(delta);
+    if to_lane <= 0.0 || to_crossing <= 0.0 {
+        return;
+    }
+    let target_time = to_crossing / target.speed;
+    let spare = target_time - (to_lane + 3.0) / lightcycle.speed;
+    if target_time > 1.8 || spare < NPC_CUT_LEAD + 0.3 {
+        return;
+    }
+    let ray = look_ahead_distance(
+        arena,
+        lightcycle.position,
+        lightcycle.direction,
+        Some(quarry),
+        lightcycle.speed,
+    );
+    if ray < to_lane + 5.0 {
+        return;
+    }
+
+    // Decided once for each crossing.
+    state.brake_cooldown = 1.0;
+    if !percent_chance(state.personality.cutoff_accuracy) {
+        return;
+    }
+    let available = lightcycle.brake * BRAKE_SECONDS;
+    let wanted = spare - NPC_CUT_LEAD;
+    let hold = (1..)
+        .map(|step| step as f64 * 0.05)
+        .take_while(|hold| *hold < available)
+        .find(|hold| braking_delay(arena, lightcycle.speed, *hold) >= wanted)
+        .unwrap_or(available);
+    if hold >= 0.2 {
+        state.brake_for = hold;
+    }
+}
+
 /// Start slipstreaming another lightcycle when one is well placed for it.
 fn look_for_slipstream_attack(
     arena: &Arena,
@@ -868,12 +1177,7 @@ fn look_for_slipstream_attack(
     lightcycle: &Lightcycle,
     state: &mut NpcState,
 ) {
-    if state.attack_cooldown > 0.0
-        || matches!(
-            state.behaviour,
-            NpcBehaviour::CutOff { .. } | NpcBehaviour::SlipstreamAttack { .. }
-        )
-    {
+    if state.attack_cooldown > 0.0 || state.behaviour.is_engaged() {
         return;
     }
 
@@ -931,6 +1235,15 @@ fn choose_direction(context: &Context, state: &mut NpcState) -> Option<Direction
             choose_direction(context, state)
         }
         NpcBehaviour::Shadow { target_id } => choose_shadow(context, target_id, state),
+        NpcBehaviour::Yield {
+            target_id,
+            lane,
+            toward,
+        } => choose_yield(context, target_id, lane, toward, state),
+        NpcBehaviour::Encircle {
+            target_id,
+            clockwise,
+        } => choose_encircle(context, target_id, clockwise, state),
         NpcBehaviour::Divide => {
             let options = context.options;
             let longest = std::iter::once(&options.straight)
@@ -1054,7 +1367,6 @@ fn choose_intercept(
     target_id: Option<PlayerId>,
     state: &mut NpcState,
 ) -> Option<Direction> {
-    let lightcycle = context.lightcycle;
     let alive = |id: &PlayerId| {
         context
             .arena
@@ -1073,17 +1385,26 @@ fn choose_intercept(
     state.behaviour = NpcBehaviour::Intercept {
         target_id: Some(target_id),
     };
+    head_off(context, &context.arena.lightcycles[&target_id])
+}
 
-    let target = &context.arena.lightcycles[&target_id];
-    let distance = (target.position - lightcycle.position).length();
+/// Steer for the point `target` will reach by the time the NPC gets there.
+fn head_off(context: &Context, target: &Lightcycle) -> Option<Direction> {
+    let arena = context.arena;
+    let lightcycle = context.lightcycle;
+    let distance = offset(arena, lightcycle.position, target.position).length();
     let lead = (distance * target.speed / lightcycle.speed).min(150.0);
     let aim = target.position + target.direction.as_velocity() * lead;
-    let aim = ArenaPoint::new(
-        aim.x.clamp(0.0, context.arena.width),
-        aim.y.clamp(0.0, context.arena.height),
-    );
+    let aim = if arena.round.has(Mutator::Wrap) {
+        wrap_point(arena, aim)
+    } else {
+        ArenaPoint::new(
+            aim.x.clamp(0.0, arena.width),
+            aim.y.clamp(0.0, arena.height),
+        )
+    };
 
-    let delta = aim - lightcycle.position;
+    let delta = offset(arena, lightcycle.position, aim);
     let forward = lightcycle.direction.as_velocity().dot(delta);
     let [a, b] = lightcycle.direction.perpendicular_directions();
     let (toward, lateral) = if a.as_velocity().dot(delta) > b.as_velocity().dot(delta) {
@@ -1123,7 +1444,12 @@ fn find_intercept_target(context: &Context, preferred: Option<PlayerId>) -> Opti
         .iter()
         .filter(|(id, lightcycle)| **id != context.npc_id && !lightcycle.dead)
         .map(|(id, lightcycle)| {
-            let distance = (lightcycle.position - context.lightcycle.position).length();
+            let distance = offset(
+                context.arena,
+                context.lightcycle.position,
+                lightcycle.position,
+            )
+            .length();
             let weight = if context.npc_ids.contains(id) {
                 1.0
             } else {
@@ -1163,7 +1489,7 @@ fn start_hairpin(context: &Context) -> Option<NpcBehaviour> {
         .filter(|turn| turn.ray > offset + NPC_DRAFT_OFFSET)
         .filter(|turn| {
             let lane = lightcycle.position + turn.direction.as_velocity() * offset;
-            look_ahead_distance(context.arena, lane, back, None) > run * 0.75
+            look_ahead_distance(context.arena, lane, back, None, lightcycle.speed) > run * 0.75
         })
         .max_by(|a, b| a.space.total_cmp(&b.space))
         .map(|turn| NpcBehaviour::LaneChange {
@@ -1201,7 +1527,7 @@ fn choose_shadow(
     };
 
     let target = &context.arena.lightcycles[&target_id];
-    let to_target = target.position - lightcycle.position;
+    let to_target = offset(context.arena, lightcycle.position, target.position);
     let [a, b] = lightcycle.direction.perpendicular_directions();
     let toward = if a.as_velocity().dot(to_target) > 0.0 {
         a
@@ -1240,6 +1566,166 @@ fn choose_shadow(
         };
         turn.then_some(target.direction)
     }
+}
+
+/// Brake until the lightcycle crossing ahead is past, then turn in behind
+/// it, `NPC_YIELD_OFFSET` from its lane, and slipstream it, maybe to
+/// overtake it and cut in.
+fn choose_yield(
+    context: &Context,
+    target_id: PlayerId,
+    lane: Direction,
+    toward: Direction,
+    state: &mut NpcState,
+) -> Option<Direction> {
+    let lightcycle = context.lightcycle;
+    let target = context
+        .arena
+        .lightcycles
+        .get(&target_id)
+        .filter(|target| !target.dead && target.direction == lane)
+        .filter(|_| lightcycle.direction == toward);
+    let Some(target) = target else {
+        state.abort();
+        return None;
+    };
+
+    let delta = offset(context.arena, lightcycle.position, target.position);
+    let to_lane = toward.as_velocity().dot(delta);
+    let past = lane.as_velocity().dot(delta);
+    if past >= NPC_YIELD_GAP {
+        state.brake_for = 0.0;
+        if to_lane > NPC_YIELD_OFFSET + 1.5 {
+            return None;
+        }
+        if percent_chance(state.personality.attack_chance) {
+            state.set_behaviour(NpcBehaviour::SlipstreamAttack {
+                target_id,
+                target_direction: lane,
+                approach_direction: toward,
+                cut_distance: to_lane + NPC_DRAFT_OFFSET,
+                phase: SlipstreamAttackPhase::Drafting,
+            });
+        } else {
+            state.cruise();
+        }
+        return Some(lane);
+    }
+
+    // Too late to turn in behind it: whatever the NPC does next is up to
+    // the planner.
+    let room = to_lane - NPC_YIELD_OFFSET;
+    if room <= 0.0 || lightcycle.brake <= 0.0 {
+        state.abort();
+        return None;
+    }
+    // Once braking, hold on until it is past, rather than flicker the brake.
+    let pass_time = (NPC_YIELD_GAP - past) / target.speed;
+    if lightcycle.braking || lightcycle.speed * pass_time > room - 1.0 {
+        state.brake_for = state.brake_for.max(0.1);
+    }
+    None
+}
+
+/// Herd a lightcycle into turning the same way again and again. The NPC
+/// rides alongside it on its outer side, gets ahead of it and cuts across in
+/// front of it, which leaves it only the inner side to turn to. That puts the
+/// NPC alongside it on its outer side again, a little closer in each time.
+/// From further off, head it off first.
+fn choose_encircle(
+    context: &Context,
+    target_id: Option<PlayerId>,
+    clockwise: bool,
+    state: &mut NpcState,
+) -> Option<Direction> {
+    let lightcycle = context.lightcycle;
+    let alive = |id: &PlayerId| {
+        context
+            .arena
+            .lightcycles
+            .get(id)
+            .is_some_and(|lightcycle| !lightcycle.dead)
+    };
+    let Some(target_id) = target_id
+        .filter(alive)
+        .or_else(|| find_intercept_target(context, state.grudge_target(context.arena)))
+    else {
+        state.cruise();
+        return None;
+    };
+    let target = &context.arena.lightcycles[&target_id];
+
+    let delta = offset(context.arena, target.position, lightcycle.position);
+    if delta.length() > NPC_ENCIRCLE_RANGE {
+        state.behaviour = NpcBehaviour::Encircle {
+            target_id: Some(target_id),
+            clockwise,
+        };
+        return head_off(context, target);
+    }
+
+    // Where the NPC is from the target: how far ahead, and how far out to
+    // the side it herds it away from. Going round the other way if the NPC
+    // is on the other side.
+    let ahead = target.direction.as_velocity().dot(delta);
+    let outside = |clockwise| opposite(rotate(target.direction, clockwise));
+    let mut clockwise = clockwise;
+    if outside(clockwise).as_velocity().dot(delta) < -NPC_DRAFT_OFFSET
+        && lightcycle.direction == target.direction
+    {
+        clockwise = !clockwise;
+    }
+    state.behaviour = NpcBehaviour::Encircle {
+        target_id: Some(target_id),
+        clockwise,
+    };
+    let out = outside(clockwise);
+    let cut = opposite(out);
+    let aside = out.as_velocity().dot(delta);
+
+    // Far enough ahead to get across its lane before it gets there.
+    let across_time = (aside.abs() + 3.0) / lightcycle.speed + 0.1;
+    let clear_ahead = ahead >= target.speed * across_time;
+
+    if lightcycle.direction == target.direction {
+        if clear_ahead && aside > -NPC_DRAFT_OFFSET {
+            return Some(cut);
+        }
+        // Too far out to slipstream it: move in closer, which also makes
+        // for a shorter cut.
+        if aside > SLIPSTREAM_DISTANCE - 3.0 {
+            return Some(cut);
+        }
+        // Level with it but not far enough ahead to cut in, and no faster:
+        // brake to drop back alongside its trail, and slipstream past it.
+        let may_brake = lightcycle.braking || state.brake_cooldown <= 0.0;
+        if ahead > -NPC_YIELD_GAP && may_brake && lightcycle.brake > 0.0 {
+            state.brake_for = state.brake_for.max(0.1);
+        }
+        return None;
+    }
+    if lightcycle.direction == cut {
+        // Carry on across in front of it. Otherwise straighten up close
+        // alongside it, or once past its lane.
+        let alongside = !clear_ahead && aside < NPC_DRAFT_OFFSET + 2.0;
+        return (aside < -NPC_DRAFT_OFFSET || alongside).then_some(target.direction);
+    }
+    if lightcycle.direction == out {
+        return Some(target.direction);
+    }
+    // Head on: turn off to the outer side.
+    Some(if aside >= 0.0 { out } else { cut })
+}
+
+/// The direction a quarter turn from `direction`, clockwise or not.
+fn rotate(direction: Direction, clockwise: bool) -> Direction {
+    let turned = match direction {
+        Direction::Up => Direction::Right,
+        Direction::Right => Direction::Down,
+        Direction::Down => Direction::Left,
+        Direction::Left => Direction::Up,
+    };
+    if clockwise { turned } else { opposite(turned) }
 }
 
 /// Finds a trail, its own included, running the same way as the NPC, a
@@ -1591,7 +2077,8 @@ fn find_slipstream_attack_target(
             let approach_dir = if s0 > s1 { perp[0] } else { perp[1] };
 
             // Safety: enough room to approach.
-            let approach_ahead = look_ahead_distance(arena, npc_pos, approach_dir, None);
+            let approach_ahead =
+                look_ahead_distance(arena, npc_pos, approach_dir, None, lightcycle.speed);
             if approach_ahead < perp_dist {
                 continue;
             }
@@ -1682,101 +2169,116 @@ fn find_slipstreamer_on_trail(
     None
 }
 
-/// Cast a ray from `position` in `direction` and return distance to the first obstacle.
-/// The path ahead of the lightcycle `ignoring` doesn't count as an obstacle,
-/// for an NPC that means to cross it before that lightcycle gets there.
+/// The distance from `position` in `direction` to the first obstacle: a
+/// trail, a wall, the edge of an arena that doesn't wrap round, or the path
+/// ahead of another lightcycle, except the lightcycle `ignoring`, for an NPC
+/// that means to cross it before that lightcycle gets there. Parts of trails
+/// that `Mutator::Snake` trims away before a lightcycle going at `speed`
+/// would get to them don't count.
 fn look_ahead_distance(
     arena: &Arena,
     position: ArenaPoint,
     direction: Direction,
     ignoring: Option<PlayerId>,
+    speed: f64,
 ) -> f64 {
-    let vel = direction.as_velocity();
-    let max_dist = (arena.width * arena.width + arena.height * arena.height).sqrt();
-    let far_point = position + vel * max_dist;
+    let wrap = arena.round.has(Mutator::Wrap);
+    // Round an arena that wraps, a ray comes back to where it started.
+    let length = match (wrap, direction) {
+        (true, Direction::Up | Direction::Down) => arena.height,
+        (true, Direction::Left | Direction::Right) => arena.width,
+        (false, _) => arena.width + arena.height,
+    };
+    let ray = stretches(arena, position, direction, length);
+    let edges = (!wrap).then(|| arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS));
+    let speed = speed.max(LIGHTCYCLE_SPEED * arena.round.speed_scale());
+    let mut min_dist = f64::INFINITY;
 
-    let ray = ArenaLine {
-        from: position.to_untyped(),
-        to: far_point.to_untyped(),
+    // Walls, and coming back in at an edge into a walled-off cell.
+    for (index, &(from, _, along)) in ray.iter().enumerate() {
+        if index > 0 && arena.round.is_blocked_at(from, arena.width, arena.height) {
+            min_dist = min_dist.min(along);
+            break;
+        }
+        min_dist = min_dist.min(along + arena.wall_distance(from, direction, edges));
+    }
+
+    // A trail touching the ray only where it starts is left out already, so
+    // any other contact with a trail counts, however close. Lightcycles and
+    // their paths ahead only count a little way off, so that a lightcycle
+    // isn't in its own way.
+    let mut hit = |from: ArenaPoint, contact: ArenaPoint, along: f64, trail: bool| {
+        let d = along + (contact - from).length();
+        if (d > 0.5 || (trail && d > 0.0)) && d < min_dist {
+            min_dist = d;
+        }
     };
 
-    let mut min_dist = wall_distance(arena, position, direction);
-
     for (ribbon_id, lightribbon) in arena.lightribbons.iter() {
-        for (from, to) in lightribbon.segments() {
-            let segment = ArenaLine {
-                from: from.to_untyped(),
-                to: to.to_untyped(),
-            };
-
-            if let Some(intersection) = ray.intersection(&segment) {
-                let d = ((intersection.x - position.x).powi(2)
-                    + (intersection.y - position.y).powi(2))
-                .sqrt();
-                if d > 0.5 && d < min_dist {
-                    min_dist = d;
+        let trim = snake_trim(arena, *ribbon_id, lightribbon);
+        // Whether the trail at `point`, `trail_along` from its oldest end,
+        // is gone before a lightcycle `d` along the ray gets there.
+        let gone = |trail_along: f64, d: f64| {
+            trim.is_some_and(|trim| trim.gone_at(trail_along) < d / speed)
+        };
+        let mut trail_along = 0.0;
+        for (a, b) in lightribbon.segments() {
+            for &(from, to, along) in &ray {
+                let Some((near, far)) = overlap(from, to, a, b) else {
+                    continue;
+                };
+                let d = |point: ArenaPoint| along + (point - from).length();
+                let s = |point: ArenaPoint| trail_along + (point - a).length();
+                if !(gone(s(near), d(near)) && gone(s(far), d(far))) {
+                    hit(from, near, along, true);
                 }
             }
+            trail_along += (b - a).length();
         }
 
-        // Check the live segment (ribbon tip → bike position) for other bikes.
+        // The live segment, from the end of another lightcycle's trail to
+        // the lightcycle.
         if let Some(other_cycle) = arena.lightcycles.get(ribbon_id)
             && !other_cycle.dead
             && let Some(last_point) = lightribbon.last_point()
         {
-            let live_segment = ArenaLine {
-                from: last_point.to_untyped(),
-                to: other_cycle.position.to_untyped(),
-            };
-            if let Some(intersection) = ray.intersection(&live_segment) {
-                let d = ((intersection.x - position.x).powi(2)
-                    + (intersection.y - position.y).powi(2))
-                .sqrt();
-                if d > 0.5 && d < min_dist {
-                    min_dist = d;
+            for &(from, to, along) in &ray {
+                if let Some((near, _)) = overlap(from, to, last_point, other_cycle.position) {
+                    hit(from, near, along, true);
                 }
             }
         }
     }
 
-    // Check other alive bikes: both their projected paths (perpendicular
-    // convergence) and whether they sit directly in our lane (head-on).
+    // Other lightcycles in the way, and the paths ahead of them.
     for (other_id, other_cycle) in arena.lightcycles.iter() {
         if other_cycle.dead || other_cycle.position == position {
             continue;
         }
 
-        // Direct in-lane check: is this bike ahead of us on the same axis?
-        // This catches head-on collinear cases where intersection() returns
-        // None because the segments overlap.
-        let delta = other_cycle.position - position;
-        let along = vel.x * delta.x + vel.y * delta.y; // dot product
-        if along > 0.5 {
-            // The other bike is ahead of us. Check perpendicular distance.
-            let perp_dist = (vel.x * delta.y - vel.y * delta.x).abs();
-            if perp_dist < 1.0 {
-                // Directly in our lane.
-                if along < min_dist {
-                    min_dist = along;
-                }
+        for &(from, to, along) in &ray {
+            let delta = other_cycle.position - from;
+            let ahead = direction.as_velocity().dot(delta);
+            let lateral = (direction.as_velocity().cross(delta)).abs();
+            if ahead >= 0.0 && ahead <= (to - from).length() && lateral < 1.0 {
+                hit(from, other_cycle.position, along, false);
             }
         }
 
-        // Projected path check for perpendicular convergence.
         if ignoring == Some(*other_id) {
             continue;
         }
-        let other_vel = other_cycle.direction.as_velocity();
-        let projected_end = other_cycle.position + other_vel * NPC_LOOK_AHEAD_DISTANCE;
-        let projected_segment = ArenaLine {
-            from: other_cycle.position.to_untyped(),
-            to: projected_end.to_untyped(),
-        };
-        if let Some(intersection) = ray.intersection(&projected_segment) {
-            let d = ((intersection.x - position.x).powi(2) + (intersection.y - position.y).powi(2))
-                .sqrt();
-            if d > 0.5 && d < min_dist {
-                min_dist = d;
+        let projected = stretches(
+            arena,
+            other_cycle.position,
+            other_cycle.direction,
+            NPC_LOOK_AHEAD_DISTANCE,
+        );
+        for &(a, b, _) in &projected {
+            for &(from, to, along) in &ray {
+                if let Some((near, _)) = overlap(from, to, a, b) {
+                    hit(from, near, along, false);
+                }
             }
         }
     }
@@ -1787,14 +2289,114 @@ fn look_ahead_distance(
 /// How far ahead NPCs look for walls that are closing in.
 const NPC_SHRINK_LOOK_AHEAD_SECONDS: f64 = 1.5;
 
-/// NPCs don't ride off the edge of an arena that wraps round, and keep clear
-/// of walls that are about to close in on them.
-fn wall_distance(arena: &Arena, position: ArenaPoint, direction: Direction) -> f64 {
-    arena.wall_distance(
-        position,
-        direction,
-        Some(arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS)),
+/// A straight line `length` long from `position` in `direction`, as the
+/// stretches it runs through the arena, each with how far along the line it
+/// starts. It is all one stretch unless the arena wraps round and the line
+/// runs off an edge, when it comes back in at the opposite edge.
+fn stretches(
+    arena: &Arena,
+    position: ArenaPoint,
+    direction: Direction,
+    length: f64,
+) -> Vec<(ArenaPoint, ArenaPoint, f64)> {
+    let velocity = direction.as_velocity();
+    if !arena.round.has(Mutator::Wrap) {
+        return vec![(position, position + velocity * length, 0.0)];
+    }
+
+    let mut stretches = Vec::new();
+    let mut from = position;
+    let mut along = 0.0;
+    loop {
+        let to_edge = match direction {
+            Direction::Up => arena.height - from.y,
+            Direction::Down => from.y,
+            Direction::Right => arena.width - from.x,
+            Direction::Left => from.x,
+        }
+        .max(0.0);
+        let stretch = to_edge.min(length - along);
+        stretches.push((from, from + velocity * stretch, along));
+        along += stretch;
+        if along >= length {
+            return stretches;
+        }
+        from = match direction {
+            Direction::Up => ArenaPoint::new(from.x, 0.0),
+            Direction::Down => ArenaPoint::new(from.x, arena.height),
+            Direction::Right => ArenaPoint::new(0.0, from.y),
+            Direction::Left => ArenaPoint::new(arena.width, from.y),
+        };
+    }
+}
+
+/// The part of the path from `from` to `to` that touches the trail segment
+/// from `a` to `b`, as its nearest and furthest points from `from`. Like
+/// `first_contact`, touching only at `from` doesn't count.
+fn overlap(
+    from: ArenaPoint,
+    to: ArenaPoint,
+    a: ArenaPoint,
+    b: ArenaPoint,
+) -> Option<(ArenaPoint, ArenaPoint)> {
+    let near = first_contact(from, to, a, b)?;
+    let far = first_contact(to, from, a, b).unwrap_or(to);
+    Some((near, far))
+}
+
+/// The shortest way from `from` to `to`, which in an arena that wraps round
+/// may be across an edge.
+fn offset(arena: &Arena, from: ArenaPoint, to: ArenaPoint) -> ArenaVector {
+    let delta = to - from;
+    if !arena.round.has(Mutator::Wrap) {
+        return delta;
+    }
+    let shortest = |d: f64, size: f64| d - size * (d / size).round();
+    ArenaVector::new(
+        shortest(delta.x, arena.width),
+        shortest(delta.y, arena.height),
     )
+}
+
+/// Where a point beyond an edge of an arena that wraps round comes back in.
+fn wrap_point(arena: &Arena, point: ArenaPoint) -> ArenaPoint {
+    ArenaPoint::new(
+        point.x.rem_euclid(arena.width),
+        point.y.rem_euclid(arena.height),
+    )
+}
+
+/// How a trail that `Mutator::Snake` keeps short is trimmed from its oldest
+/// end: once it is `slack` longer, as fast as its lightcycle lays it.
+#[derive(Debug, Clone, Copy)]
+struct SnakeTrim {
+    slack: f64,
+    speed: f64,
+}
+
+impl SnakeTrim {
+    /// Seconds until the point `along` from the oldest end of the trail is
+    /// trimmed away, with a margin.
+    fn gone_at(self, along: f64) -> f64 {
+        (along + self.slack) / self.speed + NPC_SNAKE_MARGIN_SECONDS
+    }
+}
+
+/// How the trail of lightcycle `id` is being trimmed, if it is. A living
+/// lightcycle's trail is trimmed with `Mutator::Snake`. It is assumed to go
+/// no faster than normal, so that a trail isn't taken to be gone too soon.
+fn snake_trim(arena: &Arena, id: PlayerId, lightribbon: &Lightribbon) -> Option<SnakeTrim> {
+    if !arena.round.has(Mutator::Snake) {
+        return None;
+    }
+    let lightcycle = arena.lightcycles.get(&id).filter(|lc| !lc.dead)?;
+    Some(SnakeTrim {
+        slack: (SNAKE_TRAIL_LENGTH - lightribbon.length()).max(0.0),
+        speed: lightcycle
+            .speed
+            .min(LIGHTCYCLE_SPEED * arena.round.speed_scale())
+            .max(1.0),
+    })
 }
 
 #[cfg(test)]
@@ -2030,5 +2632,171 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// An arena with the given mutators and no lightcycles.
+    fn arena_with(mutators: Vec<Mutator>) -> Arena {
+        let mut arena = Arena {
+            started: Some(Utc::now() - chrono::Duration::seconds(1)),
+            ..Default::default()
+        };
+        ArenaUpdate::SetRound(Round::new(Shape::Grid, mutators)).apply(&mut arena);
+        arena
+    }
+
+    fn add(arena: &mut Arena, lightcycle: Lightcycle, trail: Vec<ArenaPoint>) -> PlayerId {
+        let id = PlayerId::default();
+        arena.lightcycles.insert(id, lightcycle);
+        arena
+            .lightribbons
+            .insert(id, Lightribbon { paths: vec![trail] });
+        id
+    }
+
+    fn cycle(x: f64, y: f64, direction: Direction) -> Lightcycle {
+        Lightcycle {
+            position: ArenaPoint::new(x, y),
+            direction,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn npcs_see_trails_across_the_edge_of_an_arena_that_wraps() {
+        for (mutators, expected) in [(vec![], 60.0), (vec![Mutator::Wrap], 100.0)] {
+            let mut arena = arena_with(mutators);
+            let npc = cycle(500.0, 300.0, Direction::Right);
+            add(
+                &mut arena,
+                npc,
+                vec![ArenaPoint::new(450.0, 300.0), npc.position],
+            );
+            add(
+                &mut arena,
+                cycle(40.0, 100.0, Direction::Down),
+                vec![ArenaPoint::new(40.0, 500.0), ArenaPoint::new(40.0, 100.0)],
+            );
+            let ray = look_ahead_distance(&arena, npc.position, npc.direction, None, npc.speed);
+            assert!((ray - expected).abs() < 1e-6, "{ray}");
+        }
+    }
+
+    #[test]
+    fn npcs_ride_off_the_edge_of_an_arena_that_wraps() {
+        let mut arena = arena_with(vec![Mutator::Wrap]);
+        let npc = cycle(300.0, 550.0, Direction::Up);
+        let npc_id = add(
+            &mut arena,
+            npc,
+            vec![ArenaPoint::new(300.0, 450.0), npc.position],
+        );
+        let planner = Planner::new(&arena);
+        let options = planner.options(npc_id, &npc, 0.05, None);
+        let personality = Personality::new(Style::Sentinel);
+        let (direction, _) = options.vet(
+            None,
+            personality.clearance,
+            personality.tolerance,
+            Caution::Contested,
+        );
+        assert_eq!(direction, Direction::Up);
+        assert!(options.straight.ray > 400.0, "{}", options.straight.ray);
+    }
+
+    #[test]
+    fn npcs_ride_on_through_snake_trails_that_will_be_gone() {
+        for (mutators, blocked) in [(vec![], true), (vec![Mutator::Snake], false)] {
+            let mut arena = arena_with(mutators);
+            let npc = cycle(300.0, 100.0, Direction::Up);
+            add(
+                &mut arena,
+                npc,
+                vec![ArenaPoint::new(300.0, 70.0), npc.position],
+            );
+            // A full-length trail whose oldest end crosses the NPC's path.
+            add(
+                &mut arena,
+                cycle(310.0, 530.0, Direction::Up),
+                vec![
+                    ArenaPoint::new(290.0, 130.0),
+                    ArenaPoint::new(310.0, 130.0),
+                    ArenaPoint::new(310.0, 530.0),
+                ],
+            );
+            let ray = look_ahead_distance(&arena, npc.position, npc.direction, None, npc.speed);
+            assert_eq!(ray < 31.0, blocked, "{ray}");
+        }
+    }
+
+    /// An NPC heading up and a lightcycle heading left across its path, which
+    /// will narrowly get across first.
+    fn crossing(anticipation: u32) -> (Arena, PlayerId, PlayerId) {
+        let mut arena = arena_with(vec![]);
+        let npc = cycle(280.0, 100.0, Direction::Up);
+        let npc_id = add(
+            &mut arena,
+            npc,
+            vec![ArenaPoint::new(280.0, 60.0), npc.position],
+        );
+        let other = cycle(330.0, 145.0, Direction::Left);
+        let other_id = add(
+            &mut arena,
+            other,
+            vec![ArenaPoint::new(400.0, 145.0), other.position],
+        );
+        let mut state = NpcState {
+            personality: Personality::new(Style::Sentinel),
+            ..Default::default()
+        };
+        state.personality.anticipation = anticipation;
+        state.personality.cutoff_chance = 0;
+        state.personality.attack_chance = 0;
+        state.time_remaining = f64::INFINITY;
+        arena.npc_states.insert(npc_id, state);
+        (arena, npc_id, other_id)
+    }
+
+    #[test]
+    fn npcs_brake_to_let_a_lightcycle_cross_then_slipstream_it() {
+        let (mut arena, npc, _) = crossing(100);
+        let mut braked = false;
+        for _ in 0..40 {
+            run_until_death(&mut arena, 0.05);
+            braked |= arena.lightcycles[&npc].braking;
+        }
+        let lightcycle = arena.lightcycles[&npc];
+        assert!(braked);
+        assert!(!lightcycle.dead);
+        assert!(!lightcycle.braking);
+        assert_eq!(lightcycle.direction, Direction::Left);
+        assert!(lightcycle.speed > LIGHTCYCLE_SPEED, "{}", lightcycle.speed);
+    }
+
+    #[test]
+    fn npcs_dont_brake_to_put_off_a_crash() {
+        // Riding up a dead end too narrow to turn round in.
+        let mut arena = arena_with(vec![]);
+        let npc = cycle(280.0, 100.0, Direction::Up);
+        let npc_id = add(
+            &mut arena,
+            npc,
+            vec![ArenaPoint::new(280.0, 60.0), npc.position],
+        );
+        add(
+            &mut arena,
+            cycle(20.0, 20.0, Direction::Left),
+            vec![
+                ArenaPoint::new(277.0, 60.0),
+                ArenaPoint::new(277.0, 160.0),
+                ArenaPoint::new(283.0, 160.0),
+                ArenaPoint::new(283.0, 60.0),
+            ],
+        );
+        arena.npc_states.insert(npc_id, NpcState::default());
+        for _ in 0..40 {
+            run_until_death(&mut arena, 0.05);
+            assert!(!arena.lightcycles[&npc_id].braking);
+        }
+        assert!(arena.lightcycles[&npc_id].dead);
     }
 }

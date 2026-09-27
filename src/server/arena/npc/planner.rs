@@ -11,13 +11,20 @@ const SCORE_SLACK: f64 = 10.0;
 
 /// A coarse occupancy grid of the arena, used to measure how much space each
 /// move leaves a lightcycle. It has a border of blocked cells one cell wide,
-/// so neighbouring cells can be found without bounds checks.
+/// so neighbouring cells can be found without bounds checks. In an arena that
+/// wraps round, the cells along each edge neighbour those along the opposite
+/// edge instead.
 struct Grid {
     /// Width including the border.
     stride: usize,
     columns: usize,
     rows: usize,
-    blocked: Vec<bool>,
+    /// For each cell, how many seconds from now it can be ridden through: 0
+    /// for open cells, infinity for walls and lasting trails, and for trails
+    /// that `Mutator::Snake` keeps short, when that part of the trail is
+    /// trimmed away.
+    free_at: Vec<f32>,
+    wrap: bool,
     /// Working space for `distances`, kept between searches.
     search: RefCell<Search>,
 }
@@ -37,14 +44,14 @@ impl Grid {
         let columns = (arena.width / CELL_SIZE).ceil().max(1.0) as usize;
         let rows = (arena.height / CELL_SIZE).ceil().max(1.0) as usize;
         let stride = columns + 2;
-        let mut blocked = vec![false; stride * (rows + 2)];
+        let mut free_at = vec![0.0; stride * (rows + 2)];
         for x in 0..stride {
-            blocked[x] = true;
-            blocked[(rows + 1) * stride + x] = true;
+            free_at[x] = f32::INFINITY;
+            free_at[(rows + 1) * stride + x] = f32::INFINITY;
         }
         for y in 0..rows + 2 {
-            blocked[y * stride] = true;
-            blocked[y * stride + columns + 1] = true;
+            free_at[y * stride] = f32::INFINITY;
+            free_at[y * stride + columns + 1] = f32::INFINITY;
         }
 
         let mut grid = Self {
@@ -52,10 +59,11 @@ impl Grid {
             columns,
             rows,
             search: RefCell::new(Search {
-                entered: vec![0; blocked.len()],
+                entered: vec![0; free_at.len()],
                 ..Default::default()
             }),
-            blocked,
+            free_at,
+            wrap: arena.round.has(Mutator::Wrap),
         };
 
         let (min, max) = arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS);
@@ -77,25 +85,37 @@ impl Grid {
         }
 
         for (id, lightribbon) in arena.lightribbons.iter() {
+            let trim = snake_trim(arena, *id, lightribbon);
+            let mut along = 0.0;
             for (from, to) in lightribbon.segments() {
-                grid.block_segment(from, to);
+                let length = (to - from).length();
+                grid.block_segment(from, to, |distance| match trim {
+                    // Free once the whole cell the point is in has gone.
+                    Some(trim) => trim.gone_at(along + distance + CELL_SIZE) as f32,
+                    None => f32::INFINITY,
+                });
+                along += length;
             }
             if let (Some(last_point), Some(lightcycle)) =
                 (lightribbon.last_point(), arena.lightcycles.get(id))
                 && !lightcycle.dead
             {
-                grid.block_segment(last_point, lightcycle.position);
+                grid.block_segment(last_point, lightcycle.position, |_| f32::INFINITY);
             }
         }
 
         grid
     }
 
-    fn block_segment(&mut self, from: ArenaPoint, to: ArenaPoint) {
-        let steps = ((to - from).length() / (CELL_SIZE * 0.5)).ceil().max(1.0) as usize;
+    /// Blocks the cells along a segment until the time `free_at` gives for
+    /// each point, from its distance along the segment.
+    fn block_segment(&mut self, from: ArenaPoint, to: ArenaPoint, free_at: impl Fn(f64) -> f32) {
+        let length = (to - from).length();
+        let steps = (length / (CELL_SIZE * 0.5)).ceil().max(1.0) as usize;
         for step in 0..=steps {
-            if let Some(cell) = self.cell(from.lerp(to, step as f64 / steps as f64)) {
-                self.blocked[cell] = true;
+            let t = step as f64 / steps as f64;
+            if let Some(cell) = self.cell(from.lerp(to, t)) {
+                self.free_at[cell] = self.free_at[cell].max(free_at(length * t));
             }
         }
     }
@@ -113,7 +133,7 @@ impl Grid {
                 let x = (min.x + i as f64 * CELL_SIZE).min(max.x);
                 let y = (min.y + j as f64 * CELL_SIZE).min(max.y);
                 if let Some(cell) = self.cell(ArenaPoint::new(x, y)) {
-                    self.blocked[cell] = true;
+                    self.free_at[cell] = f32::INFINITY;
                 }
             }
         }
@@ -142,13 +162,32 @@ impl Grid {
     }
 
     fn neighbours(&self, cell: usize) -> [usize; 4] {
-        [cell - 1, cell + 1, cell - self.stride, cell + self.stride]
+        let mut neighbours = [cell - 1, cell + 1, cell - self.stride, cell + self.stride];
+        if self.wrap {
+            let (x, y) = (cell % self.stride, cell / self.stride);
+            let last_row = (self.rows - 1) * self.stride;
+            if x == 1 {
+                neighbours[0] = cell + self.columns - 1;
+            }
+            if x == self.columns {
+                neighbours[1] = cell - (self.columns - 1);
+            }
+            if y == 1 {
+                neighbours[2] = cell + last_row;
+            }
+            if y == self.rows {
+                neighbours[3] = cell - last_row;
+            }
+        }
+        neighbours
     }
 
-    /// Spreads breadth-first from `start` through unblocked cells, entering
-    /// each cell that `enter` accepts at its distance from `start`. The start
-    /// cell itself is always entered.
-    fn distances(&self, start: usize, mut enter: impl FnMut(usize, u16) -> bool) {
+    /// Spreads breadth-first from `start`, entering each cell that is free by
+    /// the time a lightcycle going at `speed` gets there and that `enter`
+    /// accepts at its distance from `start`. The start cell itself is always
+    /// entered.
+    fn distances(&self, start: usize, speed: f64, mut enter: impl FnMut(usize, u16) -> bool) {
+        let seconds_per_cell = (CELL_SIZE / speed.max(1.0)) as f32;
         let mut search = self.search.borrow_mut();
         let Search {
             entered,
@@ -171,7 +210,7 @@ impl Grid {
             next += 1;
             let distance = distance + 1;
             for neighbour in self.neighbours(cell) {
-                if !self.blocked[neighbour]
+                if self.free_at[neighbour] <= distance as f32 * seconds_per_cell
                     && entered[neighbour] != generation
                     && enter(neighbour, distance)
                 {
@@ -235,9 +274,9 @@ impl<'a> Planner<'a> {
         let mut planner = Self {
             arena,
             lightcycles: Vec::new(),
-            first: vec![f32::INFINITY; grid.blocked.len()],
-            first_owner: vec![u8::MAX; grid.blocked.len()],
-            second: vec![f32::INFINITY; grid.blocked.len()],
+            first: vec![f32::INFINITY; grid.free_at.len()],
+            first_owner: vec![u8::MAX; grid.free_at.len()],
+            second: vec![f32::INFINITY; grid.free_at.len()],
             grid,
         };
 
@@ -270,7 +309,7 @@ impl<'a> Planner<'a> {
                 }
             };
             arrive(start, 0);
-            grid.distances(start, |cell, distance| {
+            grid.distances(start, lightcycle.speed, |cell, distance| {
                 let within = distance <= PLANNING_DEPTH;
                 if within {
                     arrive(cell, distance);
@@ -308,20 +347,32 @@ impl<'a> Planner<'a> {
         direction: Direction,
         ignoring: Option<PlayerId>,
     ) -> Evaluation {
-        let ray = look_ahead_distance(self.arena, lightcycle.position, direction, ignoring);
+        let ray = look_ahead_distance(
+            self.arena,
+            lightcycle.position,
+            direction,
+            ignoring,
+            lightcycle.speed,
+        );
         let velocity = direction.as_velocity();
 
         // Start from the first free cell ahead. Where a trail runs through
         // the cells right ahead, start in the nearest one anyway.
         let ahead = |steps: f64| {
-            self.grid
-                .cell(lightcycle.position + velocity * CELL_SIZE * steps)
+            let point = lightcycle.position + velocity * CELL_SIZE * steps;
+            self.grid.cell(if self.grid.wrap {
+                wrap_point(self.arena, point)
+            } else {
+                point
+            })
         };
+        let seconds_per_cell = CELL_SIZE / lightcycle.speed.max(1.0);
         let start = (1..=3)
             .map(|steps| steps as f64)
             .take_while(|steps| steps * CELL_SIZE < ray)
-            .filter_map(ahead)
-            .find(|cell| !self.grid.blocked[*cell])
+            .filter_map(|steps| Some((steps, ahead(steps)?)))
+            .find(|(steps, cell)| self.grid.free_at[*cell] <= (steps * seconds_per_cell) as f32)
+            .map(|(_, cell)| cell)
             .or_else(|| ahead(1.0));
 
         // Count the nearby cells this lightcycle can reach, and which of them
@@ -331,20 +382,23 @@ impl<'a> Planner<'a> {
         let mut space = 0.0;
         let mut territory = 0.0;
         if let Some(start) = start {
-            self.grid.distances(start, |cell, distance| {
-                let others = match own_index {
-                    Some(index) if self.first_owner[cell] as usize == index => self.second[cell],
-                    _ => self.first[cell],
-                };
-                if distance > PLANNING_DEPTH {
-                    return false;
-                }
-                space += 1.0;
-                if (distance + 1) as f32 / speed < others {
-                    territory += 1.0;
-                }
-                true
-            });
+            self.grid
+                .distances(start, lightcycle.speed, |cell, distance| {
+                    let others = match own_index {
+                        Some(index) if self.first_owner[cell] as usize == index => {
+                            self.second[cell]
+                        }
+                        _ => self.first[cell],
+                    };
+                    if distance > PLANNING_DEPTH {
+                        return false;
+                    }
+                    space += 1.0;
+                    if (distance + 1) as f32 / speed < others {
+                        territory += 1.0;
+                    }
+                    true
+                });
         }
 
         Evaluation {
@@ -402,12 +456,15 @@ impl Options {
     }
 
     /// Checks the direction a behaviour asked for (`None` for straight ahead)
-    /// against the space it leaves. Returns the direction to take, and whether
-    /// the request was overruled.
+    /// against the space it leaves. `clearance` is the distance to an obstacle
+    /// ahead at which to turn off, and `tolerance` how much less than the best
+    /// move's score a move may have, as a fraction of it. Returns the
+    /// direction to take, and whether the request was overruled.
     pub fn vet(
         &self,
         request: Option<Direction>,
-        personality: &Personality,
+        clearance: f64,
+        tolerance: f64,
         caution: Caution,
     ) -> (Direction, bool) {
         let turn = request.and_then(|direction| {
@@ -416,13 +473,16 @@ impl Options {
                 .find(|option| option.direction == direction)
         });
 
+        // A turn asked for has to leave room to turn again after it, not
+        // just to survive the next update.
+        let roomy = |turn: &Evaluation| turn.ray >= self.min_clearance * 2.0;
         match turn {
-            Some(turn) if self.is_acceptable(turn, caution, personality.tolerance) => {
+            Some(turn) if roomy(turn) && self.is_acceptable(turn, caution, tolerance) => {
                 (turn.direction, false)
             }
-            Some(_) => (self.fallback(personality, caution), true),
+            Some(_) => (self.fallback(clearance, tolerance, caution), true),
             None => {
-                let direction = self.fallback(personality, caution);
+                let direction = self.fallback(clearance, tolerance, caution);
                 (direction, direction != self.straight.direction)
             }
         }
@@ -430,10 +490,9 @@ impl Options {
 
     /// Straight ahead while it is clear and roomy; otherwise the roomier turn
     /// if it is about as good as going straight.
-    fn fallback(&self, personality: &Personality, caution: Caution) -> Direction {
-        let tolerance = personality.tolerance;
+    fn fallback(&self, clearance: f64, tolerance: f64, caution: Caution) -> Direction {
         let clearance = match caution {
-            Caution::Contested => personality.clearance,
+            Caution::Contested => clearance,
             Caution::Bold => self.min_clearance * 2.0,
         };
 
@@ -513,7 +572,14 @@ mod tests {
         for caution in [Caution::Contested, Caution::Bold] {
             assert_eq!(options.best(caution), Direction::Right);
             let personality = Personality::new(Style::Trickster);
-            let vet = |request| options.vet(request, &personality, caution);
+            let vet = |request| {
+                options.vet(
+                    request,
+                    personality.clearance,
+                    personality.tolerance,
+                    caution,
+                )
+            };
             assert_eq!(vet(Some(Direction::Left)), (Direction::Right, true));
             assert_eq!(vet(None), (Direction::Right, true));
         }
