@@ -14,54 +14,67 @@
   font-size: clamp(0.55rem, 2.2cqi, 0.8rem);
 }
 
-/* Ranks 1-5 run down the first column and 6-10 down the second. */
-.grid {
+/* Columns are half the width, and a lone column sits in the middle. */
+.columns {
+  display: flex;
+  justify-content: center;
+  gap: 4cqi;
+}
+.column {
   display: grid;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(5, auto);
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4cqi 4cqi;
+  flex: 0 1 50%;
+  grid-template-columns: 2.2em minmax(0, 1fr) minmax(5ch, auto) minmax(5ch, auto);
+  row-gap: 0.4cqi;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.entry {
-  --entry-color: var(--entry, var(--white));
-  display: flex;
+.entry,
+.header {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  column-gap: 1.5cqi;
   align-items: baseline;
-  gap: 1.5cqi;
-  min-width: 0;
   padding: 0.3cqi 1cqi;
   list-style: none;
   text-align: left;
+}
+.entry {
+  --entry-color: var(--entry, var(--white));
   color: color-mix(in srgb, var(--white) 80%, transparent);
   border-radius: 4px;
 }
+/* Wins and Kills labels sit above their columns of numbers. */
+.header {
+  padding-block: 0;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--white) 45%, transparent);
+  font-size: 0.8em;
+}
+.header > :first-child {
+  grid-column: 3;
+}
 .rank {
-  flex: 0 0 2.2em;
   text-align: right;
   color: color-mix(in srgb, var(--white) 40%, transparent);
 }
-/* Names are stored lowercase; show them like the winner's name above, in
-   the colour the player last won with. */
 .name {
   overflow: hidden;
   text-transform: uppercase;
   color: var(--entry-color);
   text-shadow: 0 0 6px color-mix(in srgb, var(--entry-color) 50%, transparent);
-  flex: 1;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .stat {
   white-space: nowrap;
-  color: var(--white);
+  text-align: right;
 }
-.label {
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--white) 45%, transparent);
-  font-size: 0.8em;
+.entry .stat {
+  color: var(--white);
 }
 
 .self {
@@ -80,6 +93,5 @@
   width: calc(50% - 2cqi);
   margin: 1.5cqi auto 0;
   padding: 1.5cqi 0 0;
-  list-style: none;
   border-top: 1px dashed color-mix(in srgb, var(--white) 20%, transparent);
 }
