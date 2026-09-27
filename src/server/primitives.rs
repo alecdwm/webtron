@@ -2,6 +2,7 @@ use euclid::{Point2D, Vector2D};
 use lyon_geom::LineSegment;
 use serde_derive::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 
 use crate::new_id_type;
 use crate::server::MessageOut;
@@ -30,6 +31,17 @@ pub struct Client {
     pub synced: bool,
     /// The player name this client has claimed, normalised.
     pub name: Option<String>,
+    pub connected_at: Instant,
+    /// What the player has done since connecting, for the ntfy message sent
+    /// when they disconnect.
+    pub session: SessionStats,
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+pub struct SessionStats {
+    pub rounds: u32,
+    pub wins: u32,
+    pub kills: u32,
 }
 
 #[derive(Default, Debug, Clone, Hash, PartialEq, Serialize, Deserialize)]

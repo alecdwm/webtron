@@ -32,7 +32,7 @@ use server::{Leaderboard, Ntfy, Server as WebtronServer};
 pub async fn start() -> Result<(), Error> {
     let config = Arc::new(Config::new());
     let leaderboard = Leaderboard::open(&config.leaderboard_path)?;
-    let ntfy = Ntfy::new(config.ntfy_url.as_deref())?;
+    let ntfy = Ntfy::new(config.ntfy_url.as_deref(), config.public_url.as_deref())?;
 
     let (server_tx, server_rx) = mpsc::channel(100);
     let server = tokio::spawn(WebtronServer::new(server_rx, leaderboard, ntfy).start());

@@ -17,7 +17,7 @@ use tokio::time::{self, Instant, MissedTickBehavior};
 pub use arena::{Arena, ArenaInput, ArenaOverview, ArenaUpdate, DeathCause};
 pub use leaderboard::{Leaderboard, LeaderboardStandings, Stat};
 pub use messages::{MessageIn, MessageOut};
-pub use ntfy::Ntfy;
+pub use ntfy::{Notification, Ntfy, Priority};
 pub use primitives::*;
 
 use crate::{get_error_chain, truncate_for_log};
@@ -143,6 +143,22 @@ impl Server {
             events.push((player.name.clone(), Stat::Win(player.color)));
         }
 
+        for (name, stat) in &events {
+            let Some(client) = self
+                .clients
+                .values_mut()
+                .find(|client| client.name.as_ref() == Some(name))
+            else {
+                continue;
+            };
+            match stat {
+                Stat::RoundPlayed => client.session.rounds += 1,
+                Stat::Win(_) => client.session.wins += 1,
+                Stat::PlayerKill | Stat::NpcKill => client.session.kills += 1,
+                _ => {}
+            }
+        }
+
         if events.is_empty() && winner.is_none() {
             return;
         }
@@ -237,10 +253,68 @@ impl Server {
 
     fn remove_client(&mut self, client_id: ClientId) {
         self.client_part_arena(client_id);
-        let client = self.clients.remove(&client_id);
-        if let Some(name) = client.and_then(|client| client.name) {
-            self.ntfy.send(format!("{} disconnected", name));
+        let Some(client) = self.clients.remove(&client_id) else {
+            return;
+        };
+        let Some(name) = client.name else {
+            return;
+        };
+        let played = format_duration(client.connected_at.elapsed());
+        let session = client.session;
+        let summary = match session.rounds {
+            0 => format!("Online for {}, played no rounds", played),
+            rounds => format!(
+                "Online for {}, played {}, won {}, killed {}",
+                played,
+                count(rounds, "round"),
+                session.wins,
+                session.kills
+            ),
+        };
+        self.ntfy.send(Notification {
+            title: format!("{} disconnected", name),
+            message: format!("{}\n{}", summary, self.online_summary(client_id)),
+            priority: Priority::Low,
+        });
+    }
+
+    /// Who is online other than `client_id`, for ntfy messages.
+    fn online_summary(&self, client_id: ClientId) -> String {
+        const MAX_NAMES: usize = 8;
+        let mut names: Vec<&str> = self
+            .clients
+            .values()
+            .filter(|client| client.id != client_id)
+            .filter_map(|client| client.name.as_deref())
+            .collect();
+        names.sort_unstable();
+        match names.len() {
+            0 => "Nobody else is online".to_string(),
+            length if length > MAX_NAMES => format!(
+                "Also online: {} and {} more",
+                names[..MAX_NAMES].join(", "),
+                length - MAX_NAMES
+            ),
+            _ => format!("Also online: {}", names.join(", ")),
         }
+    }
+}
+
+/// `number` followed by `noun`, pluralised with an s unless `number` is 1.
+fn count(number: u32, noun: &str) -> String {
+    match number {
+        1 => format!("1 {}", noun),
+        _ => format!("{} {}s", number, noun),
+    }
+}
+
+/// A duration as whole minutes, or hours and minutes, such as `1h 5m`.
+fn format_duration(duration: Duration) -> String {
+    let minutes = duration.as_secs() / 60;
+    match (minutes / 60, minutes % 60) {
+        (0, 0) => "under a minute".to_string(),
+        (0, minutes) => format!("{}m", minutes),
+        (hours, minutes) => format!("{}h {}m", hours, minutes),
     }
 }
 
@@ -296,14 +370,20 @@ impl Server {
 
         // A client claims its name as soon as it connects, so its first claim
         // is when a human player can be said to have connected.
-        match client.name.as_deref() {
-            None => self.ntfy.send(format!("{} connected", name)),
+        let old_name = client.name.replace(name.to_string());
+        let (title, priority) = match old_name.as_deref() {
+            None => (format!("{} connected", name), Priority::Default),
             Some(old_name) if old_name != name => {
-                self.ntfy.send(format!("{} renamed to {}", old_name, name))
+                (format!("{} renamed to {}", old_name, name), Priority::Low)
             }
-            Some(_) => {}
-        }
-        client.name = Some(name.to_string());
+            Some(_) => return Ok(true),
+        };
+        let others = self.online_summary(client_id);
+        self.ntfy.send(Notification {
+            title,
+            message: others,
+            priority,
+        });
         Ok(true)
     }
 
@@ -375,6 +455,8 @@ impl Server {
                     arena: None,
                     synced: false,
                     name: None,
+                    connected_at: Instant::now(),
+                    session: Default::default(),
                 };
                 self.clients.insert(client_id, client);
             }

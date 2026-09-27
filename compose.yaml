@@ -11,7 +11,12 @@ services:
     ports:
       - 3000:3000
     environment:
-      LEADERBOARD_PATH: /data/leaderboard.jsonl
+      - LEADERBOARD_PATH=/data/leaderboard.jsonl
+      # Optional: uncomment to post to an ntfy topic when players connect,
+      # rename or leave. Leave a line commented out rather than empty, since
+      # the server rejects an empty url.
+      # - NTFY_URL=https://ntfy.example.org/webtron
+      # - PUBLIC_URL=https://webtron.example.org/
     volumes:
       - data:/data
     read_only: true

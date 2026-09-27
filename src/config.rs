@@ -26,6 +26,12 @@ struct CliConfig {
     /// when a player connects or disconnects
     #[arg(short = 'n', long, env = "NTFY_URL")]
     ntfy_url: Option<String>,
+
+    /// Sets the url players reach this server at, such as
+    /// https://webtron.example.com/, which tapping an ntfy notification
+    /// opens and which ntfy notifications take their icon from
+    #[arg(long, env = "PUBLIC_URL")]
+    public_url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -33,6 +39,7 @@ pub struct Config {
     pub bind_address: SocketAddr,
     pub leaderboard_path: PathBuf,
     pub ntfy_url: Option<String>,
+    pub public_url: Option<String>,
 }
 
 impl Default for Config {
@@ -41,6 +48,7 @@ impl Default for Config {
             bind_address: SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 3000),
             leaderboard_path: PathBuf::from("leaderboard.jsonl"),
             ntfy_url: None,
+            public_url: None,
         }
     }
 }
@@ -53,6 +61,7 @@ impl Config {
             bind_address: SocketAddr::new(cli_config.bind_address, cli_config.port),
             leaderboard_path: cli_config.leaderboard_path,
             ntfy_url: cli_config.ntfy_url,
+            public_url: cli_config.public_url,
         }
     }
 }
