@@ -102,3 +102,14 @@ impl Direction {
         }
     }
 }
+
+/// A quick message a player can flash up over their lightcycle.
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Emote {
+    Gg,
+    Lol,
+    Rip,
+    /// Shown as "!?!".
+    Wtf,
+}

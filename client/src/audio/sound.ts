@@ -11,10 +11,14 @@ const MUTED_STORAGE_KEY = 'webtron:muted'
 const MASTER_VOLUME = 0.6
 
 // Lightcycle speeds from src/server/arena.rs. Engines pitch up with speed
-// between these two while slipstreaming.
+// between the normal and boost speeds while slipstreaming, and down towards
+// the brake speed while braking.
 const LIGHTCYCLE_SPEED = 55
 const LIGHTCYCLE_BOOST_SPEED = 110
+const LIGHTCYCLE_BRAKE_SPEED = 27.5
 const ENGINE_BOOST_PITCH = 1.5
+// How far the engine pitches down at full braking.
+const ENGINE_BRAKE_PITCH = 0.7
 
 let ctx: AudioContext | null = null
 let master: GainNode | null = null
@@ -352,6 +356,63 @@ export function playTurn(self: boolean, pan = 0) {
     filter: { type: 'bandpass', freq: 900, q: 3 },
   })
   noise({ duration: 0.04, gain: gain * 0.6, pan, filter: { type: 'highpass', freq: 5000 } })
+}
+
+// A near miss: a bright zing that rises twice.
+export function playNearMiss(self: boolean, pan = 0) {
+  const gain = self ? 1 : 0.3
+  tone({ type: 'triangle', freq: 1200, freqEnd: 2400, duration: 0.09, gain: 0.07 * gain, pan })
+  tone({ type: 'triangle', freq: 1800, freqEnd: 3600, duration: 0.14, gain: 0.06 * gain, pan, delay: 0.07 })
+  noise({ duration: 0.12, gain: 0.03 * gain, pan, filter: { type: 'highpass', freq: 6000 } })
+}
+
+// Braking: a short hiss with a falling whine, like a lightcycle scrubbing speed.
+export function playBrake(self: boolean, pan = 0) {
+  const gain = self ? 1 : 0.35
+  noise({
+    duration: 0.35,
+    gain: 0.07 * gain,
+    pan,
+    attack: 0.02,
+    filter: { type: 'bandpass', freq: 3200, freqEnd: 900, q: 2 },
+  })
+  tone({
+    type: 'sawtooth',
+    freq: 700,
+    freqEnd: 260,
+    duration: 0.3,
+    gain: 0.035 * gain,
+    pan,
+    filter: { type: 'lowpass', freq: 2200 },
+  })
+}
+
+// An emote popping up over a lightcycle.
+export function playEmote(pan = 0) {
+  tone({ type: 'sine', freq: 520, freqEnd: 1040, duration: 0.08, gain: 0.06, pan })
+  tone({ type: 'triangle', freq: 1560, duration: 0.1, gain: 0.03, pan, delay: 0.05 })
+}
+
+// One of the round's cards coming in over the countdown, each a step higher.
+export function playMutatorReveal(index: number, delay = 0) {
+  const freq = 330 * Math.pow(2, (index * 4) / 12)
+  tone({ type: 'square', freq, duration: 0.12, gain: 0.04, delay, filter: { type: 'lowpass', freq: 2600 } })
+  tone({ type: 'sine', freq: freq * 2, duration: 0.2, gain: 0.03, delay: delay + 0.03 })
+}
+
+// Walls rising out of the grid or sinking back into it: a low rumble with
+// grinding on top.
+export function playLayoutMorph(duration: number) {
+  noise({ duration, gain: 0.08, attack: duration * 0.3, filter: { type: 'lowpass', freq: 180, freqEnd: 420, q: 3 } })
+  tone({
+    type: 'sawtooth',
+    freq: 45,
+    freqEnd: 70,
+    duration,
+    gain: 0.05,
+    attack: duration * 0.3,
+    filter: { type: 'lowpass', freq: 300 },
+  })
 }
 
 export function playCrash(self: boolean, pan = 0) {
@@ -958,10 +1019,12 @@ export class Engine {
   }
 
   // Pitches the engine up in proportion to how far the speed is above normal
-  // towards the full slipstream boost, where it reaches boostPitch.
+  // towards the full slipstream boost, where it reaches boostPitch, and down
+  // as far as ENGINE_BRAKE_PITCH as braking slows it.
   setSpeed(speed: number) {
     const boost = Math.max(0, Math.min(1, (speed - LIGHTCYCLE_SPEED) / (LIGHTCYCLE_BOOST_SPEED - LIGHTCYCLE_SPEED)))
-    const pitch = 1 + (this.boostPitch - 1) * boost
+    const braking = Math.max(0, Math.min(1, (LIGHTCYCLE_SPEED - speed) / (LIGHTCYCLE_SPEED - LIGHTCYCLE_BRAKE_SPEED)))
+    const pitch = 1 + (this.boostPitch - 1) * boost - (1 - ENGINE_BRAKE_PITCH) * braking
     if (Math.abs(pitch - this.pitch) < 0.001) return
     this.pitch = pitch
     this.retune(0.08)

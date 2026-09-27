@@ -7,6 +7,18 @@ pub struct Lightcycle {
     pub speed: f64,
     pub dead: bool,
     pub death_cause: Option<DeathCause>,
+    /// How much braking the lightcycle has left, from 0 to 1. It drains
+    /// while the brake is held and recharges once it is let go.
+    pub brake: f64,
+    /// Whether the player is holding the brake. It only slows the
+    /// lightcycle while there is `brake` left.
+    pub braking: bool,
+}
+
+impl Lightcycle {
+    pub fn is_braking(&self) -> bool {
+        self.braking && self.brake > 0.0
+    }
 }
 
 impl Default for Lightcycle {
@@ -17,6 +29,8 @@ impl Default for Lightcycle {
             speed: LIGHTCYCLE_SPEED,
             dead: Default::default(),
             death_cause: None,
+            brake: 1.0,
+            braking: false,
         }
     }
 }
@@ -61,6 +75,47 @@ impl Lightribbon {
                 path.push(point);
             }
             None => self.paths.push(vec![point]),
+        }
+    }
+
+    /// Starts a new path at `point`, leaving a gap in the trail from the end
+    /// of the last one, as when a lightcycle wraps round the arena.
+    pub fn start_path(&mut self, point: ArenaPoint) {
+        self.paths.push(vec![point, point]);
+    }
+
+    /// The length of all of the trail's paths, not counting gaps between them.
+    pub fn length(&self) -> f64 {
+        self.segments().map(|(from, to)| (to - from).length()).sum()
+    }
+
+    /// Removes `length` from the oldest end of the trail. Paths left with no
+    /// length are removed, except the last, which its lightcycle is laying.
+    pub fn trim_front(&mut self, mut length: f64) {
+        while length > 0.0 {
+            let only_path = self.paths.len() == 1;
+            let Some(path) = self.paths.first_mut() else {
+                return;
+            };
+            if path.len() < 2 {
+                return;
+            }
+            let (from, to) = (path[0], path[1]);
+            let segment = (to - from).length();
+            if segment > length {
+                path[0] = from.lerp(to, length / segment);
+                return;
+            }
+            length -= segment;
+            path.remove(0);
+            if path.len() < 2 {
+                if only_path {
+                    // Nothing left but the lightcycle's end of it.
+                    path.insert(0, path[0]);
+                    return;
+                }
+                self.paths.remove(0);
+            }
         }
     }
 
@@ -175,6 +230,22 @@ mod tests {
 
     fn p(x: f64, y: f64) -> ArenaPoint {
         ArenaPoint::new(x, y)
+    }
+
+    #[test]
+    fn trim_front_removes_the_oldest_part_of_the_trail() {
+        let mut ribbon = Lightribbon {
+            paths: vec![
+                vec![p(0.0, 0.0), p(10.0, 0.0)],
+                vec![p(20.0, 0.0), p(40.0, 0.0), p(40.0, 30.0)],
+            ],
+        };
+        ribbon.trim_front(25.0);
+        assert_eq!(
+            ribbon.paths,
+            vec![vec![p(35.0, 0.0), p(40.0, 0.0), p(40.0, 30.0)]]
+        );
+        assert_eq!(ribbon.length(), 35.0);
     }
 
     #[test]

@@ -1,15 +1,20 @@
-import { type CSSProperties, type RefObject, useCallback, useMemo, useRef } from 'react'
+import { type CSSProperties, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
-import { start, steer, turn } from '@/actions'
+import { brake, emote, start, steer, turn } from '@/actions'
 import { playClick } from '@/audio/sound'
 import ArenaGrid from '@/components/ArenaGrid'
+import ArenaLayout from '@/components/ArenaLayout'
 import Countdown from '@/components/Countdown'
+import Fog from '@/components/Fog'
 import Hole from '@/components/Hole'
 import Leaderboard from '@/components/Leaderboard'
 import Lightcycle from '@/components/Lightcycle'
 import Lightribbon from '@/components/Lightribbon'
 import MenuButton from '@/components/MenuButton'
+import NearMisses from '@/components/NearMisses'
 import Notifications from '@/components/Notifications'
+import RoundBanner from '@/components/RoundBanner'
 import useArenaAnimation, { ArenaAnimationContext } from '@/hooks/useArenaAnimation'
 import useArenaSounds from '@/hooks/useArenaSounds'
 import useEventListener from '@/hooks/useEventListener'
@@ -17,10 +22,11 @@ import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
-import type { Arena as ArenaType, Color, ControlScheme, Direction, Side } from '@/types'
+import type { Arena as ArenaType, Color, ControlScheme, Direction, Emote, Side } from '@/types'
 import { serverNow } from '@/utils/clock'
 import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
+import { emoteLabels, emotes, hasMutator } from '@/utils/round'
 import { spawnDelayMs } from '@/utils/spawn'
 
 import styles from './Arena.module.css'
@@ -37,15 +43,19 @@ function ArenaView({ arena }: { arena: ArenaType }) {
   const controlScheme = useStore((store) => store.controlScheme)
   const serverTimeOffset = useStore((store) => store.serverTimeOffset)
   useArenaSounds(arena, player.id, serverTimeOffset)
-  const animation = useArenaAnimation(arena, serverTimeOffset)
+  const animation = useArenaAnimation(arena, serverTimeOffset, player.id)
   const dispatch = useStoreDispatch()
 
   const onStart = useCallback(() => dispatch(start()), [dispatch])
 
   const arenaRef = useRef<HTMLDivElement>(null)
   const inRound = arena.started !== null
-  useKeyControls(inRound, controlScheme)
+  const self = player.id !== null ? arena.lightcycles[player.id] : undefined
+  const selfAlive = inRound && self !== undefined && !self.dead
+  useKeyControls(inRound, selfAlive, controlScheme)
   useTouchControls(inRound, controlScheme, arenaRef)
+  useEmoteKeys()
+  useCaptureGameKeys()
 
   const { width, height } = arena
   const colorOf = (id: string): Color => arena.players[id]?.color ?? 'white'
@@ -66,6 +76,13 @@ function ArenaView({ arena }: { arena: ArenaType }) {
     <ArenaAnimationContext.Provider value={animation}>
       <div ref={arenaRef} className={styles.arena}>
         <ArenaGrid startAt={arena.started} serverTimeOffset={serverTimeOffset} />
+        <ArenaLayout
+          round={arena.round}
+          previousBlocked={arena.previousBlocked}
+          startAt={arena.started}
+          serverTimeOffset={serverTimeOffset}
+          width={width}
+        />
 
         {arena.holes.map(({ player_id, position, radius }) => (
           <Hole
@@ -91,7 +108,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
             derezzing
           />
         ))}
-        {Object.entries(arena.lightcycles).map(([id, { direction, speed, dead }], index) => (
+        {Object.entries(arena.lightcycles).map(([id, { direction, speed, dead, braking, brake }], index) => (
           <Lightcycle
             key={id}
             id={id}
@@ -104,10 +121,20 @@ function ArenaView({ arena }: { arena: ArenaType }) {
             inLobby={!inRound}
             spawning={spawning}
             spawnDelay={spawnDelayMs(index)}
+            braking={braking && brake > 0}
+            brake={id === player.id && inRound ? brake : null}
+            emote={dead ? undefined : arena.emotes[id]}
+            wrap={hasMutator(arena.round, 'Wrap')}
           />
         ))}
+        <NearMisses nearMisses={arena.nearMisses} colorOf={colorOf} selfId={player.id} width={width} height={height} />
+
+        {inRound && hasMutator(arena.round, 'Fog') ? <Fog lifted={!selfAlive} /> : null}
 
         <Notifications arena={arena} />
+        <RoundBanner round={arena.round} startAt={arena.started} serverTimeOffset={serverTimeOffset} />
+        <EmoteBar />
+        {selfAlive ? <BrakeButton /> : null}
 
         {arena.started !== null ? (
           <Countdown key={arena.started} startAt={arena.started} serverTimeOffset={serverTimeOffset} />
@@ -138,6 +165,8 @@ function ArenaView({ arena }: { arena: ArenaType }) {
                   {controlScheme === 'steering'
                     ? '← → / A D / tap either side to turn'
                     : 'Arrows / WASD / tap to steer'}
+                  <br />
+                  Space / Shift to brake · 1–4 to emote
                 </div>
               </div>
             ) : null}
@@ -146,6 +175,46 @@ function ArenaView({ arena }: { arena: ArenaType }) {
       </div>
     </ArenaAnimationContext.Provider>
   )
+}
+
+const gameKeys = new Set([
+  'Space',
+  'Enter',
+  'NumpadEnter',
+  'ShiftLeft',
+  'ShiftRight',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'Digit1',
+  'Digit2',
+  'Digit3',
+  'Digit4',
+  'Numpad1',
+  'Numpad2',
+  'Numpad3',
+  'Numpad4',
+])
+
+// Keeps the game's keys from scrolling the page or doing anything else the
+// browser would do with them, in and between rounds, so a key still held as
+// a round ends doesn't scroll it. A focused button still gets a fresh press
+// of Space or Enter, and a focused field gets every key.
+function useCaptureGameKeys() {
+  const onKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!gameKeys.has(event.code)) return
+    const target = event.target instanceof HTMLElement ? event.target : null
+    if (target?.closest('input, textarea, select')) return
+    const pressesButton = (event.code === 'Space' || event.code.endsWith('Enter')) && !event.repeat
+    if (pressesButton && target?.closest('button')) return
+    event.preventDefault()
+  }, [])
+  useEventListener('keydown', onKeyDown)
 }
 
 // Enter or Space presses the START / REMATCH button while it is shown.
@@ -197,12 +266,41 @@ function useControls(controlScheme: ControlScheme) {
   )
 }
 
-function useKeyControls(inRound: boolean, controlScheme: ControlScheme) {
+const brakeKeys = new Set(['Space', 'ShiftLeft', 'ShiftRight'])
+
+function useKeyControls(inRound: boolean, selfAlive: boolean, controlScheme: ControlScheme) {
   const { onDirection, onSide, steering } = useControls(controlScheme)
+  const dispatch = useStoreDispatch()
+
+  // The brake is let go when the player is out, or when the window loses
+  // focus and would miss the key coming up.
+  useEffect(() => {
+    if (!selfAlive) dispatch(brake(false))
+  }, [dispatch, selfAlive])
+  useEventListener(
+    'blur',
+    useCallback(() => dispatch(brake(false)), [dispatch]),
+  )
+  useEventListener(
+    'keyup',
+    useCallback(
+      (event: KeyboardEvent) => {
+        if (brakeKeys.has(event.code)) dispatch(brake(false))
+      },
+      [dispatch],
+    ),
+  )
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (!inRound) return
+
+      // Otherwise Space is left to START / REMATCH.
+      if (brakeKeys.has(event.code) && selfAlive) {
+        event.preventDefault()
+        if (!event.repeat) dispatch(brake(true))
+        return
+      }
 
       const direction = turnKeys[event.code]
       if (!direction) return
@@ -213,9 +311,88 @@ function useKeyControls(inRound: boolean, controlScheme: ControlScheme) {
       const side = steerKeys[event.code]
       if (side) onSide(side)
     },
-    [inRound, onDirection, onSide, steering],
+    [inRound, selfAlive, dispatch, onDirection, onSide, steering],
   )
   useEventListener('keydown', onKeyDown)
+}
+
+// The number keys 1 to 4, on either the main keyboard or the number pad,
+// pick the emotes in order.
+const emoteKeys: Record<string, Emote> = Object.fromEntries(
+  emotes.flatMap((chosen, index) => [
+    [`Digit${index + 1}`, chosen],
+    [`Numpad${index + 1}`, chosen],
+  ]),
+)
+
+// The number keys emote, in or out of a round.
+function useEmoteKeys() {
+  const dispatch = useStoreDispatch()
+  const onKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      const chosen = emoteKeys[event.code]
+      if (!chosen || event.repeat) return
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select')) return
+      dispatch(emote(chosen))
+    },
+    [dispatch],
+  )
+  useEventListener('keydown', onKeyDown)
+}
+
+// A button for each emote, labelled with its key, for touchscreens and mice.
+// The arena is drawn in the page's <main>, which clips it, so the bar goes in
+// an element of its own added just after it.
+function EmoteBar() {
+  const dispatch = useStoreDispatch()
+  const [container] = useState(() => {
+    const element = document.createElement('div')
+    element.className = styles.belowArena
+    return element
+  })
+  useEffect(() => {
+    document.querySelector('main')?.after(container)
+    return () => container.remove()
+  }, [container])
+
+  return createPortal(
+    <div className={styles.emoteBar}>
+      {emotes.map((chosen, index) => (
+        <button
+          key={chosen}
+          className={styles.emoteButton}
+          // Not focused by a click, so Space still brakes rather than pressing
+          // the last emote again.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => dispatch(emote(chosen))}
+        >
+          <span className={styles.emoteLabel}>{emoteLabels[chosen]}</span>
+          <span className={styles.emoteKey}>{index + 1}</span>
+        </button>
+      ))}
+    </div>,
+    container,
+  )
+}
+
+// A brake to hold down on touchscreens, which have no keys for it.
+function BrakeButton() {
+  const dispatch = useStoreDispatch()
+  const release = useCallback(() => dispatch(brake(false)), [dispatch])
+  return (
+    <button
+      className={styles.brakeButton}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId)
+        dispatch(brake(true))
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      BRAKE
+    </button>
+  )
 }
 
 // Presses on a button are left to it: cancelling the touch would also cancel

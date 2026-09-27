@@ -4,6 +4,19 @@ export type Color = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'white'
 export type Direction = 'up' | 'down' | 'left' | 'right'
 export type Point = [number, number]
 
+// The arena's shape for a round, and the rules changing how it plays. See
+// src/server/arena/round.rs.
+export type Shape = 'Grid' | 'Circle' | 'Pillars' | 'Cross' | 'Core' | 'Bastions'
+export type Mutator = 'Shrink' | 'Wrap' | 'Snake' | 'Overdrive' | 'Fog' | 'Obstacles'
+export type Round = {
+  shape: Shape
+  mutators: Mutator[]
+  // Walled-off layout cells, as [column, row] from the bottom left.
+  blocked: [number, number][]
+}
+
+export type Emote = 'gg' | 'lol' | 'rip' | 'wtf'
+
 export type Player = {
   name: string
   color: Color
@@ -20,6 +33,11 @@ export type ServerLightcycle = {
   speed: number
   dead: boolean
   death_cause: DeathCause | null
+  // How much braking is left, from 0 to 1.
+  brake: number
+  // Whether the player is holding the brake, which only slows the lightcycle
+  // while there is brake left.
+  braking: boolean
 }
 
 // A trail can be cut into several paths by holes. The last path is the one
@@ -50,6 +68,7 @@ export type ServerArena = {
   lightcycles: Record<string, ServerLightcycle>
   lightribbons: Record<string, ServerLightribbon>
   holes: Hole[]
+  round: Round
 }
 
 // One change to an arena, in serde's externally tagged enum format.
@@ -60,13 +79,20 @@ export type ArenaUpdate =
   | { AddHole: Hole }
   | { Start: string }
   | 'End'
+  | { SetRound: Round }
   | { SetWinner: string | null }
   | { UpdateLightcyclePosition: [string, Point] }
   | { UpdateLightcycleDirection: [string, Direction] }
   | { UpdateLightcycleSpeed: [string, number] }
   | { UpdateLightcycleApplyDeath: [string, DeathCause] }
+  | { UpdateLightcycleBraking: [string, boolean] }
+  | { UpdateLightcycleBrakeMeter: [string, number] }
   | { UpdateLightribbonAppendPoint: [string, Point] }
   | { UpdateLightribbonReplaceLatestPoint: [string, Point] }
+  | { UpdateLightribbonStartPath: [string, Point] }
+  | { TrimLightribbon: [string, number] }
+  | { NearMiss: [string, Point] }
+  | { Emote: [string, Emote] }
   | { RemovePlayer: string }
   | { RemoveLightcycle: string }
   | { RemoveLightribbon: string }
@@ -113,6 +139,8 @@ export type ClientMessage =
   | { Join: { player: Player; arena_id: string | null } }
   | { Start: null }
   | { Turn: Direction }
+  | { Brake: boolean }
+  | { Emote: Emote }
 
 // The client's copies of the server's data.
 
@@ -151,7 +179,18 @@ export type Arena = {
   // Dead trails the server has removed, kept until the next round so they can
   // be animated out.
   derezzing: Record<string, Lightribbon>
+  round: Round
+  // The walled-off cells of the round before this one, which morph into
+  // this round's as it counts down.
+  previousBlocked: [number, number][]
+  // The latest near misses and each player's latest emote. Each has a number
+  // of its own, so a component can play its animation once.
+  nearMisses: NearMiss[]
+  emotes: Record<string, EmoteShown>
 }
+
+export type NearMiss = { key: number; player: string; point: Point }
+export type EmoteShown = { key: number; emote: Emote }
 
 export type Stage = 'MainMenu' | 'Connect' | 'ArenaSelect' | 'Arena'
 export type SocketState = 'NOT_CONNECTED' | 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED'

@@ -1,0 +1,23 @@
+/* Above the trails and lightcycles, below the countdown and notifications. */
+.fog {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(1, 6, 7, 0.97);
+  /* A pool of light at each position the arena animation lists in
+     mask-image, all of them cut out of the fog. */
+  mask-image: radial-gradient(circle at 50% 50%, transparent 12cqi, rgba(0, 0, 0, 0.77) 18cqi, #000 26cqi);
+  mask-composite: intersect;
+  transition: opacity 1.5s ease;
+  animation: fogin 1s ease backwards;
+}
+.lifted {
+  opacity: 0;
+}
+
+@keyframes fogin {
+  from {
+    opacity: 0;
+  }
+}

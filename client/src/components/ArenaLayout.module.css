@@ -1,0 +1,170 @@
+/* Above the grid and below the trails, which are drawn after it. */
+.layout {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* A walled-off cell: a dark, hatched slab raised off the grid. Neighbouring
+   cells overlap by a hair so no seam shows between them, and the outline
+   below draws the edges of the walls they make up. */
+.block,
+.rise,
+.sink {
+  position: absolute;
+  margin: -0.5px;
+  padding: 0.5px;
+  background:
+    repeating-linear-gradient(135deg, color-mix(in srgb, var(--blue) 14%, transparent) 0 2px, transparent 2px 7px),
+    color-mix(in srgb, var(--blue) 8%, var(--black));
+  box-sizing: content-box;
+}
+.rise,
+.sink {
+  will-change: opacity, transform;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+/* Flickers on like the grid squares, then settles. */
+.rise {
+  animation-name: blockrise;
+}
+/* Flashes bright, then collapses into the grid. */
+.sink {
+  animation-name: blocksink;
+}
+
+/* The glowing edge of the walls. */
+.outline,
+.outlineOn {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 2px;
+  stroke-linecap: square;
+  filter: drop-shadow(0 0 3px var(--blue)) drop-shadow(0 0 8px color-mix(in srgb, var(--blue) 60%, transparent));
+}
+.outlineOn {
+  animation: outlineon 500ms ease-out both;
+}
+
+/* The part of the arena the Shrink walls have closed off: everything outside
+   this box, darkened by its shadow. Its three animations are the walls
+   moving, a warning flash before they start, and a pulse while they move;
+   their timings are set inline. */
+.zone {
+  --zone: var(--red);
+  position: absolute;
+  inset: 0;
+  border: 2px solid color-mix(in srgb, var(--zone) 50%, transparent);
+  box-shadow:
+    0 0 0 100vmax rgba(10, 2, 4, 0.78),
+    0 0 12px var(--zone),
+    inset 0 0 12px color-mix(in srgb, var(--zone) 60%, transparent);
+  animation-name: zoneshrink, zonewarn, zonepulse;
+  animation-timing-function: linear, step-end, ease-in-out;
+  animation-iteration-count: 1, 1, infinite;
+  animation-fill-mode: both, none, none;
+}
+
+/* The edges of a Wraparound arena, dashed to show they can be ridden through. */
+.wrapEdges {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed color-mix(in srgb, var(--purple) 80%, transparent);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--purple) 70%, transparent),
+    inset 0 0 14px color-mix(in srgb, var(--purple) 50%, transparent);
+  animation: wrapglow 2.4s ease-in-out infinite;
+}
+
+@keyframes blockrise {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  15% {
+    opacity: 0.9;
+    filter: brightness(3);
+  }
+  30% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+    filter: brightness(2);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: none;
+  }
+}
+@keyframes blocksink {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  25% {
+    opacity: 1;
+    filter: brightness(3);
+  }
+  45% {
+    opacity: 0.3;
+  }
+  60% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+@keyframes outlineon {
+  from {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+    stroke-width: 4px;
+  }
+  45% {
+    opacity: 0.4;
+  }
+}
+@keyframes zoneshrink {
+  from {
+    inset: 0;
+  }
+  to {
+    inset: var(--zone-inset);
+  }
+}
+@keyframes zonewarn {
+  0%,
+  33%,
+  66% {
+    border-color: var(--zone);
+  }
+  16%,
+  50%,
+  83% {
+    border-color: transparent;
+  }
+}
+@keyframes zonepulse {
+  50% {
+    border-color: var(--zone);
+  }
+}
+@keyframes wrapglow {
+  50% {
+    border-color: color-mix(in srgb, var(--purple) 40%, transparent);
+  }
+}

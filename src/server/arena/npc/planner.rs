@@ -58,6 +58,24 @@ impl Grid {
             blocked,
         };
 
+        let (min, max) = arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS);
+        let outside = [
+            (ArenaPoint::origin(), ArenaPoint::new(arena.width, min.y)),
+            (
+                ArenaPoint::new(0.0, max.y),
+                ArenaPoint::new(arena.width, arena.height),
+            ),
+            (ArenaPoint::origin(), ArenaPoint::new(min.x, arena.height)),
+            (
+                ArenaPoint::new(max.x, 0.0),
+                ArenaPoint::new(arena.width, arena.height),
+            ),
+        ];
+        let walled_off = arena.round.blocked_rects(arena.width, arena.height);
+        for (min, max) in outside.into_iter().chain(walled_off) {
+            grid.block_rect(min, max);
+        }
+
         for (id, lightribbon) in arena.lightribbons.iter() {
             for (from, to) in lightribbon.segments() {
                 grid.block_segment(from, to);
@@ -78,6 +96,25 @@ impl Grid {
         for step in 0..=steps {
             if let Some(cell) = self.cell(from.lerp(to, step as f64 / steps as f64)) {
                 self.blocked[cell] = true;
+            }
+        }
+    }
+
+    /// Blocks every cell that overlaps the rectangle with corners `min` and
+    /// `max`, edges included.
+    fn block_rect(&mut self, min: ArenaPoint, max: ArenaPoint) {
+        if max.x <= min.x || max.y <= min.y {
+            return;
+        }
+        let x_steps = ((max.x - min.x) / CELL_SIZE).ceil() as usize;
+        let y_steps = ((max.y - min.y) / CELL_SIZE).ceil() as usize;
+        for i in 0..=x_steps {
+            for j in 0..=y_steps {
+                let x = (min.x + i as f64 * CELL_SIZE).min(max.x);
+                let y = (min.y + j as f64 * CELL_SIZE).min(max.y);
+                if let Some(cell) = self.cell(ArenaPoint::new(x, y)) {
+                    self.blocked[cell] = true;
+                }
             }
         }
     }

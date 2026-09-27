@@ -6,6 +6,7 @@ import type {
   Color,
   ControlScheme,
   Direction,
+  Emote,
   Leaderboard,
   ServerMessage,
   SocketState,
@@ -89,6 +90,22 @@ export function start(): Thunk {
 
 export function turn(direction: Direction): Thunk {
   return () => send({ Turn: direction })
+}
+
+// Whether the brake was last sent as held, so held keys and several inputs
+// don't send it again.
+let brakeHeld = false
+
+export function brake(held: boolean): Thunk {
+  return () => {
+    if (held === brakeHeld) return
+    brakeHeld = held
+    send({ Brake: held })
+  }
+}
+
+export function emote(emote: Emote): Thunk {
+  return () => send({ Emote: emote })
 }
 
 export { steer } from '@/actions/steering'

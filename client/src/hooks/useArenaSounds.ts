@@ -3,9 +3,12 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ENGINE_REV_UP,
   Engine,
+  playBrake,
   playCrash,
   playDerez,
+  playEmote,
   playLose,
+  playNearMiss,
   playPlayerJoin,
   playPlayerLeave,
   playSpawn,
@@ -43,10 +46,24 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
       const pan = panFor(id, cycle.position)
       if (cycle.dead) {
         playCrash(self, pan)
-      } else if (cycle.direction !== old.direction) {
+        continue
+      }
+      if (cycle.direction !== old.direction) {
         playTurn(self, pan)
         engines.current.get(id)?.rev()
       }
+      if (cycle.braking && cycle.brake > 0 && !(old.braking && old.brake > 0)) playBrake(self, pan)
+    }
+
+    const seenNearMisses = new Set(before.nearMisses.map(({ key }) => key))
+    for (const { key, player, point } of arena.nearMisses) {
+      if (!seenNearMisses.has(key)) playNearMiss(player === selfId, panFor(player, point))
+    }
+
+    for (const [id, { key }] of Object.entries(arena.emotes)) {
+      if (before.emotes[id]?.key === key) continue
+      const cycle = arena.lightcycles[id]
+      playEmote(cycle ? panFor(id, cycle.position) : 0)
     }
 
     // Every lightcycle is placed afresh when a round's countdown begins.

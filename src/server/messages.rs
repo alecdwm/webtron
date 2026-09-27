@@ -55,7 +55,7 @@ pub mod incoming {
     use serde_derive::Deserialize;
     use tokio::sync::mpsc::Sender;
 
-    use crate::server::{ArenaId, ClientId, Direction, MessageOut, Player};
+    use crate::server::{ArenaId, ClientId, Direction, Emote, MessageOut, Player};
 
     ///
     /// Incoming messages
@@ -83,6 +83,9 @@ pub mod incoming {
 
         Start,
         Turn(Direction),
+        /// The player pressed (true) or let go of (false) the brake.
+        Brake(bool),
+        Emote(Emote),
     }
 
     impl Message {

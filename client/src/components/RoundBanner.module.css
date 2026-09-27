@@ -1,0 +1,124 @@
+/* A row of compact cards along the top edge of the arena during the
+   countdown, clear of the lightcycles spawning a quarter of the way down. */
+.intro {
+  position: absolute;
+  z-index: 12;
+  top: 2%;
+  right: 3%;
+  left: 3%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.4cqi;
+  pointer-events: none;
+}
+
+.card {
+  --glow: var(--card);
+  display: grid;
+  align-items: center;
+  /* The text column shrinks to fit, wrapping the description. */
+  grid-template-columns: auto minmax(0, max-content);
+  column-gap: 1.2cqi;
+  max-width: 42cqi;
+  padding: 1cqi 1.6cqi 1cqi 1.2cqi;
+  color: var(--card);
+  border: 2px solid var(--card);
+  border-radius: 8px;
+  background: rgba(6, 14, 15, 0.88);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--card) 60%, transparent),
+    inset 0 0 14px color-mix(in srgb, var(--card) 25%, transparent);
+  animation: cardin 500ms cubic-bezier(0.2, 0.8, 0.2, 1.2) both;
+}
+.icon {
+  grid-row: span 2;
+  width: clamp(1.4rem, 6.5cqi, 2.4rem);
+  height: clamp(1.4rem, 6.5cqi, 2.4rem);
+  filter: drop-shadow(0 0 4px var(--card));
+}
+.name {
+  font-family: var(--font-display);
+  font-size: clamp(0.55rem, 2.4cqi, 0.9rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px var(--glow);
+}
+.description {
+  color: color-mix(in srgb, var(--card) 45%, var(--white));
+  font-family: var(--font-mono);
+  font-size: clamp(0.5rem, 1.9cqi, 0.72rem);
+  line-height: 1.2;
+}
+
+/* Small icons in the top left corner while the round is played. */
+.hud {
+  position: absolute;
+  z-index: 15;
+  top: 2%;
+  left: 2%;
+  display: flex;
+  gap: 0.5em;
+  animation: hudin 400ms ease-out both;
+}
+.hudItem,
+.hudItemShrinking {
+  position: relative;
+  display: flex;
+  padding: 0.3em;
+  color: var(--card);
+  border: 1px solid color-mix(in srgb, var(--card) 60%, transparent);
+  border-radius: 6px;
+  background: rgba(8, 18, 18, 0.65);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--card) 40%, transparent);
+}
+.hudItemShrinking {
+  animation: hudpulse 1s ease-in-out infinite;
+}
+.hudIcon {
+  width: clamp(1rem, 4.5cqi, 1.6rem);
+  height: clamp(1rem, 4.5cqi, 1.6rem);
+  filter: drop-shadow(0 0 3px var(--card));
+}
+.tooltip {
+  position: absolute;
+  top: 110%;
+  left: 0;
+  padding: 0.2em 0.5em;
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--card);
+  border-radius: 3px;
+  background: rgba(8, 18, 18, 0.85);
+  font-family: var(--font-mono);
+  font-size: clamp(0.55rem, 2cqi, 0.75rem);
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.hudItem:hover .tooltip,
+.hudItemShrinking:hover .tooltip {
+  opacity: 1;
+}
+
+@keyframes cardin {
+  from {
+    opacity: 0;
+    transform: translateY(-30%) scale(0.7);
+    filter: brightness(3);
+  }
+}
+@keyframes hudin {
+  from {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+@keyframes hudpulse {
+  50% {
+    color: var(--white);
+    box-shadow: 0 0 14px var(--card);
+  }
+}

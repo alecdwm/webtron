@@ -563,6 +563,12 @@ impl Server {
             MessageInPayload::Turn(direction) => {
                 self.client_input(client_id, ArenaInput::Turn(direction))?;
             }
+            MessageInPayload::Brake(braking) => {
+                self.client_input(client_id, ArenaInput::Brake(braking))?;
+            }
+            MessageInPayload::Emote(emote) => {
+                self.client_input(client_id, ArenaInput::Emote(emote))?;
+            }
         }
         Ok(())
     }

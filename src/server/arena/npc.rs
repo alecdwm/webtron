@@ -1784,19 +1784,71 @@ fn look_ahead_distance(
     min_dist
 }
 
+/// How far ahead NPCs look for walls that are closing in.
+const NPC_SHRINK_LOOK_AHEAD_SECONDS: f64 = 1.5;
+
+/// NPCs don't ride off the edge of an arena that wraps round, and keep clear
+/// of walls that are about to close in on them.
 fn wall_distance(arena: &Arena, position: ArenaPoint, direction: Direction) -> f64 {
-    match direction {
-        Direction::Up => arena.height - position.y,
-        Direction::Down => position.y,
-        Direction::Right => arena.width - position.x,
-        Direction::Left => position.x,
-    }
+    arena.wall_distance(
+        position,
+        direction,
+        Some(arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS)),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::server::ArenaVector;
+
+    #[test]
+    fn npcs_steer_clear_of_walls_and_closing_edges() {
+        let mut crashes = 0;
+        let mut lives = 0;
+        for shape in [
+            Shape::Circle,
+            Shape::Pillars,
+            Shape::Cross,
+            Shape::Core,
+            Shape::Bastions,
+        ] {
+            for _ in 0..2 {
+                let mut arena = Arena::default();
+                let human = PlayerId::default();
+                arena.add_player(Player {
+                    id: human,
+                    name: "A".to_string(),
+                    ..Default::default()
+                });
+                arena.process_input(human, ArenaInput::Start);
+                arena.apply_updates();
+                ArenaUpdate::SetRound(Round::new(shape, vec![Mutator::Obstacles, Mutator::Shrink]))
+                    .apply(&mut arena);
+                // Far enough in for the walls to be closing.
+                arena.started = Some(Utc::now() - OldDuration::seconds(12));
+                for _ in 0..80 {
+                    arena.update(0.05);
+                    arena.clear_updates();
+                }
+                for (id, lightcycle) in &arena.lightcycles {
+                    if *id == human {
+                        continue;
+                    }
+                    lives += 1;
+                    if lightcycle.death_cause == Some(DeathCause::Boundary) {
+                        crashes += 1;
+                    }
+                }
+            }
+        }
+        // NPCs boxed in by others can be left with nowhere to go, but those
+        // that can't see walls crash into them most rounds.
+        assert!(
+            crashes * 10 <= lives,
+            "{crashes} of {lives} NPCs hit a wall"
+        );
+    }
 
     #[test]
     fn rounds_have_between_two_and_eight_lightcycles() {

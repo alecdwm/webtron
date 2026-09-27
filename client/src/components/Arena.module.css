@@ -90,6 +90,96 @@
   font-size: clamp(0.6rem, 2.3cqi, 0.8rem);
 }
 
+/* Just below the arena, the same width. */
+.belowArena {
+  width: calc(100% - 2rem);
+  max-width: 560px;
+  margin: 1rem auto 0;
+}
+
+/* A row of emote buttons, big enough to tap. */
+.emoteBar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  animation: fadein 1s ease;
+}
+.emoteButton {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  min-height: 3.25rem;
+  padding: 0.4rem 0.3rem;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  white-space: nowrap;
+  color: var(--blue);
+  border: 2px solid color-mix(in srgb, var(--blue) 55%, transparent);
+  border-radius: 10px;
+  background: rgba(8, 18, 18, 0.75);
+  box-shadow: inset 0 0 10px color-mix(in srgb, var(--blue) 15%, transparent);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.emoteButton:hover,
+.emoteButton:focus-visible {
+  color: var(--white);
+  border-color: var(--blue);
+  box-shadow:
+    0 0 10px var(--blue),
+    inset 0 0 10px color-mix(in srgb, var(--blue) 25%, transparent);
+}
+.emoteButton:active {
+  transform: scale(0.95);
+}
+.emoteLabel {
+  font-family: var(--font-display);
+  font-size: clamp(0.8rem, 3.6vw, 1.05rem);
+  font-weight: 700;
+}
+.emoteKey {
+  color: color-mix(in srgb, var(--blue) 50%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+}
+
+/* Held down to brake. Only on touchscreens, where there are no keys for it. */
+.brakeButton {
+  display: none;
+}
+@media (pointer: coarse) {
+  .brakeButton {
+    position: absolute;
+    z-index: 15;
+    bottom: 2%;
+    left: 50%;
+    display: block;
+    padding: 0.7em 1.6em;
+    transform: translateX(-50%);
+    user-select: none;
+    color: var(--red);
+    border: 2px solid var(--red);
+    border-radius: 999px;
+    background: rgba(18, 6, 8, 0.7);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--red) 50%, transparent);
+    font-family: var(--font-display);
+    font-size: clamp(0.7rem, 3cqi, 1rem);
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    -webkit-user-select: none;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .brakeButton:active {
+    color: var(--black);
+    background: var(--red);
+  }
+}
+
 @keyframes fadein {
   from {
     opacity: 0;

@@ -2,6 +2,7 @@ import { type CSSProperties, useEffect, useRef, useState } from 'react'
 
 import type { Arena, Color, DeathCause, Player } from '@/types'
 import { colorToCss } from '@/utils/colors'
+import { emoteLabels } from '@/utils/round'
 
 import styles from './Notifications.module.css'
 
@@ -97,6 +98,14 @@ function describeChanges(before: Arena, arena: Arena): Omit<Notification, 'id'>[
       color: lookup(id)?.color ?? 'white',
       parts: [name(id), ...deathParts(id, cycle.death_cause, name)],
     })
+  }
+
+  // Emotes show over lightcycles still riding, so only those of players
+  // without one are listed here.
+  for (const [id, { key, emote }] of Object.entries(arena.emotes)) {
+    const lightcycle = arena.lightcycles[id]
+    if (before.emotes[id]?.key === key || (lightcycle && !lightcycle.dead)) continue
+    notifications.push({ color: lookup(id)?.color ?? 'white', parts: [name(id), { text: `: ${emoteLabels[emote]}` }] })
   }
 
   for (const [id, player] of Object.entries(before.players)) {

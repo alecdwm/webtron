@@ -85,6 +85,72 @@
     top 300ms ease-out;
 }
 
+/* A red glow off the back of the sprite while braking. */
+.brakeLight {
+  position: absolute;
+  top: -5px;
+  left: -16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--white), var(--red) 35%, transparent 70%);
+  box-shadow: 0 0 10px var(--red);
+  animation: brakeon 120ms ease-out both;
+}
+
+/* How much brake the player's own lightcycle has left, under it. */
+.brakeMeter {
+  position: absolute;
+  left: 0;
+  bottom: -16px;
+  z-index: 2;
+  width: 26px;
+  height: 3px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--red) 25%, transparent);
+}
+.brakeFill {
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 50%;
+  border-radius: 2px;
+  background: var(--red);
+  box-shadow: 0 0 4px var(--red);
+}
+
+/* A speech bubble that pops up over the name, then floats off. */
+.emote {
+  --glow: var(--cycle);
+  position: absolute;
+  left: 0;
+  bottom: 34px;
+  z-index: 4;
+  padding: 0.15em 0.55em;
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--black);
+  border-radius: 6px;
+  background: var(--cycle);
+  box-shadow: 0 0 10px var(--cycle);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  animation: emote 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.emote::after {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  content: '';
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--cycle);
+}
+
 /* Pulsing ring around your own cycle while waiting in the lobby. */
 .selfMarker {
   position: absolute;
@@ -213,6 +279,33 @@
   }
 }
 
+@keyframes brakeon {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+@keyframes emote {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.4);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.1);
+  }
+  20% {
+    transform: translate(-50%, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -6px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -16px) scale(0.9);
+  }
+}
 @keyframes selfpulse {
   0% {
     opacity: 1;

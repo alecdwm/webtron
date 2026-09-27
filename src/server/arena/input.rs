@@ -5,6 +5,9 @@ use super::*;
 pub enum ArenaInput {
     Start,
     Turn(Direction),
+    /// The player pressed (true) or let go of (false) the brake.
+    Brake(bool),
+    Emote(Emote),
 }
 
 impl ArenaInput {
@@ -65,6 +68,10 @@ impl ArenaInput {
                     updates.push(ArenaUpdate::AddPlayer(npc_player.id, npc_player.clone()));
                 }
 
+                let round = Round::roll();
+                let speed = LIGHTCYCLE_SPEED * round.speed_scale();
+                updates.push(ArenaUpdate::SetRound(round));
+
                 // add new lightcycles and lightribbons
                 let mut player_ids = human_ids;
                 player_ids.extend(npc_players.iter().map(|p| p.id));
@@ -75,6 +82,7 @@ impl ArenaInput {
                             Lightcycle {
                                 position: spawn_position,
                                 direction: spawn_direction,
+                                speed,
                                 ..Default::default()
                             },
                         ));
@@ -149,6 +157,24 @@ impl ArenaInput {
                     .or_default()
                     .push_back(direction);
                 vec![]
+            }
+
+            ArenaInput::Brake(braking) => {
+                let Some(lightcycle) = arena.lightcycles.get(&player_id) else {
+                    return vec![];
+                };
+                if arena.started.is_none() || lightcycle.dead || lightcycle.braking == braking {
+                    return vec![];
+                }
+                vec![ArenaUpdate::UpdateLightcycleBraking(player_id, braking)]
+            }
+
+            ArenaInput::Emote(emote) => {
+                if !arena.players.contains_key(&player_id) || !arena.take_emote_turn(player_id) {
+                    trace!("Refusing emote from {}", player_id);
+                    return vec![];
+                }
+                vec![ArenaUpdate::Emote(player_id, emote)]
             }
         }
     }
