@@ -403,10 +403,14 @@ export function playLose() {
 
 // Engines
 
-// The player's own engine sits on the root pitch. Every other engine takes a
-// slot on a pentatonic scale above and below it, so a full arena forms a chord
-// rather than a cluster of near-unisons beating against each other.
+// Every other engine takes a slot on a pentatonic scale above and below the
+// root pitch, so a full arena forms a chord rather than a cluster of
+// near-unisons beating against each other.
 const ENGINE_ROOT_FREQ = 64
+// The player's own engine cruises a fourth below the root, and climbs further
+// with speed than the others to reach the same pitch at full slipstream
+// boost: ENGINE_BOOST_PITCH times the root.
+const ENGINE_SELF_PITCH = 3 / 4
 const ENGINE_SLOT_RATIOS = [3 / 2, 5 / 4, 5 / 3, 2, 9 / 8, 3 / 4, 9 / 4]
 // Gain for each slot that evens out its loudness. Lower slots lose more to the
 // crowd bus highpass and to the ear's weaker response to low frequencies.
@@ -456,41 +460,118 @@ function seededRandom(key: string) {
   }
 }
 
-// Frequency ratio of each oscillator to the engine's pitch: two saws and a sub
-// square an octave down, then on the player's own engine only, a saw an octave
-// up and a flutter two octaves down that pulses the engine's level.
-const ENGINE_OSC_RATIOS = [1, 1, 0.5, 2, 0.25]
+// The engine's firing: a loop of ENGINE_LOOP_SECONDS of combustion pulses,
+// ENGINE_FIRING_RATIO of them for each cycle of the engine's pitch, played
+// faster or slower to set that pitch. Each pulse is a raised cosine lasting
+// ENGINE_PULSE_WIDTH of the gap between firings, roughened with a little
+// low-passed noise and driven into soft saturation by ENGINE_DRIVE.
+//
+// The pulses follow ENGINE_FIRING_PATTERN in level, like cylinders firing
+// unevenly, which gives the engine its lope, and each is jittered a little in
+// level. The jitter is seeded, so the engine sounds the same from one session
+// to the next.
+const ENGINE_LOOP_SECONDS = 2
+const ENGINE_FIRING_RATIO = 2
+const ENGINE_FIRING_PATTERN = [1, 0.85, 0.95, 0.8]
+const ENGINE_FIRING_JITTER = 0.08
+const ENGINE_PULSE_WIDTH = 0.3
+const ENGINE_PULSE_NOISE = 0.6
+const ENGINE_PULSE_NOISE_FREQ = 500
+const ENGINE_DRIVE = 3
+const ENGINE_FIRING_SEED = 'grid'
 
-// How far the flutter pulls the player's own engine's level down.
-const ENGINE_FLUTTER_DEPTH = 0.18
-// Level of the rasp on the player's own engine. At 1.5 it measures about 16 dB
-// under the engine's tone, K-weighted.
-const ENGINE_RASP_LEVEL = 1.5
+let engineBuffer: AudioBuffer | null = null
+function getEngineBuffer(ctx: AudioContext) {
+  if (engineBuffer === null) {
+    const rate = ctx.sampleRate
+    const length = Math.round(rate * ENGINE_LOOP_SECONDS)
+    const firings = Math.round(ENGINE_LOOP_SECONDS * ENGINE_ROOT_FREQ * ENGINE_FIRING_RATIO)
+    const gap = length / firings
+    const width = gap * ENGINE_PULSE_WIDTH
+    const random = seededRandom(ENGINE_FIRING_SEED)
+    const gaussian = () => Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random())
+    // Low-passed noise for the pulses' roughness, run over the loop twice so
+    // it carries from the end of the loop into its start.
+    const rough = new Float32Array(length)
+    const k = 1 - Math.exp((-2 * Math.PI * ENGINE_PULSE_NOISE_FREQ) / rate)
+    let smoothed = 0
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < length; i++) {
+        smoothed += k * (random() * 2 - 1 - smoothed)
+        if (pass === 1) rough[i] = smoothed * 1.4
+      }
+    }
+    const data = new Float32Array(length)
+    let peak = 0
+    for (let firing = 0; firing < firings; firing++) {
+      const level =
+        ENGINE_FIRING_PATTERN[firing % ENGINE_FIRING_PATTERN.length] * (1 + ENGINE_FIRING_JITTER * gaussian())
+      const start = Math.round(firing * gap)
+      for (let i = 0; i < width; i++) {
+        const pulse = level * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / width))
+        const at = (start + i) % length
+        data[at] = pulse * (1 + ENGINE_PULSE_NOISE * rough[at])
+      }
+    }
+    for (let i = 0; i < length; i++) {
+      data[i] = Math.tanh(ENGINE_DRIVE * data[i])
+      peak = Math.max(peak, Math.abs(data[i]))
+    }
+    // Remove the pulses' average level, which is a constant offset.
+    const mean = data.reduce((sum, v) => sum + v, 0) / length
+    engineBuffer = ctx.createBuffer(1, length, rate)
+    engineBuffer.getChannelData(0).set(data.map((v) => (v - mean) / peak))
+  }
+  return engineBuffer
+}
+
+// The firing loop sounds through two exhaust pipes: feedback combs at fixed
+// lengths, so their resonances stay put while the engine's pitch moves, as a
+// real exhaust's do. Other engines' pipes differ in length by up to
+// ENGINE_PIPE_SPREAD, seeded like the rest of their voice.
+const ENGINE_PIPES_MS = [3.1, 5.3]
+const ENGINE_PIPE_SPREAD = 0.15
+const ENGINE_PIPE_FEEDBACK = 0.4
+const ENGINE_PIPE_LEVEL = 0.6
+const ENGINE_EXHAUST_CUTOFF = 1600
+// Under the exhaust, two saws at the engine's pitch, slightly detuned
+// against each other and low-passed, give it the synthesised tone of a
+// lightcycle. Their level is relative to the exhaust.
+const ENGINE_SAW_LEVEL = 0.28
+const ENGINE_SAW_DETUNE_CENTS = 7
+const ENGINE_SAW_CUTOFF = 700
+
+// One of the engine's voices: the firing loop or a saw.
+type EngineVoice = {
+  source: OscillatorNode | AudioBufferSourceNode
+  // The parameter that sets the voice's pitch, and its value per hertz of
+  // the engine's pitch.
+  rate: AudioParam
+  perHz: number
+}
 
 // Engine levels, set by measuring K-weighted loudness at the master output:
 // the player's own engine alone sits a little above one other engine right
 // beside it.
-const ENGINE_SELF_LEVEL = 0.08
-const ENGINE_OTHER_LEVEL = 0.04
+const ENGINE_SELF_LEVEL = 0.067
+const ENGINE_OTHER_LEVEL = 0.034
 
-// Engines start up just before the round, timed back from its start so that
-// each catches a moment (its plan's catchLead) before it and is still
-// settling as it launches, revving up to cruising over ENGINE_LAUNCH seconds.
-// ENGINE_REV_UP is the longest a startup takes. The revs are simulated.
-// Starting up, the starter cranks the engine at ENGINE_CRANK_RPM,
-// straining and slowing with each compression. The engine is silent until it
-// catches, apart from the starter and a sputter of single combustion pops.
-// Then it fades in over ENGINE_CATCH_FADE seconds as the throttle opens for
-// ENGINE_CATCH_SECONDS, the revs flare, and they hunt around idle as they
-// settle. After the catch the throttle drives the load at once and
-// the revs with inertia, quicker to rise than to fall. The launch opens with a
+// Engines power up just before the round, timed back from its start so that
+// each comes on a moment (its plan's powerLead) before it and is still
+// settling as it launches, spinning up to cruising over ENGINE_LAUNCH seconds.
+// ENGINE_REV_UP is the longest a power-up takes. The revs are simulated.
+// The engine is silent until it powers on. Then it fades in over
+// ENGINE_POWER_FADE seconds as it spins up from ENGINE_SPIN_FROM_RPM with the
+// throttle open for ENGINE_POWER_SECONDS, overshooting to the plan's flareRpm
+// before it settles at idle. The throttle drives the load at once and the
+// revs with inertia, quicker to rise than to fall. The launch opens with a
 // surge of load up to ENGINE_LAUNCH_SURGE that eases back to cruising as the
 // revs climb, making the engine louder and snarling through a mid boost of up
 // to ENGINE_SNARL_DB at ENGINE_SNARL_FREQ.
 //
-// An engine started with little time to go cranks for less time, or catches
-// at once, and one started after the round has begun just revs up from idle
-// over ENGINE_LATE_LAUNCH seconds.
+// An engine started with little time to go powers on at once, and one started
+// after the round has begun just revs up from idle over ENGINE_LATE_LAUNCH
+// seconds.
 //
 // Revs are relative to cruising, where the engine plays at its set pitch, and
 // load runs from 0 (throttle closed) to 1 (open).
@@ -501,26 +582,14 @@ const ENGINE_SNARL_DB = 10
 const ENGINE_SNARL_FREQ = 800
 const ENGINE_LATE_LAUNCH = 0.3
 const ENGINE_IDLE_RPM = 0.5
-const ENGINE_CRANK_RPM = 0.18
-const ENGINE_CATCH_SECONDS = 0.12
-const ENGINE_CATCH_FADE = 0.1
-const ENGINE_CATCH_RISE = 0.06
+const ENGINE_SPIN_FROM_RPM = 0.15
+const ENGINE_POWER_SECONDS = 0.22
+const ENGINE_POWER_FADE = 0.06
 // Time constants of the revs rising and falling towards the throttle's.
-const ENGINE_RPM_RISE = 0.15
+const ENGINE_RPM_RISE = 0.12
 const ENGINE_RPM_FALL = 0.25
 const ENGINE_LOAD_SMOOTHING = 0.015
 const REV_UP_STEPS_PER_SECOND = 500
-// The starter motor's pitch while cranking freely, and its level and that of
-// the sputter's pops relative to the engine's.
-const STARTER_FREQ = 160
-const STARTER_LEVEL = 0.6
-const POP_FREQ = 80
-const POP_LEVEL = 1.2
-
-// The filter wobble, and on the player's own engine the flutter, give an
-// idling engine its putter. As the revs rise to cruising they fade to this
-// fraction, leaving a smoother running sound.
-const ENGINE_CRUISE_PUTTER = 0.3
 
 // A running engine's revs are never quite steady: each wanders along its own
 // smooth random line, by up to ENGINE_WANDER_CENTS in pitch, with its snarl
@@ -531,73 +600,49 @@ const ENGINE_WANDER_LEVEL = 0.08
 // Each turn snarls the engine through this much mid boost, easing off after.
 const ENGINE_TURN_SNARL_DB = 8
 
-// How each engine starts up, so engines don't all start in unison.
+// How each engine powers up, so engines don't all start in unison.
 type StartupPlan = {
-  crank: number
-  // When the sputter's pops come, in seconds relative to the catch.
-  pops: number[]
-  // How long before the round starts the engine catches.
-  catchLead: number
-  // Compression strokes a second while cranking.
-  crankRate: number
+  // How long before the round starts the engine powers on.
+  powerLead: number
   flareRpm: number
-  huntRate: number
 }
 
 function planStartup(random: () => number): StartupPlan {
   const between = (min: number, max: number) => min + random() * (max - min)
-  const pops = []
-  for (let at = -between(0.15, 0.3); at < 0.02; at += between(0.03, 0.09)) pops.push(at)
   return {
-    crank: between(0.35, 0.8),
-    pops,
-    catchLead: between(0.3, 0.5),
-    crankRate: between(4.5, 6.5),
-    flareRpm: between(0.8, 1),
-    huntRate: between(2, 3.5),
+    powerLead: between(0.5, 1.2),
+    flareRpm: between(0.75, 0.95),
   }
 }
 
-// Simulates the revs and load at each step from an engine starting up
+// Simulates the revs and load at each step from an engine powering up
 // untilStart seconds before the round, to cruising after its launch. The last
-// step is exactly cruising: full revs, open throttle. The starter turns from
-// crankStart until the engine catches at crankEnd, and firing runs from 0
-// before the catch to 1 once the engine runs.
+// step is exactly cruising: full revs, open throttle. The engine powers on at
+// powerOn, and firing runs from 0 before then to 1 once it runs.
 function simulateRevUp(untilStart: number, plan: StartupPlan) {
   const idle = Math.max(0, untilStart)
   const launch = untilStart > 0 ? ENGINE_LAUNCH : ENGINE_LATE_LAUNCH
   const duration = idle + launch
   const steps = Math.ceil(duration * REV_UP_STEPS_PER_SECOND)
   const dt = duration / (steps - 1)
-  const crankEnd = idle - plan.catchLead >= 0.1 ? idle - plan.catchLead : 0
-  const crankStart = Math.max(0, crankEnd - plan.crank)
-  const catches = untilStart > 0
+  const powerOn = Math.max(0, idle - plan.powerLead)
+  const powers = untilStart > 0
   const rpm = new Float32Array(steps)
   const load = new Float32Array(steps)
   const firing = new Float32Array(steps)
-  let r = catches && crankEnd > 0 ? ENGINE_CRANK_RPM : ENGINE_IDLE_RPM
+  let r = powers ? ENGINE_SPIN_FROM_RPM : ENGINE_IDLE_RPM
   let l = 0
   let launchFromRpm = r
   for (let i = 0; i < steps; i++) {
     const t = i * dt
     let throttle = 1
-    if (t < crankStart) {
+    if (t < powerOn) {
       throttle = 0
       launchFromRpm = r
-    } else if (t < crankEnd) {
-      // Each compression slows the starter, and the revs pick up past it.
-      const phase = ((t - crankStart) * plan.crankRate) % 1
-      const compression = Math.sin(Math.PI * phase) ** 4
-      r = ENGINE_CRANK_RPM * (1.15 - 0.4 * compression)
-      throttle = 0.4 * (1 - compression)
-      launchFromRpm = r
     } else if (t < idle) {
-      const sinceCatch = t - crankEnd
-      throttle = catches && sinceCatch < ENGINE_CATCH_SECONDS ? 1 : 0
-      const hunt = 0.08 * Math.exp(-sinceCatch / 0.5) * Math.sin(2 * Math.PI * plan.huntRate * sinceCatch)
-      const target = throttle ? plan.flareRpm : ENGINE_IDLE_RPM * (1 + hunt)
-      const tau = target > r ? (throttle ? ENGINE_CATCH_RISE : ENGINE_RPM_RISE) : ENGINE_RPM_FALL
-      r += (target - r) * Math.min(1, dt / tau)
+      throttle = powers && t - powerOn < ENGINE_POWER_SECONDS ? 1 : 0
+      const target = throttle ? plan.flareRpm : ENGINE_IDLE_RPM
+      r += (target - r) * Math.min(1, dt / (target > r ? ENGINE_RPM_RISE : ENGINE_RPM_FALL))
       launchFromRpm = r
     } else {
       // The revs climb quickly as the lightcycle pulls away and ease into
@@ -609,34 +654,31 @@ function simulateRevUp(untilStart: number, plan: StartupPlan) {
     l += (throttle - l) * Math.min(1, dt / ENGINE_LOAD_SMOOTHING)
     rpm[i] = r
     load[i] = l
-    firing[i] = crankEnd > 0 ? Math.max(0, Math.min(1, (t - crankEnd) / ENGINE_CATCH_FADE)) : 1
+    firing[i] = powers ? Math.max(0, Math.min(1, (t - powerOn) / ENGINE_POWER_FADE)) : 1
   }
   rpm[steps - 1] = 1
   load[steps - 1] = 1
-  return { rpm, load, firing, duration, crankStart, crankEnd }
+  return { rpm, load, firing, duration }
 }
 
-// Continuous engine drone for one lightcycle: two detuned saws and a sub square
-// through a lowpass filter whose cutoff is wobbled by an LFO. A slow second LFO
-// drifts the tuning by a few cents so the drone doesn't sit dead still.
+// Continuous engine sound for one lightcycle: the firing loop through its
+// exhaust, and the saws under it, all through a lowpass filter. A slow LFO
+// drifts the tuning by a few cents so the engine doesn't sit dead still.
 //
-// Each engine's tuning, filter and wobble vary within a range, seeded by its
-// key. Engines far from the player's lightcycle (see setProximity) are quieter
-// and darker, so the nearest few stand out of a crowd.
-//
-// The player's own engine has a smaller sub than the others, an octave-up saw
-// and a shallower wobble. For texture it has a chugging flutter and a rasp:
-// noise gated by its own saw, so the grit is pitched with the engine and sits
-// under the same filter as the rest of its tone.
+// Each engine's tuning, filter and exhaust pipes vary within a range, seeded
+// by its key. Engines far from the player's lightcycle (see setProximity) are
+// quieter and darker, so the nearest few stand out of a crowd. The player's
+// own engine is brighter than the others.
 export class Engine {
-  private nodes: { wobble: OscillatorNode; stop: (t: number) => void } | null = null
+  private nodes: { stop: (t: number) => void } | null = null
   private panner: StereoPannerNode | null = null
-  private oscs: OscillatorNode[] = []
+  private voices: EngineVoice[] = []
   private env: GainNode | null = null
   private level: GainNode | null = null
   private filter: BiquadFilterNode | null = null
   private slot: number | null = null
-  private baseFreq = ENGINE_ROOT_FREQ
+  private baseFreq: number
+  private readonly boostPitch: number
   private pitch = 1
   private proximity = 1
   private doppler = 1
@@ -645,14 +687,11 @@ export class Engine {
   private readonly voice: {
     slotPreference: number
     cents: number
-    spread: number
     cutoff: number
     q: number
-    wobbleRate: number
-    wobbleDepth: number
     driftRate: number
     driftDepth: number
-    sub: number
+    pipes: number[]
     startup: StartupPlan
   }
 
@@ -662,17 +701,16 @@ export class Engine {
   ) {
     const random = seededRandom(key)
     const between = (min: number, max: number) => min + random() * (max - min)
+    this.baseFreq = ENGINE_ROOT_FREQ * (self ? ENGINE_SELF_PITCH : 1)
+    this.boostPitch = self ? ENGINE_BOOST_PITCH / ENGINE_SELF_PITCH : ENGINE_BOOST_PITCH
     this.voice = {
       slotPreference: Math.floor(random() * ENGINE_SLOT_RATIOS.length),
       cents: self ? 0 : between(-8, 8),
-      spread: between(5, 13),
-      cutoff: (self ? 750 : 400) * between(0.85, 1.15),
-      q: between(3, 5.5),
-      wobbleRate: between(5, 8.5),
-      wobbleDepth: between(60, 120) * (self ? 0.6 : 1),
+      cutoff: (self ? 8000 : 5000) * between(0.85, 1.15),
+      q: between(0.5, 0.9),
       driftRate: between(0.08, 0.3),
       driftDepth: between(3, 9),
-      sub: self ? 0.35 : between(0.4, 0.8),
+      pipes: ENGINE_PIPES_MS.map((ms) => (self ? ms : ms * between(1 - ENGINE_PIPE_SPREAD, 1 + ENGINE_PIPE_SPREAD))),
       startup: planStartup(random),
     }
   }
@@ -687,17 +725,14 @@ export class Engine {
     const voice = this.voice
     const sim = simulateRevUp(untilStart, voice.startup)
     // The rev-up is automated on parameters of its own (the rev filter, snarl
-    // and rev gain, the wobble and flutter depths and the oscillators' detune)
-    // so it can't collide with the automation that setProximity, setSpeed,
-    // setDoppler and stop schedule. rev waits for it to finish before touching
-    // the snarl.
+    // and rev gain, and the voices' detune) so it can't
+    // collide with the automation that setProximity, setSpeed, setDoppler and
+    // stop schedule. rev waits for it to finish before touching the snarl.
     const automate = (param: AudioParam, value: (rpm: number, load: number, firing: number) => number) => {
       const curve = new Float32Array(sim.rpm.length)
       for (let i = 0; i < curve.length; i++) curve[i] = value(sim.rpm[i], sim.load[i], sim.firing[i])
       param.setValueCurveAtTime(curve, t, sim.duration)
     }
-    const putter = (rpm: number) =>
-      1 - (1 - ENGINE_CRUISE_PUTTER) * Math.max(0, Math.min(1, (rpm - ENGINE_IDLE_RPM) / (1 - ENGINE_IDLE_RPM)))
     this.revUpEnds = t + sim.duration
 
     if (!this.self) {
@@ -714,14 +749,6 @@ export class Engine {
     highpass.type = 'highpass'
     highpass.frequency.value = this.self ? 55 : 40
     highpass.Q.value = 0.7
-
-    const wobble = ctx.createOscillator()
-    wobble.frequency.setValueAtTime(voice.wobbleRate * 0.4, t)
-    wobble.frequency.linearRampToValueAtTime(voice.wobbleRate, t + sim.duration)
-    const wobbleDepth = ctx.createGain()
-    automate(wobbleDepth.gain, (rpm) => voice.wobbleDepth * putter(rpm))
-    wobble.connect(wobbleDepth)
-    wobbleDepth.connect(filter.frequency)
 
     const drift = ctx.createOscillator()
     drift.frequency.value = voice.driftRate
@@ -770,129 +797,67 @@ export class Engine {
     const level = ctx.createGain()
     level.gain.value = this.levelGain()
 
-    // The starter motor strains louder and slows through each compression, as
-    // the revs do, and spins down once the engine catches. The sputter's pops
-    // are single low barks, each dropping in pitch.
-    let starter: OscillatorNode | null = null
-    let popper: OscillatorNode | null = null
-    if (sim.crankEnd > 0) {
-      const dt = sim.duration / (sim.rpm.length - 1)
-      const crankFrom = Math.ceil(sim.crankStart / dt)
-      const crank = sim.rpm.slice(crankFrom, Math.floor(sim.crankEnd / dt))
-      const crankAt = t + crankFrom * dt
-      const crankLength = crank.length * dt
-      starter = ctx.createOscillator()
-      starter.type = 'sawtooth'
-      starter.frequency.setValueCurveAtTime(
-        crank.map((rpm) => (STARTER_FREQ * rpm) / ENGINE_CRANK_RPM),
-        crankAt,
-        crankLength,
-      )
-      starter.frequency.exponentialRampToValueAtTime(STARTER_FREQ * 0.3, t + sim.crankEnd + 0.25)
-      const starterFilter = ctx.createBiquadFilter()
-      starterFilter.type = 'lowpass'
-      starterFilter.frequency.value = 1000
-      const starterGain = ctx.createGain()
-      const starterLevel = envLevel * STARTER_LEVEL
-      starterGain.gain.setValueCurveAtTime(
-        crank.map((rpm, i) => {
-          const strain = (1.15 - rpm / ENGINE_CRANK_RPM) / 0.4
-          return starterLevel * (0.55 + 0.45 * strain) * Math.min(1, (i * dt) / 0.03)
-        }),
-        crankAt,
-        crankLength,
-      )
-      starterGain.gain.linearRampToValueAtTime(0, t + sim.crankEnd + 0.2)
-      starter.connect(starterFilter)
-      starterFilter.connect(starterGain)
-      starterGain.connect(level)
-      starter.start(crankAt)
-      starter.stop(t + sim.crankEnd + 0.3)
-
-      const pop = ctx.createOscillator()
-      popper = pop
-      pop.type = 'sawtooth'
-      const popFilter = ctx.createBiquadFilter()
-      popFilter.type = 'lowpass'
-      popFilter.frequency.value = 600
-      popFilter.Q.value = 2
-      const popGain = ctx.createGain()
-      popGain.gain.value = 0
-      const pops = voice.startup.pops.map((offset) => t + Math.max(sim.crankStart + 0.05, sim.crankEnd + offset))
-      pops.forEach((at, i) => {
-        // Each pop ends before the next begins, so their automation doesn't
-        // overlap.
-        const length = Math.min(0.07, (pops[i + 1] ?? Infinity) - at - 0.005)
-        const peak = envLevel * POP_LEVEL * (0.6 + 0.4 * Math.random())
-        pop.frequency.setValueAtTime(POP_FREQ * 1.4, at)
-        pop.frequency.exponentialRampToValueAtTime(POP_FREQ * 0.7, at + length)
-        popGain.gain.setValueAtTime(0, at)
-        popGain.gain.linearRampToValueAtTime(peak, at + 0.004)
-        popGain.gain.exponentialRampToValueAtTime(0.0001, at + length)
-        popGain.gain.setValueAtTime(0, at + length + 0.001)
-      })
-      pop.connect(popFilter)
-      popFilter.connect(popGain)
-      popGain.connect(level)
-      pop.start(t)
-      pop.stop(t + sim.crankEnd + 0.2)
+    const addVoice = (source: EngineVoice['source'], detune: number, into: AudioNode) => {
+      const isOsc = source instanceof OscillatorNode
+      const v: EngineVoice = {
+        source,
+        rate: isOsc ? source.frequency : source.playbackRate,
+        perHz: isOsc ? 1 : 1 / ENGINE_ROOT_FREQ,
+      }
+      v.rate.value = this.voiceRate(v)
+      source.detune.value = voice.cents + detune
+      driftDepth.connect(source.detune)
+      wanderCents.connect(source.detune)
+      source.connect(into)
+      this.voices.push(v)
     }
+    this.voices = []
 
-    const makeOsc = (type: OscillatorType, index: number, detune: number, gain = 1) => {
-      const osc = ctx.createOscillator()
-      osc.type = type
-      osc.frequency.value = this.oscFreq(index)
-      osc.detune.value = voice.cents + detune
-      driftDepth.connect(osc.detune)
-      wanderCents.connect(osc.detune)
-      const oscGain = ctx.createGain()
-      oscGain.gain.value = gain
-      osc.connect(oscGain)
-      oscGain.connect(filter)
-      return osc
+    // The exhaust: the firing loop dry, plus each pipe's comb, whose output
+    // y[n] = x[n] + feedback * y[n - delay] loops through a delay.
+    const exhaust = ctx.createBiquadFilter()
+    exhaust.type = 'lowpass'
+    exhaust.frequency.value = ENGINE_EXHAUST_CUTOFF
+    exhaust.Q.value = Math.SQRT1_2
+    exhaust.connect(filter)
+    const firing = ctx.createBufferSource()
+    firing.buffer = getEngineBuffer(ctx)
+    firing.loop = true
+    const firingOut = ctx.createGain()
+    firingOut.connect(exhaust)
+    for (const ms of voice.pipes) {
+      const pipe = ctx.createGain()
+      const delay = ctx.createDelay(0.05)
+      delay.delayTime.value = ms / 1000
+      const feedback = ctx.createGain()
+      feedback.gain.value = ENGINE_PIPE_FEEDBACK
+      const pipeLevel = ctx.createGain()
+      pipeLevel.gain.value = ENGINE_PIPE_LEVEL
+      firingOut.connect(pipe)
+      pipe.connect(delay)
+      delay.connect(feedback)
+      feedback.connect(pipe)
+      pipe.connect(pipeLevel)
+      pipeLevel.connect(exhaust)
     }
-    this.oscs = [
-      makeOsc('sawtooth', 0, -voice.spread),
-      makeOsc('sawtooth', 1, voice.spread),
-      makeOsc('square', 2, 0, voice.sub),
-    ]
-    // The octave-up saw keeps the player's own engine, the lowest voice in the
-    // arena, audible on small speakers that can't reproduce its fundamental.
-    if (this.self) this.oscs.push(makeOsc('sawtooth', 3, 0, 0.6))
+    addVoice(firing, 0, firingOut)
+
+    const saws = ctx.createBiquadFilter()
+    saws.type = 'lowpass'
+    saws.frequency.value = ENGINE_SAW_CUTOFF
+    saws.Q.value = Math.SQRT1_2
+    const sawLevel = ctx.createGain()
+    sawLevel.gain.value = ENGINE_SAW_LEVEL
+    saws.connect(sawLevel)
+    sawLevel.connect(filter)
+    for (const detune of [0, ENGINE_SAW_DETUNE_CENTS]) {
+      const saw = ctx.createOscillator()
+      saw.type = 'sawtooth'
+      addVoice(saw, detune, saws)
+    }
 
     filter.connect(highpass)
-    let texture: { flutter: OscillatorNode; rasp: AudioBufferSourceNode } | null = null
-    if (this.self) {
-      // The flutter swings the grain gain between 1 - 2 * depth and 1.
-      const grain = ctx.createGain()
-      grain.gain.value = 1 - ENGINE_FLUTTER_DEPTH
-      const flutter = ctx.createOscillator()
-      flutter.type = 'triangle'
-      flutter.frequency.value = this.oscFreq(4)
-      const flutterDepth = ctx.createGain()
-      automate(flutterDepth.gain, (rpm) => ENGINE_FLUTTER_DEPTH * putter(rpm))
-      flutter.connect(flutterDepth)
-      flutterDepth.connect(grain.gain)
-
-      // The saw drives the gate's gain, multiplying the noise by it.
-      const rasp = ctx.createBufferSource()
-      rasp.buffer = getNoiseBuffer(ctx)
-      rasp.loop = true
-      const raspGate = ctx.createGain()
-      raspGate.gain.value = 0
-      this.oscs[0].connect(raspGate.gain)
-      const raspLevel = ctx.createGain()
-      raspLevel.gain.value = ENGINE_RASP_LEVEL
-      rasp.connect(raspGate)
-      raspGate.connect(raspLevel)
-      raspLevel.connect(filter)
-
-      highpass.connect(grain)
-      grain.connect(env)
-      texture = { flutter, rasp }
-    } else {
-      highpass.connect(env)
-    }
+    highpass.connect(env)
     env.connect(revFilter)
     revFilter.connect(snarl)
     snarl.connect(revGain)
@@ -913,41 +878,32 @@ export class Engine {
       level.connect(bus)
     }
 
-    wobble.start(t)
     drift.start(t)
     wander.start(t, Math.random() * getWanderBuffer(ctx).duration)
-    if (texture) {
-      texture.rasp.start(t, Math.random() * 0.5)
-      this.oscs.push(texture.flutter)
-    }
-    this.oscs.forEach((osc) => {
-      const detune = osc.detune.value
-      automate(osc.detune, (rpm) => detune + 1200 * Math.log2(rpm))
-      osc.start(t)
+    const sources = this.voices.map((v) => v.source)
+    sources.forEach((source) => {
+      const detune = source.detune.value
+      automate(source.detune, (rpm) => detune + 1200 * Math.log2(rpm))
+      if (source instanceof AudioBufferSourceNode) source.start(t, Math.random() * ENGINE_LOOP_SECONDS)
+      else source.start(t)
     })
     this.env = env
     this.level = level
     this.filter = filter
     this.snarl = snarl
-    const oscs = this.oscs
     // The engine stays counted on the crowd bus until its tail has played out,
     // so the bus doesn't turn up while engines are winding down.
     if (!this.self) {
-      oscs[0].onended = () => {
+      sources[0].onended = () => {
         crowd?.engines.delete(this)
         updateCrowdGain(ctx)
       }
     }
     this.nodes = {
-      wobble,
       stop: (at) => {
-        wobble.stop(at)
         drift.stop(at)
         wander.stop(at)
-        starter?.stop(Math.min(at, t + sim.crankEnd + 0.3))
-        popper?.stop(Math.min(at, t + sim.crankEnd + 0.2))
-        oscs.forEach((osc) => osc.stop(at))
-        texture?.rasp.stop(at)
+        sources.forEach((source) => source.stop(at))
       },
     }
   }
@@ -980,11 +936,17 @@ export class Engine {
   }
 
   private cutoff() {
-    return this.voice.cutoff * (0.55 + 0.45 * this.proximity)
+    return this.voice.cutoff * (0.4 + 0.6 * this.proximity)
   }
 
-  private oscFreq(index: number) {
-    return this.baseFreq * ENGINE_OSC_RATIOS[index] * this.pitch * this.doppler
+  private voiceRate(v: EngineVoice) {
+    return this.baseFreq * this.pitch * this.doppler * v.perHz
+  }
+
+  private retune(timeConstant: number) {
+    if (!ctx || this.nodes === null) return
+    const t = ctx.currentTime
+    this.voices.forEach((v) => v.rate.setTargetAtTime(this.voiceRate(v), t, timeConstant))
   }
 
   // Shifts the engine's pitch by a Doppler factor, above 1 when the engine is
@@ -992,32 +954,28 @@ export class Engine {
   setDoppler(factor: number) {
     if (Math.abs(factor - this.doppler) < 0.002) return
     this.doppler = factor
-    if (!ctx || this.nodes === null) return
-    const t = ctx.currentTime
-    this.oscs.forEach((osc, i) => osc.frequency.setTargetAtTime(this.oscFreq(i), t, 0.05))
+    this.retune(0.05)
   }
 
   // Pitches the engine up in proportion to how far the speed is above normal
-  // towards the full slipstream boost.
+  // towards the full slipstream boost, where it reaches boostPitch.
   setSpeed(speed: number) {
     const boost = Math.max(0, Math.min(1, (speed - LIGHTCYCLE_SPEED) / (LIGHTCYCLE_BOOST_SPEED - LIGHTCYCLE_SPEED)))
-    const pitch = 1 + (ENGINE_BOOST_PITCH - 1) * boost
+    const pitch = 1 + (this.boostPitch - 1) * boost
     if (Math.abs(pitch - this.pitch) < 0.001) return
     this.pitch = pitch
-    if (!ctx || this.nodes === null) return
-    const t = ctx.currentTime
-    this.oscs.forEach((osc, i) => osc.frequency.setTargetAtTime(this.oscFreq(i), t, 0.08))
+    this.retune(0.08)
   }
 
   // Brief pitch rise and snarl, used when the cycle turns.
   rev() {
     if (!ctx || this.nodes === null) return
     const t = ctx.currentTime
-    this.oscs.forEach((osc, i) => {
-      const freq = this.oscFreq(i)
-      osc.frequency.cancelScheduledValues(t)
-      osc.frequency.setValueAtTime(freq * 1.25, t)
-      osc.frequency.exponentialRampToValueAtTime(freq, t + 0.25)
+    this.voices.forEach((v) => {
+      const rate = this.voiceRate(v)
+      v.rate.cancelScheduledValues(t)
+      v.rate.setValueAtTime(rate * 1.25, t)
+      v.rate.exponentialRampToValueAtTime(rate, t + 0.25)
     })
     if (this.snarl !== null && t >= this.revUpEnds) {
       const gain = this.snarl.gain
@@ -1036,12 +994,11 @@ export class Engine {
     gain.cancelScheduledValues(t)
     if (throttleDown) {
       const winddown = 1.6
-      this.oscs.forEach((osc) => {
-        osc.frequency.cancelScheduledValues(t)
-        osc.frequency.setValueAtTime(osc.frequency.value, t)
-        osc.frequency.exponentialRampToValueAtTime(osc.frequency.value * 0.4, t + winddown)
+      this.voices.forEach(({ rate }) => {
+        rate.cancelScheduledValues(t)
+        rate.setValueAtTime(rate.value, t)
+        rate.exponentialRampToValueAtTime(rate.value * 0.4, t + winddown)
       })
-      this.nodes.wobble.frequency.setTargetAtTime(this.voice.wobbleRate * 0.4, t, winddown / 3)
       this.filter.frequency.setTargetAtTime(this.cutoff() * 0.35, t, winddown / 3)
       gain.setValueAtTime(gain.value, t)
       gain.setTargetAtTime(0, t + 0.15, winddown / 4)

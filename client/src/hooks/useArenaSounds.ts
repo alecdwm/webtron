@@ -23,7 +23,7 @@ export default function useArenaSounds(arena: Arena, selfId: string | null, serv
   const engines = useRef(new Map<string, Engine>())
   const selfCrashedAt = useRef<number | null>(null)
   // Engines are started ENGINE_REV_UP seconds before the round, and time
-  // their startups to catch just before it begins.
+  // their power-ups to come on just before it begins.
   const revving = useReachedTime(arena.started === null ? null : arena.started - ENGINE_REV_UP * 1000, serverTimeOffset)
 
   const panFor = (id: string, position: Point) =>
@@ -131,9 +131,9 @@ function smoothstep(x: number) {
 
 // The speed of sound for Doppler shifts between lightcycles, in arena units
 // per second. It is far slower than real sound relative to the lightcycles,
-// so that two passing at full speed bend each other's pitch by about two
-// semitones.
-const DOPPLER_SOUND_SPEED = 1500
+// so that two passing head-on at full speed bend each other's pitch by about
+// three semitones either side of passing.
+const DOPPLER_SOUND_SPEED = 600
 
 const directions: Record<Direction, Point> = {
   up: [0, 1],
