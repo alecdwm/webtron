@@ -120,6 +120,25 @@ impl Style {
         Style::Kamikaze,
     ];
 
+    fn random() -> Self {
+        Self::ALL[random_below(Self::ALL.len() as u32) as usize]
+    }
+
+    /// Random styles for a round's NPCs, with at most one Boxer. A Boxer walls
+    /// off a patch of the arena and spirals in on itself, so it sees little of
+    /// the other lightcycles, and a round with several of them is a quiet one.
+    pub fn for_round(count: usize) -> Vec<Self> {
+        let mut styles: Vec<Self> = Vec::with_capacity(count);
+        for _ in 0..count {
+            let choices: Vec<Self> = Self::ALL
+                .into_iter()
+                .filter(|style| *style != Style::Boxer || !styles.contains(&Style::Boxer))
+                .collect();
+            styles.push(choices[random_below(choices.len() as u32) as usize]);
+        }
+        styles
+    }
+
     /// How likely each plan is to be picked when a behaviour runs out.
     fn plans(self) -> &'static [(Plan, u32)] {
         match self {
@@ -232,10 +251,6 @@ impl Personality {
                 .map(|(plan, weight)| (*plan, vary(*weight).max(1)))
                 .collect(),
         }
-    }
-
-    fn random() -> Self {
-        Self::new(Style::ALL[random_below(Style::ALL.len() as u32) as usize])
     }
 
     /// Picks the next behaviour at random, weighted by this NPC's plans. An
@@ -432,8 +447,15 @@ pub struct NpcState {
 impl Default for NpcState {
     /// A fresh NPC with a random personality.
     fn default() -> Self {
+        Self::new(Style::random())
+    }
+}
+
+impl NpcState {
+    /// A fresh NPC with a personality of the given style.
+    pub fn new(style: Style) -> Self {
         Self {
-            personality: Personality::random(),
+            personality: Personality::new(style),
             behaviour: NpcBehaviour::Cruise,
             time_remaining: random_duration_for(&NpcBehaviour::Cruise),
             cutoff_cooldown: 0.0,
@@ -443,9 +465,7 @@ impl Default for NpcState {
             since_turn: 0.0,
         }
     }
-}
 
-impl NpcState {
     fn set_behaviour(&mut self, behaviour: NpcBehaviour) {
         self.time_remaining = random_duration_for(&behaviour);
         self.behaviour = behaviour;

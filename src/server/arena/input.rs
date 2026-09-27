@@ -57,10 +57,11 @@ impl ArenaInput {
                 arena.unrecorded_round_players.extend(&human_ids);
                 let npc_count = npc::npc_count_for_arena(human_ids.len());
                 let npc_players = npc::create_npc_players(npc_count);
-                for npc_player in &npc_players {
+                let npc_styles = npc::Style::for_round(npc_players.len());
+                for (npc_player, style) in npc_players.iter().zip(npc_styles) {
                     arena
                         .npc_states
-                        .insert(npc_player.id, npc::NpcState::default());
+                        .insert(npc_player.id, npc::NpcState::new(style));
                     updates.push(ArenaUpdate::AddPlayer(npc_player.id, npc_player.clone()));
                 }
 
