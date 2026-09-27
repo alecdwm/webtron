@@ -15,14 +15,14 @@ import MenuButton from '@/components/MenuButton'
 import NearMisses from '@/components/NearMisses'
 import Notifications from '@/components/Notifications'
 import RoundBanner from '@/components/RoundBanner'
-import useArenaAnimation, { ArenaAnimationContext } from '@/hooks/useArenaAnimation'
+import useArenaAnimation, { ArenaAnimationContext, EMOTE_MS } from '@/hooks/useArenaAnimation'
 import useArenaSounds from '@/hooks/useArenaSounds'
 import useEventListener from '@/hooks/useEventListener'
 import usePreloadImages from '@/hooks/usePreloadImages'
 import useStore from '@/hooks/useStore'
 import useStoreDispatch from '@/hooks/useStoreDispatch'
 import backgroundPanel from '@/img/background-panel.svg'
-import type { Arena as ArenaType, Color, ControlScheme, Direction, Emote, Side } from '@/types'
+import type { Arena as ArenaType, Color, ControlScheme, Direction, Emote, EmoteShown, Side } from '@/types'
 import { serverNow } from '@/utils/clock'
 import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
@@ -43,12 +43,12 @@ function ArenaView({ arena }: { arena: ArenaType }) {
   const controlScheme = useStore((store) => store.controlScheme)
   const serverTimeOffset = useStore((store) => store.serverTimeOffset)
   useArenaSounds(arena, player.id, serverTimeOffset)
-  const animation = useArenaAnimation(arena, serverTimeOffset, player.id)
+  const arenaRef = useRef<HTMLDivElement>(null)
+  const animation = useArenaAnimation(arena, serverTimeOffset, player.id, arenaRef)
   const dispatch = useStoreDispatch()
 
   const onStart = useCallback(() => dispatch(start()), [dispatch])
 
-  const arenaRef = useRef<HTMLDivElement>(null)
   const inRound = arena.started !== null
   const self = player.id !== null ? arena.lightcycles[player.id] : undefined
   const selfAlive = inRound && self !== undefined && !self.dead
@@ -123,7 +123,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
             spawnDelay={spawnDelayMs(index)}
             braking={braking && brake > 0}
             brake={id === player.id && inRound ? brake : null}
-            emote={dead ? undefined : arena.emotes[id]}
+            emote={dead ? undefined : recentEmote(arena.emotes[id], serverTimeOffset)}
             wrap={hasMutator(arena.round, 'Wrap')}
           />
         ))}
@@ -133,7 +133,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
 
         <Notifications arena={arena} />
         <RoundBanner round={arena.round} startAt={arena.started} serverTimeOffset={serverTimeOffset} />
-        <EmoteBar />
+        <EmoteBar color={colorOf(player.id ?? '')} />
         {selfAlive ? <BrakeButton /> : null}
 
         {arena.started !== null ? (
@@ -340,10 +340,18 @@ function useEmoteKeys() {
   useEventListener('keydown', onKeyDown)
 }
 
+// The emote, if it's still showing. One from before a lightcycle was placed
+// for a new round isn't shown again over it.
+function recentEmote(emote: EmoteShown | undefined, serverTimeOffset: number) {
+  return emote && serverNow(serverTimeOffset) - emote.at < EMOTE_MS ? emote : undefined
+}
+
 // A button for each emote, labelled with its key, for touchscreens and mice.
+// They're in the player's color, and flash filled in when pressed, like the
+// bubble the emote puts over the player's lightcycle.
 // The arena is drawn in the page's <main>, which clips it, so the bar goes in
 // an element of its own added just after it.
-function EmoteBar() {
+function EmoteBar({ color }: { color: Color }) {
   const dispatch = useStoreDispatch()
   const [container] = useState(() => {
     const element = document.createElement('div')
@@ -355,21 +363,32 @@ function EmoteBar() {
     return () => container.remove()
   }, [container])
 
+  // The last emote pressed and how many presses there have been, which
+  // alternates between two identical animations so each press restarts it.
+  const [fired, setFired] = useState<{ emote: Emote; count: number } | null>(null)
+
   return createPortal(
-    <div className={styles.emoteBar}>
-      {emotes.map((chosen, index) => (
-        <button
-          key={chosen}
-          className={styles.emoteButton}
-          // Not focused by a click, so Space still brakes rather than pressing
-          // the last emote again.
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => dispatch(emote(chosen))}
-        >
-          <span className={styles.emoteLabel}>{emoteLabels[chosen]}</span>
-          <span className={styles.emoteKey}>{index + 1}</span>
-        </button>
-      ))}
+    <div className={styles.emoteBar} style={{ '--cycle': colorToCss(color) } as CSSProperties}>
+      {emotes.map((chosen, index) => {
+        const flash = fired?.emote === chosen ? (fired.count % 2 ? styles.firedA : styles.firedB) : ''
+        return (
+          <button
+            key={chosen}
+            className={`${styles.emoteButton} ${flash}`}
+            aria-label={`Emote ${emoteLabels[chosen]} (key ${index + 1})`}
+            // Not focused by a click, so Space still brakes rather than pressing
+            // the last emote again.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              dispatch(emote(chosen))
+              setFired((last) => ({ emote: chosen, count: (last?.count ?? 0) + 1 }))
+            }}
+          >
+            <span className={styles.emoteLabel}>{emoteLabels[chosen]}</span>
+            <kbd className={styles.emoteKey}>{index + 1}</kbd>
+          </button>
+        )
+      })}
     </div>,
     container,
   )

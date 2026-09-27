@@ -28,7 +28,8 @@ type LightcycleProps = {
   // lightcycle in a round, how much brake it has left.
   braking: boolean
   brake: number | null
-  // The player's latest emote, shown over the lightcycle as it comes in.
+  // The player's latest emote, if it's recent enough to still show over the
+  // lightcycle.
   emote: EmoteShown | undefined
   // Whether the arena wraps round, so the headlight shines through its edges.
   wrap: boolean
@@ -97,11 +98,7 @@ function Lightcycle({
             <div className={styles.brakeFill} style={{ transform: `scaleX(${brake})` }} />
           </div>
         ) : null}
-        {emote ? (
-          <div key={emote.key} className={styles.emote}>
-            {emoteLabels[emote.emote]}
-          </div>
-        ) : null}
+        {emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost={false} /> : null}
         <img
           className={resolveClassName([styles.lightcycle, dead && styles.dead, rezzing && styles.spawning])}
           src={lightcycleImages[color]}
@@ -148,6 +145,7 @@ function Lightcycle({
               spriteClassName={resolveClassName([styles.lightcycle, rezzing && styles.spawning])}
               sprite={lightcycleImages[color]}
               spriteTransform={transform}
+              emote={emote}
             />
           ))
         : null}
@@ -167,6 +165,7 @@ type GhostLightcycleProps = {
   spriteClassName?: string
   sprite: string
   spriteTransform: string
+  emote: EmoteShown | undefined
 }
 
 // A copy of a lightcycle and its headlight a whole arena away, for an arena
@@ -184,6 +183,7 @@ function GhostLightcycle({
   spriteClassName,
   sprite,
   spriteTransform,
+  emote,
 }: GhostLightcycleProps) {
   const animation = useArenaAnimationContext()
   const ref = useCallback(
@@ -197,6 +197,22 @@ function GhostLightcycle({
         {braking ? <div className={styles.brakeLight} /> : null}
       </div>
       <img className={spriteClassName} src={sprite} style={{ transform: spriteTransform }} alt="" />
+      {emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost /> : null}
+    </div>
+  )
+}
+
+// A speech bubble that pops up over the lightcycle, then floats off. The
+// arena animation plays it and moves it to stay in view.
+function EmoteBubble({ id, emote, ghost }: { id: string; emote: EmoteShown; ghost: boolean }) {
+  const animation = useArenaAnimationContext()
+  const ref = useCallback(
+    (element: HTMLDivElement | null) => (element ? animation.trackEmote(id, element, emote.at, ghost) : undefined),
+    [animation, id, emote.at, ghost],
+  )
+  return (
+    <div ref={ref} className={styles.emote}>
+      {emoteLabels[emote.emote]}
     </div>
   )
 }

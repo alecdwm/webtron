@@ -1,4 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import {
+  createContext,
+  type RefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react'
 
 import type { Arena, Direction, Lightcycle, Point } from '@/types'
 import { serverNow } from '@/utils/clock'
@@ -17,6 +26,16 @@ const GHOST_REACH = 250
 // How far outside the arena, in arena units, the fog's pool of light around a
 // copy of the player's lightcycle can still light part of it.
 const FOG_POOL_REACH = 150
+
+// How long an emote shows for.
+export const EMOTE_MS = 2200
+// Where an emote's bubble sits, in pixels from the centre of its lightcycle:
+// above it, or below it when there is no room above. It floats away from
+// the lightcycle as it fades, by EMOTE_FLOAT. In an arena that doesn't wrap
+// round, a bubble is kept EMOTE_MARGIN pixels inside the edges.
+const EMOTE_ABOVE = 34
+const EMOTE_FLOAT = 16
+const EMOTE_MARGIN = 4
 
 // Where copies of a lightcycle go in an arena that wraps round, in arena
 // widths and heights from it: one past each side and corner of the arena.
@@ -63,6 +82,11 @@ export type ArenaAnimation = {
   // Places the element like the lightcycle, `offset` arena widths and
   // heights away from it.
   trackGhost: (id: string, element: HTMLElement, offset: Point) => () => void
+  // Plays the emote bubble's animation from `at`, in server time, so a
+  // bubble added part way through carries on from there. A bubble on a copy
+  // of a lightcycle only animates; one on the lightcycle itself is also kept
+  // inside the arena if it doesn't wrap round.
+  trackEmote: (id: string, element: HTMLElement, at: number, ghost: boolean) => () => void
   // Cuts pools of light out of the element's mask around the player's
   // lightcycle.
   trackFog: (element: HTMLElement) => () => void
@@ -80,19 +104,26 @@ export function useArenaAnimationContext(): ArenaAnimation {
 // its extrapolated position once per animation frame, writing to the DOM
 // directly so nothing re-renders. A lightcycle element gets its position as
 // its left and bottom, in percent of the arena; a trail's live paths get their
-// `d` attribute; the fog gets pools of light around the player's. It also draws after
+// `d` attribute; the fog gets pools of light around the player's; an emote
+// bubble gets a --shift to move it sideways inside the arena, and a
+// data-below attribute to put it under its lightcycle. It also draws after
 // every render of the arena, so new elements are placed before they are
-// first painted.
+// first painted. `arenaRef` is the arena's element, measured to place emote
+// bubbles in pixels.
 export default function useArenaAnimation(
   arena: Arena,
   serverTimeOffset: number,
   selfId: string | null,
+  arenaRef: RefObject<HTMLElement | null>,
 ): ArenaAnimation {
   const latest = useRef({ arena, serverTimeOffset, selfId })
   const lightcycles = useRef(new Map<string, HTMLElement>())
   const lightribbons = useRef(new Map<string, SVGPathElement[]>())
   const fogs = useRef(new Map<string, HTMLElement>())
   const ghosts = useRef(new Map<HTMLElement, { id: string; offset: Point }>())
+  const emotes = useRef(new Map<HTMLElement, TrackedEmote>())
+  // The arena's size in pixels.
+  const arenaSize = useRef<Point>([0, 0])
   // The last value written to each element, to skip writes that change nothing.
   const written = useRef(new WeakMap<Element, string>())
 
@@ -153,6 +184,34 @@ export default function useArenaAnimation(
       }
     }
 
+    const [arenaWidth, arenaHeight] = arenaSize.current
+    for (const [element, emote] of emotes.current) {
+      if (emote.ghost) continue
+      const lightcycle = arena.lightcycles[emote.id]
+      if (!lightcycle) continue
+      let shift = 0
+      let below = false
+      // In an arena that wraps round, a bubble goes through the edges like
+      // everything else, and shows on the lightcycle's copies beyond them.
+      if (!wrap && arenaWidth > 0) {
+        const [x, y] = lightcyclePosition(lightcycle, started, now, wrap)
+        const left = (x / width) * arenaWidth
+        const bottom = (y / height) * arenaHeight
+        below = bottom + EMOTE_ABOVE + emote.height + EMOTE_FLOAT > arenaHeight - EMOTE_MARGIN
+        const half = emote.width / 2
+        shift = Math.max(EMOTE_MARGIN + half - left, Math.min(0, arenaWidth - EMOTE_MARGIN - half - left))
+      }
+      const value = `${shift.toFixed(1)} ${below}`
+      if (written.current.get(element) === value) continue
+      written.current.set(element, value)
+      element.style.setProperty('--shift', `${shift.toFixed(1)}px`)
+      element.toggleAttribute('data-below', below)
+      if (below !== emote.below) {
+        emote.below = below
+        ;(emote.animation.effect as KeyframeEffect).setKeyframes(emoteKeyframes(below))
+      }
+    }
+
     const self = selfId !== null ? arena.lightcycles[selfId] : undefined
     if (self) {
       const [x, y] = lightcyclePosition(self, started, now, wrap)
@@ -185,6 +244,17 @@ export default function useArenaAnimation(
   })
 
   useEffect(() => {
+    const element = arenaRef.current
+    if (!element) return
+    const observer = new ResizeObserver(() => {
+      arenaSize.current = [element.clientWidth, element.clientHeight]
+    })
+    observer.observe(element)
+    arenaSize.current = [element.clientWidth, element.clientHeight]
+    return () => observer.disconnect()
+  }, [arenaRef])
+
+  useEffect(() => {
     let frame = requestAnimationFrame(function onFrame() {
       draw()
       frame = requestAnimationFrame(onFrame)
@@ -200,10 +270,55 @@ export default function useArenaAnimation(
         ghosts.current.set(element, { id, offset })
         return () => ghosts.current.delete(element)
       },
+      trackEmote: (id, element, at, ghost) => {
+        const animation = element.animate(emoteKeyframes(false), { duration: EMOTE_MS, fill: 'both' })
+        animation.currentTime = Math.max(0, serverNow(latest.current.serverTimeOffset) - at)
+        emotes.current.set(element, {
+          id,
+          ghost,
+          animation,
+          width: element.offsetWidth,
+          height: element.offsetHeight,
+          below: false,
+        })
+        return () => {
+          animation.cancel()
+          emotes.current.delete(element)
+        }
+      },
       trackFog: (element) => track(fogs.current, 'fog', element),
     }),
     [],
   )
+}
+
+type TrackedEmote = {
+  id: string
+  ghost: boolean
+  animation: Animation
+  // The bubble's size in pixels, unscaled.
+  width: number
+  height: number
+  below: boolean
+}
+
+const EMOTE_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+
+// An emote bubble pops up, then floats away from its lightcycle and fades:
+// up when it's above the lightcycle, down when it's below. With reduced
+// motion it only fades in and out.
+function emoteKeyframes(below: boolean): Keyframe[] {
+  const away = below ? -1 : 1
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const at = (y: number, scale: number) =>
+    still ? 'translate(-50%, 0)' : `translate(-50%, ${-y * away}px) scale(${scale})`
+  return [
+    { offset: 0, opacity: 0, transform: at(-8, 0.4), easing: EMOTE_EASING },
+    { offset: 0.12, opacity: 1, transform: at(0, 1.1), easing: EMOTE_EASING },
+    { offset: 0.2, transform: at(0, 1), easing: EMOTE_EASING },
+    { offset: 0.8, opacity: 1, transform: at(6, 1), easing: EMOTE_EASING },
+    { offset: 1, opacity: 0, transform: at(EMOTE_FLOAT, 0.9) },
+  ]
 }
 
 function track<T>(elements: Map<string, T>, id: string, element: T) {

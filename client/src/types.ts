@@ -184,13 +184,14 @@ export type Arena = {
   // this round's as it counts down.
   previousBlocked: [number, number][]
   // The latest near misses and each player's latest emote. Each has a number
-  // of its own, so a component can play its animation once.
+  // of its own, so a component can play its animation once. An emote also
+  // has the server time it was sent at.
   nearMisses: NearMiss[]
   emotes: Record<string, EmoteShown>
 }
 
 export type NearMiss = { key: number; player: string; point: Point }
-export type EmoteShown = { key: number; emote: Emote }
+export type EmoteShown = { key: number; emote: Emote; at: number }
 
 export type Stage = 'MainMenu' | 'Connect' | 'ArenaSelect' | 'Arena'
 export type SocketState = 'NOT_CONNECTED' | 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED'

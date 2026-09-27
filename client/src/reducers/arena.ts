@@ -155,7 +155,7 @@ function applyUpdate(arena: Arena, update: ArenaUpdate, time: number): Arena {
   }
   if ('Emote' in update) {
     const [player, emote] = update.Emote
-    return { ...arena, emotes: { ...arena.emotes, [player]: { key: nextEffectKey++, emote } } }
+    return { ...arena, emotes: { ...arena.emotes, [player]: { key: nextEffectKey++, emote, at: time } } }
   }
 
   if ('RemovePlayer' in update) return { ...arena, players: without(arena.players, update.RemovePlayer) }

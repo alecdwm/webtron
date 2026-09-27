@@ -120,11 +120,13 @@
   box-shadow: 0 0 4px var(--red);
 }
 
-/* A speech bubble that pops up over the name, then floats off. */
+/* A speech bubble over the name, or under the lightcycle when there's no
+   room above. The arena animation plays it, and sets --shift to keep it
+   inside the arena, while its tail still points at the lightcycle. */
 .emote {
   --glow: var(--cycle);
   position: absolute;
-  left: 0;
+  left: var(--shift, 0px);
   bottom: 34px;
   z-index: 4;
   padding: 0.15em 0.55em;
@@ -138,17 +140,24 @@
   font-size: 0.75rem;
   font-weight: 900;
   letter-spacing: 0.08em;
-  animation: emote 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .emote::after {
   position: absolute;
   bottom: -4px;
-  left: 50%;
+  left: clamp(8px, calc(50% - var(--shift, 0px)), calc(100% - 8px));
   width: 8px;
   height: 8px;
   content: '';
   transform: translateX(-50%) rotate(45deg);
   background: var(--cycle);
+}
+.emote[data-below] {
+  top: 26px;
+  bottom: auto;
+}
+.emote[data-below]::after {
+  top: -4px;
+  bottom: auto;
 }
 
 /* Pulsing ring around your own cycle while waiting in the lobby. */
@@ -283,27 +292,6 @@
   from {
     opacity: 0;
     transform: scale(0.3);
-  }
-}
-@keyframes emote {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, 8px) scale(0.4);
-  }
-  12% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1.1);
-  }
-  20% {
-    transform: translate(-50%, 0) scale(1);
-  }
-  80% {
-    opacity: 1;
-    transform: translate(-50%, -6px) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -16px) scale(0.9);
   }
 }
 @keyframes selfpulse {
