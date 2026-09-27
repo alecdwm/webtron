@@ -25,6 +25,18 @@ export function portalAppearAt(startAt: number, index: number) {
   return startAt - COUNTDOWN_MS + FIRST_PORTAL_MS + index * PORTAL_STAGGER_MS
 }
 
+// Pairs of mutators a round can't have together, as on the server (see
+// CLASHING_MUTATORS in src/server/arena/round.rs).
+const clashingMutators: [Mutator, Mutator][] = [
+  ['Shrink', 'Wrap'],
+  ['Shrink', 'Portals'],
+]
+
+// Whether mutators `a` and `b` can't be in a round together.
+export function mutatorsClash(a: Mutator, b: Mutator) {
+  return clashingMutators.some(([x, y]) => (x === a && y === b) || (x === b && y === a))
+}
+
 export const mutatorInfo: Record<Mutator, { name: string; description: string; color: Color }> = {
   Shrink: { name: 'Shrink', description: `Walls close in after ${SHRINK_DELAY_SECONDS}s`, color: 'red' },
   Wrap: { name: 'Wraparound', description: 'Ride off an edge, come back on the other side', color: 'purple' },

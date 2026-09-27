@@ -90,6 +90,21 @@
   font-size: clamp(0.6rem, 2.3cqi, 0.8rem);
 }
 
+/* With the test scenario panel open, the lobby card below the winner takes
+   the rest of the arena (see ScenarioPanel). Where the arena is too small
+   for both, it scrolls. */
+.testing {
+  justify-content: safe center;
+  gap: 3cqi;
+  padding: 3cqi 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+.scenarioStart {
+  font-size: clamp(0.75rem, 2.6cqi, 1rem);
+}
+
 /* Just below the arena, the same width. */
 .belowArena {
   width: calc(100% - 2rem);

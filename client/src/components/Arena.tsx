@@ -28,6 +28,7 @@ import type { Arena as ArenaType, Color, ControlScheme, Direction, Emote, EmoteS
 import { serverNow } from '@/utils/clock'
 import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
+import resolveClassName from '@/utils/resolveClassName'
 import { emoteLabels, emotes, hasMutator } from '@/utils/round'
 import { readScenario, storeScenario } from '@/utils/scenario'
 import { spawnDelayMs } from '@/utils/spawn'
@@ -80,6 +81,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
   const humanAlive = Object.entries(arena.lightcycles).some(([id, { dead }]) => !dead && !arena.players[id]?.npc)
   const canCutShort = inRound && roundPlayed && !humanAlive
   const showLobby = !inRound || canCutShort
+  const startLabel = winner || canCutShort ? 'REMATCH' : 'START'
   const spawning = arena.started !== null && serverNow(serverTimeOffset) < arena.started
   useStartKeys(showLobby, onStart)
 
@@ -160,7 +162,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
         ) : null}
 
         {winner || showLobby ? (
-          <div className={styles.overlay}>
+          <div className={resolveClassName([styles.overlay, showLobby && scenario && styles.testing])}>
             {winner && (
               <div className={styles.winner} style={{ '--winner': colorToCss(winner.color) } as CSSProperties}>
                 <div className={styles.winnerLabel}>Winner</div>
@@ -169,11 +171,22 @@ function ArenaView({ arena }: { arena: ArenaType }) {
               </div>
             )}
 
-            {showLobby ? (
+            {showLobby && scenario ? (
+              <ScenarioPanel
+                scenario={scenario}
+                onChange={changeScenario}
+                onClose={() => changeScenario(null)}
+                start={
+                  <MenuButton className={styles.scenarioStart} onClick={onStart}>
+                    {startLabel}
+                  </MenuButton>
+                }
+              />
+            ) : showLobby ? (
               <div className={styles.lobby}>
                 {!winner && !canCutShort && <div className={styles.arenaName}>{arena.name}</div>}
                 <MenuButton className={styles.startButton} onClick={onStart}>
-                  {winner || canCutShort ? 'REMATCH' : 'START'}
+                  {startLabel}
                 </MenuButton>
                 {!roundPlayed && (
                   <div className={styles.lobbyInfo}>
@@ -187,9 +200,6 @@ function ArenaView({ arena }: { arena: ArenaType }) {
                   <br />
                   Space / Shift to brake · 1–3 to emote
                 </div>
-                {scenario ? (
-                  <ScenarioPanel scenario={scenario} onChange={changeScenario} onClose={() => changeScenario(null)} />
-                ) : null}
               </div>
             ) : null}
           </div>

@@ -1,48 +1,179 @@
+/* The lobby card, lit orange, as tall as it needs to be, or as the room
+   left below the winner. */
 .panel {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
-  gap: 1.2cqi;
-  max-width: 78cqi;
-  padding-top: 1.6cqi;
-  border-top: 1px dashed color-mix(in srgb, var(--orange) 50%, transparent);
+  gap: 2cqi;
+  box-sizing: border-box;
+  width: 94%;
+  min-height: 12em;
+  padding: 2cqi 2.4cqi 2.4cqi;
+  border: 1px solid color-mix(in srgb, var(--orange) 50%, transparent);
+  border-radius: 12px;
+  background: rgba(8, 18, 18, 0.88);
+  backdrop-filter: blur(2px);
   font-family: var(--font-mono);
-  font-size: clamp(0.55rem, 2cqi, 0.75rem);
+  font-size: clamp(0.62rem, 2.2cqi, 0.82rem);
   text-transform: uppercase;
 }
 .heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  letter-spacing: 0.15em;
+  gap: 2cqi;
+}
+.title {
+  flex: 1;
+  overflow: hidden;
+  letter-spacing: 0.25em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--orange);
+  font-family: var(--font-display);
+  font-size: 1.1em;
+}
+.close {
+  flex: none;
+  width: 2em;
+  height: 2em;
+  padding: 0;
+  cursor: pointer;
+  line-height: 1;
+  color: color-mix(in srgb, var(--orange) 80%, var(--white));
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+  border-radius: 50%;
+  background: transparent;
+  font: inherit;
+  font-size: 1.2em;
+}
+.close:hover {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 18%, transparent);
+}
+
+/* Each section's name over what is picked in it, lit orange while open. */
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6em;
+}
+.tab {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.6em;
+  min-width: 0;
+  padding: 0.35em 0.4em;
+  cursor: pointer;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--white) 55%, transparent);
+  border: none;
+  border-bottom: 2px solid color-mix(in srgb, var(--white) 14%, transparent);
+  background: transparent;
+  font: inherit;
+  text-transform: inherit;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.tab:hover {
+  color: var(--white);
+}
+.tab[aria-selected='true'] {
+  color: var(--white);
+  border-bottom-color: var(--orange);
+}
+.tabName {
+  letter-spacing: 0.1em;
+}
+.tabValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--orange);
 }
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.8cqi;
+
+/* Two rows of four cells in every tab, sharing out the card's height. */
+.grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(2.2em, 3.4em));
+  gap: 0.6em;
+  align-content: safe center;
+  min-height: 0;
 }
-.label {
-  min-width: 11cqi;
-  color: color-mix(in srgb, var(--white) 50%, transparent);
-}
+
 .chip,
-.chipOn,
-.close {
-  padding: 0.2em 0.6em;
-  cursor: pointer;
-  border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent);
-  border-radius: 4px;
+.random,
+.slot,
+.add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0 0.3em;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--blue) 40%, transparent);
+  border-radius: 5px;
   background: transparent;
-  color: color-mix(in srgb, var(--white) 75%, transparent);
+  color: color-mix(in srgb, var(--white) 82%, transparent);
   font: inherit;
   text-transform: inherit;
 }
-.chipOn {
+.chip,
+.random,
+.add {
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+.chip:hover,
+.random:hover,
+.add:hover {
+  border-color: var(--blue);
+  color: var(--white);
+}
+.chip[aria-pressed='true'] {
   border-color: var(--orange);
   background: color-mix(in srgb, var(--orange) 20%, transparent);
   color: var(--orange);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--orange) 50%, transparent);
 }
-.close {
-  border-color: color-mix(in srgb, var(--orange) 50%, transparent);
+/* Random is a mode rather than a pick: dashed, and lit in blue. */
+.random {
+  border-style: dashed;
+}
+.random[aria-pressed='true'] {
+  border-style: solid;
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 18%, transparent);
+  color: var(--blue);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--blue) 50%, transparent);
+}
+.remove {
+  margin-left: 0.4em;
+  opacity: 0.7;
+}
+/* The first empty NPC slot, a menu of the styles to add. */
+.add {
+  appearance: none;
+  text-align: center;
+  text-align-last: center;
+  border-style: dashed;
+  color: var(--blue);
+}
+.add option {
+  background: var(--darkaqua);
+  color: var(--white);
+  text-transform: none;
+}
+/* An NPC slot nobody fills: a question mark while the NPCs are random. */
+.slot {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--white) 16%, transparent);
+  color: color-mix(in srgb, var(--blue) 60%, transparent);
 }
