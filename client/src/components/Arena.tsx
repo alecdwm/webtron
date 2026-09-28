@@ -199,7 +199,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
                     ? '← → / A D / tap either side to turn'
                     : 'Arrows / WASD / tap to steer'}
                   <br />
-                  Space / Shift to brake · 1–3 to emote
+                  Space to brake · 1–3 to emote
                 </div>
               </div>
             ) : null}
@@ -214,8 +214,6 @@ const gameKeys = new Set([
   'Space',
   'Enter',
   'NumpadEnter',
-  'ShiftLeft',
-  'ShiftRight',
   'ArrowUp',
   'ArrowDown',
   'ArrowLeft',
@@ -315,8 +313,6 @@ function useControls(controlScheme: ControlScheme) {
   )
 }
 
-const brakeKeys = new Set(['Space', 'ShiftLeft', 'ShiftRight'])
-
 function useKeyControls(inRound: boolean, selfAlive: boolean, controlScheme: ControlScheme) {
   const { onDirection, onSide, steering } = useControls(controlScheme)
   const dispatch = useStoreDispatch()
@@ -334,7 +330,7 @@ function useKeyControls(inRound: boolean, selfAlive: boolean, controlScheme: Con
     'keyup',
     useCallback(
       (event: KeyboardEvent) => {
-        if (brakeKeys.has(event.code)) dispatch(brake(false))
+        if (event.code === 'Space') dispatch(brake(false))
       },
       [dispatch],
     ),
@@ -345,7 +341,7 @@ function useKeyControls(inRound: boolean, selfAlive: boolean, controlScheme: Con
       if (!inRound) return
 
       // Otherwise Space is left to START / REMATCH.
-      if (brakeKeys.has(event.code) && selfAlive) {
+      if (event.code === 'Space' && selfAlive) {
         event.preventDefault()
         if (!event.repeat) dispatch(brake(true))
         return
