@@ -7,7 +7,7 @@
 Include:
 
 - An open grid with the Obstacles mutator, partway through a round.
-- One rider per colour: TRON (blue), alec (green), CLU (orange), DUMONT (purple), SARK (red), ANON (white). Every name tag is inside the arena.
+- One rider per colour: TRON (blue), alec (green), CLU (orange), MONTI (purple), SARK (red), ANON (white). Every name tag is inside the arena.
 - ANON exploding near the middle of the arena after running into CLU's trail, with CLU nearby saying LOL. Nobody else has crashed; the others are competing for space.
 
 Leave out:
