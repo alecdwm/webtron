@@ -51,6 +51,10 @@ const BRAKE_RECOVERY: f64 = 60.0;
 /// How long a full brake lasts, and how long an empty one takes to recharge.
 const BRAKE_SECONDS: f64 = 1.5;
 const BRAKE_RECHARGE_SECONDS: f64 = 6.0;
+/// Lightcycles whose paths cross collide with each other when the second is
+/// no further than this from the crossing as the first gets there. Further
+/// off, the second rides into the first's trail instead.
+const COLLISION_MARGIN: f64 = 1.0;
 /// A lightcycle has a near miss when it passes this close to the end of a
 /// trail, or turns this close to crashing.
 const NEAR_MISS_DISTANCE: f64 = 10.0;
@@ -641,6 +645,10 @@ impl Arena {
     /// out from the speed: the lightcycle's own trail ends there, and a
     /// rounding error would count that as a crash.
     ///
+    /// Crashes are settled in the order they happen during the update. Each
+    /// lightcycle that crashes is cut short where it stopped, so its trail
+    /// can't be in the way of the others any further along.
+    ///
     /// Lightcycles that don't crash may have a near miss, and those that ride
     /// off an edge of an arena with `Mutator::Wrap` come back in at the
     /// opposite edge.
@@ -648,7 +656,7 @@ impl Arena {
         &mut self,
         starts: &HashMap<PlayerId, ArenaPoint>,
     ) -> &mut Self {
-        let travels: HashMap<PlayerId, Travel> = self
+        let mut travels: HashMap<PlayerId, Travel> = self
             .lightcycles
             .iter()
             .filter(|(_, lightcycle)| !lightcycle.dead)
@@ -660,43 +668,55 @@ impl Arena {
             .collect();
         let bounds = (!self.round.has(Mutator::Wrap)).then(|| self.bounds(0.0));
 
+        // The earliest crash can't be undone by any other, which would have
+        // to come before it. Settling it cuts that lightcycle's trail short,
+        // which can only take crashes away from the others, so the rest are
+        // looked for again.
+        let mut crashes: HashMap<PlayerId, DeathCause> = HashMap::new();
+        loop {
+            let earliest = travels
+                .iter()
+                .filter(|(id, _)| !crashes.contains_key(id))
+                .filter_map(|(id, travel)| {
+                    travel
+                        .legs
+                        .iter()
+                        .enumerate()
+                        .find_map(|(leg, &(from, to))| {
+                            let (time, contact, cause) =
+                                self.first_crash(*id, leg, from, to, &travels, bounds)?;
+                            Some((time, *id, leg, contact, cause))
+                        })
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+            let Some((_, id, leg, contact, cause)) = earliest else {
+                break;
+            };
+            travels.get_mut(&id).unwrap().stop_at(leg, contact);
+            crashes.insert(id, cause);
+        }
+
         let mut near_misses = Vec::new();
         let mut emotes = Vec::new();
-        'next_lightcycle: for (id, travel) in travels.iter() {
-            for (leg, &(from, to)) in travel.legs.iter().enumerate() {
-                let Some((contact, cause)) = self.first_crash(*id, leg, from, to, &travels, bounds)
-                else {
-                    continue;
-                };
-                self.push_gates(*id, travel, leg);
-                self.updates
-                    .push(ArenaUpdate::UpdateLightcyclePosition(*id, contact));
-                self.updates
-                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id, cause));
-                emotes.extend(self.npc_death_emotes(*id, cause, &travels));
-                continue 'next_lightcycle;
-            }
-
-            if travel.legs.len() > 1 {
+        for (id, travel) in travels.iter() {
+            let crash = crashes.get(id).copied();
+            if crash.is_some() || travel.legs.len() > 1 {
                 self.updates
                     .push(ArenaUpdate::UpdateLightcyclePosition(*id, travel.end()));
                 self.push_gates(*id, travel, travel.legs.len() - 1);
             }
 
-            // test for lightcycles arriving at the same point from the side
-            if let Some((other_id, _)) = travels
-                .iter()
-                .find(|(other_id, other)| *other_id != id && other.end() == travel.end())
-            {
-                let cause = DeathCause::Lightcycle(*other_id);
-                self.updates
-                    .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id, cause));
-                emotes.extend(self.npc_death_emotes(*id, cause, &travels));
-                continue 'next_lightcycle;
-            }
-
-            if let Some((point, gap)) = self.near_miss_point(*id, travel, &travels) {
-                near_misses.push((*id, point, gap));
+            match crash {
+                Some(cause) => {
+                    self.updates
+                        .push(ArenaUpdate::UpdateLightcycleApplyDeath(*id, cause));
+                    emotes.extend(self.npc_death_emotes(*id, cause, &travels));
+                }
+                None => {
+                    if let Some((point, gap)) = self.near_miss_point(*id, travel, &travels) {
+                        near_misses.push((*id, point, gap));
+                    }
+                }
             }
         }
 
@@ -755,8 +775,8 @@ impl Arena {
         emotes
     }
 
-    /// Where a lightcycle first crashes, and into what, on one leg of its
-    /// travel this update.
+    /// When a lightcycle first crashes on one leg of its travel this update,
+    /// as a fraction of the update, and where, and into what.
     fn first_crash(
         &self,
         id: PlayerId,
@@ -765,35 +785,41 @@ impl Arena {
         to: ArenaPoint,
         travels: &HashMap<PlayerId, Travel>,
         bounds: Option<(ArenaPoint, ArenaPoint)>,
-    ) -> Option<(ArenaPoint, DeathCause)> {
+    ) -> Option<(f64, ArenaPoint, DeathCause)> {
         let lightcycle = &self.lightcycles[&id];
+        let travel = &travels[&id];
 
         // Coming back in at the edge of the arena, into a walled-off cell.
         if leg > 0 && self.round.is_blocked_at(from, self.width, self.height) {
-            return Some((from, DeathCause::Boundary));
+            return Some((travel.time(leg, from), from, DeathCause::Boundary));
         }
 
-        // Coming out of a portal, or back in at an edge, onto a trail.
+        // Coming out of a portal, or back in at an edge, onto a trail, or
+        // onto another lightcycle's travel this update, timed as a crossing.
         // `first_contact` leaves out touching where a leg starts.
         if leg > 0 {
+            let time = travel.time(leg, from);
             for (ribbon_id, lightribbon) in self.lightribbons.iter() {
-                let live_segments = travels
-                    .get(ribbon_id)
-                    .filter(|_| ribbon_id != &id)
-                    .map(|travel| travel.legs.as_slice())
-                    .unwrap_or_default();
-                if lightribbon
-                    .segments()
-                    .chain(live_segments.iter().copied())
-                    .any(|(a, b)| touches(from, a, b))
-                {
-                    return Some((from, DeathCause::Trail(*ribbon_id)));
+                if lightribbon.segments().any(|(a, b)| touches(from, a, b)) {
+                    return Some((time, from, DeathCause::Trail(*ribbon_id)));
+                }
+                let Some(other_travel) = travels.get(ribbon_id).filter(|_| ribbon_id != &id) else {
+                    continue;
+                };
+                for (other_leg, &(a, b)) in other_travel.legs.iter().enumerate() {
+                    if touches(from, a, b)
+                        && let Some(cause) =
+                            crossing(travel, leg, *ribbon_id, other_travel, other_leg, from)
+                    {
+                        return Some((time, from, cause));
+                    }
                 }
             }
         }
 
         // test for head-on collisions with lightcycles coming the other
-        // way along the same line, which meet between where the two were
+        // way along the same line, which meet between where the two were,
+        // unless the other crashed before getting there
         let head_on = (leg == 0)
             .then(|| {
                 travels
@@ -810,6 +836,9 @@ impl Arena {
                             other_from,
                             lightcycle.speed / (lightcycle.speed + other.speed),
                         );
+                        if !touches(meeting, other_from, other_to) {
+                            return None;
+                        }
                         Some(((meeting - from).length(), meeting, *other_id))
                     })
                     .min_by(|a, b| a.0.total_cmp(&b.0))
@@ -835,16 +864,34 @@ impl Arena {
             // updated, so its travel is checked as well. A lightcycle's own
             // travel is the one being tested, and that of one met head-on is
             // where the two meet.
-            let live_segments = travels
+            let other_travel = travels
                 .get(ribbon_id)
                 .filter(|_| ribbon_id != &id)
-                .filter(|_| head_on.is_none_or(|(.., other_id)| other_id != *ribbon_id))
-                .map(|travel| travel.legs.as_slice())
-                .unwrap_or_default();
+                .filter(|_| head_on.is_none_or(|(.., other_id)| other_id != *ribbon_id));
 
-            for (a, b) in lightribbon.segments().chain(live_segments.iter().copied()) {
+            for (a, b) in lightribbon.segments() {
                 if let Some(contact) = first_contact(from, to, a, b) {
                     consider(contact, DeathCause::Trail(*ribbon_id));
+                }
+            }
+
+            let other_legs = other_travel.map(|travel| travel.legs.as_slice());
+            for (other_leg, &(a, b)) in other_legs.unwrap_or_default().iter().enumerate() {
+                let Some(contact) = first_contact(from, to, a, b) else {
+                    continue;
+                };
+                // Along the same line, the other lightcycle's trail is in the
+                // way: it's going the same way ahead of this one, or coming
+                // the other way and stopped before the two could meet.
+                if (to - from).dot(b - a) != 0.0 {
+                    consider(contact, DeathCause::Trail(*ribbon_id));
+                    continue;
+                }
+                let other_travel = other_travel.unwrap();
+                if let Some(cause) =
+                    crossing(travel, leg, *ribbon_id, other_travel, other_leg, contact)
+                {
+                    consider(contact, cause);
                 }
             }
         }
@@ -867,7 +914,7 @@ impl Arena {
             }
         }
 
-        crash.map(|(_, contact, cause)| (contact, cause))
+        crash.map(|(_, contact, cause)| (travel.time(leg, contact), contact, cause))
     }
 
     /// Ends a lightcycle's trail where it went into each portal or off the
@@ -1173,6 +1220,34 @@ fn first_contact(
     Some(near)
 }
 
+/// What a lightcycle crashes into where its travel crosses that of lightcycle
+/// `other_id`, at `point` on leg `leg` of `travel` and leg `other_leg` of
+/// `other`. Whichever gets there second rides into the other's trail, unless
+/// the two get there together.
+fn crossing(
+    travel: &Travel,
+    leg: usize,
+    other_id: PlayerId,
+    other: &Travel,
+    other_leg: usize,
+    point: ArenaPoint,
+) -> Option<DeathCause> {
+    let mine = travel.time(leg, point);
+    let theirs = other.time(other_leg, point);
+    let behind = if theirs <= mine {
+        (mine - theirs) * travel.length
+    } else {
+        (theirs - mine) * other.length
+    };
+    if behind <= COLLISION_MARGIN {
+        Some(DeathCause::Lightcycle(other_id))
+    } else if theirs < mine {
+        Some(DeathCause::Trail(other_id))
+    } else {
+        None
+    }
+}
+
 /// Whether `point` is on the horizontal or vertical segment from `a` to `b`.
 fn touches(point: ArenaPoint, a: ArenaPoint, b: ArenaPoint) -> bool {
     (a.x.min(b.x)..=a.x.max(b.x)).contains(&point.x)
@@ -1183,6 +1258,9 @@ fn touches(point: ArenaPoint, a: ArenaPoint, b: ArenaPoint) -> bool {
 /// portal it goes into or edge of the arena it wraps round.
 struct Travel {
     legs: Vec<(ArenaPoint, ArenaPoint)>,
+    /// How far the lightcycle would go in the update without crashing, at
+    /// the one speed all the way.
+    length: f64,
 }
 
 impl Travel {
@@ -1200,17 +1278,36 @@ impl Travel {
         let stretches = arena.stretches(from, direction, delta.length());
         // A single leg ends exactly where the lightcycle is, which its trail
         // is drawn to.
-        if stretches.len() == 1 {
-            return Self {
-                legs: vec![(from, to)],
-            };
-        }
-        Self {
-            legs: stretches
+        let legs = if stretches.len() == 1 {
+            vec![(from, to)]
+        } else {
+            stretches
                 .into_iter()
                 .map(|(from, to, _)| (from, to))
-                .collect(),
+                .collect()
+        };
+        let length = legs.iter().map(|(from, to)| (*to - *from).length()).sum();
+        Self { legs, length }
+    }
+
+    /// When the lightcycle is at `point` on leg `leg`, as a fraction of the
+    /// update.
+    fn time(&self, leg: usize, point: ArenaPoint) -> f64 {
+        if self.length == 0.0 {
+            return 0.0;
         }
+        let before: f64 = self.legs[..leg]
+            .iter()
+            .map(|(from, to)| (*to - *from).length())
+            .sum();
+        (before + (point - self.legs[leg].0).length()) / self.length
+    }
+
+    /// Cuts the travel short where the lightcycle stopped, at `point` on leg
+    /// `leg`.
+    fn stop_at(&mut self, leg: usize, point: ArenaPoint) {
+        self.legs.truncate(leg + 1);
+        self.legs[leg].1 = point;
     }
 
     /// Where the lightcycle ends up.
@@ -1476,6 +1573,137 @@ mod tests {
         }
     }
 
+    /// Lightcycles `a` and `b` each moved this update from `starts` to
+    /// `ends` in a straight line, trailing 20 back from the start, with the
+    /// collisions calculated.
+    fn crossing_paths(ids: [PlayerId; 2], starts: [ArenaPoint; 2], ends: [ArenaPoint; 2]) -> Arena {
+        crossing_paths_in(Arena::default(), ids, starts, ends)
+    }
+
+    /// As `crossing_paths`, in `arena`.
+    fn crossing_paths_in(
+        mut arena: Arena,
+        [a, b]: [PlayerId; 2],
+        starts: [ArenaPoint; 2],
+        ends: [ArenaPoint; 2],
+    ) -> Arena {
+        for ((id, start), end) in [a, b].into_iter().zip(starts).zip(ends) {
+            let heading = (end - start).normalize();
+            let direction = if heading.x > 0.0 {
+                Direction::Right
+            } else if heading.x < 0.0 {
+                Direction::Left
+            } else if heading.y > 0.0 {
+                Direction::Up
+            } else {
+                Direction::Down
+            };
+            arena.lightcycles.insert(
+                id,
+                Lightcycle {
+                    position: end,
+                    direction,
+                    ..Default::default()
+                },
+            );
+            arena.lightribbons.insert(
+                id,
+                Lightribbon {
+                    paths: vec![vec![start - heading * 20.0, start]],
+                },
+            );
+        }
+        let starts = HashMap::from([(a, starts[0]), (b, starts[1])]);
+        arena
+            .calculate_lightcycle_collisions(&starts)
+            .apply_updates();
+        arena
+    }
+
+    #[test]
+    fn lightcycles_crossing_paths_together_crash_into_each_other() {
+        let (a, b) = (PlayerId::default(), PlayerId::default());
+        // Both halfway through the update at (101.375, 50), and then b just
+        // behind a, 0.5 short of the crossing as a gets there.
+        for b_start in [48.625, 48.125] {
+            let arena = crossing_paths(
+                [a, b],
+                [
+                    ArenaPoint::new(100.0, 50.0),
+                    ArenaPoint::new(101.375, b_start),
+                ],
+                [
+                    ArenaPoint::new(102.75, 50.0),
+                    ArenaPoint::new(101.375, b_start + 2.75),
+                ],
+            );
+            assert_eq!(
+                arena.lightcycles[&a].death_cause,
+                Some(DeathCause::Lightcycle(b))
+            );
+            assert_eq!(
+                arena.lightcycles[&b].death_cause,
+                Some(DeathCause::Lightcycle(a))
+            );
+            for id in [a, b] {
+                assert_eq!(
+                    arena.lightcycles[&id].position,
+                    ArenaPoint::new(101.375, 50.0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_second_lightcycle_to_a_crossing_rides_into_the_first_ones_trail() {
+        let (a, b) = (PlayerId::default(), PlayerId::default());
+        // b gets to (102.5, 50) after 1 of its travel, a after 2.5.
+        let arena = crossing_paths(
+            [a, b],
+            [ArenaPoint::new(100.0, 50.0), ArenaPoint::new(102.5, 49.0)],
+            [ArenaPoint::new(102.75, 50.0), ArenaPoint::new(102.5, 51.75)],
+        );
+        assert_eq!(
+            arena.lightcycles[&a].death_cause,
+            Some(DeathCause::Trail(b))
+        );
+        assert_eq!(arena.lightcycles[&a].position, ArenaPoint::new(102.5, 50.0));
+        assert!(!arena.lightcycles[&b].dead);
+        assert_eq!(
+            arena.lightcycles[&b].position,
+            ArenaPoint::new(102.5, 51.75)
+        );
+    }
+
+    #[test]
+    fn lightcycles_dont_crash_into_trails_cut_short_by_an_earlier_crash() {
+        let (a, b) = (PlayerId::default(), PlayerId::default());
+        // a would cross b's path at (102, 50) first, but crashes into a trail
+        // at x = 101 before it gets there.
+        let wall = PlayerId::default();
+        let mut arena = Arena::default();
+        arena.lightribbons.insert(
+            wall,
+            Lightribbon {
+                paths: vec![vec![
+                    ArenaPoint::new(101.0, 0.0),
+                    ArenaPoint::new(101.0, 100.0),
+                ]],
+            },
+        );
+        let arena = crossing_paths_in(
+            arena,
+            [a, b],
+            [ArenaPoint::new(100.0, 50.0), ArenaPoint::new(102.0, 47.5)],
+            [ArenaPoint::new(102.75, 50.0), ArenaPoint::new(102.0, 50.25)],
+        );
+        assert_eq!(
+            arena.lightcycles[&a].death_cause,
+            Some(DeathCause::Trail(wall))
+        );
+        assert!(!arena.lightcycles[&b].dead);
+    }
+
     /// A running arena with one lightcycle at (100, 110) going up, and a trail
     /// from (100, 100).
     fn arena_going_up(id: PlayerId) -> Arena {
@@ -1674,6 +1902,55 @@ mod tests {
                 vec![ArenaPoint::new(0.0, 100.0), lightcycle.position],
             ]
         );
+    }
+
+    #[test]
+    fn lightcycles_wrapping_round_onto_a_path_are_timed_as_a_crossing() {
+        let (a, b) = (PlayerId::default(), PlayerId::default());
+        let wrapping = || {
+            let mut arena = Arena::default();
+            ArenaUpdate::SetRound(Round::new(Shape::Grid, vec![Mutator::Wrap])).apply(&mut arena);
+            arena
+        };
+        // a comes back in at (0, 100) after 1 of its travel, and b gets
+        // there along the edge after 2.5.
+        let arena = crossing_paths_in(
+            wrapping(),
+            [a, b],
+            [
+                ArenaPoint::new(ARENA_WIDTH - 1.0, 100.0),
+                ArenaPoint::new(0.0, 97.5),
+            ],
+            [
+                ArenaPoint::new(ARENA_WIDTH + 1.75, 100.0),
+                ArenaPoint::new(0.0, 100.25),
+            ],
+        );
+        assert!(!arena.lightcycles[&a].dead);
+        assert_eq!(
+            arena.lightcycles[&b].death_cause,
+            Some(DeathCause::Trail(a))
+        );
+
+        // b gets there after 0.5, and a comes back in after 2.
+        let arena = crossing_paths_in(
+            wrapping(),
+            [a, b],
+            [
+                ArenaPoint::new(ARENA_WIDTH - 2.0, 100.0),
+                ArenaPoint::new(0.0, 99.5),
+            ],
+            [
+                ArenaPoint::new(ARENA_WIDTH + 0.75, 100.0),
+                ArenaPoint::new(0.0, 102.25),
+            ],
+        );
+        assert_eq!(
+            arena.lightcycles[&a].death_cause,
+            Some(DeathCause::Trail(b))
+        );
+        assert_eq!(arena.lightcycles[&a].position, ArenaPoint::new(0.0, 100.0));
+        assert!(!arena.lightcycles[&b].dead);
     }
 
     /// A round on the plain grid with one pair of portals, upright lines
