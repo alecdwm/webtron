@@ -153,7 +153,7 @@ const MUTATOR_WEIGHTS: [(Mutator, u32); 7] = [
     (Mutator::Wrap, 10),
     (Mutator::Snake, 10),
     (Mutator::Overdrive, 10),
-    (Mutator::Fog, 4),
+    (Mutator::Fog, 2),
     (Mutator::Obstacles, 10),
     (Mutator::Portals, 10),
 ];
@@ -658,7 +658,7 @@ mod tests {
     fn fog_is_rolled_less_often_than_other_mutators() {
         let count = |mutator| (0..4000).filter(|_| Round::roll().has(mutator)).count();
         let (fog, snake) = (count(Mutator::Fog), count(Mutator::Snake));
-        assert!(fog * 3 < snake * 2, "fog {fog}, snake {snake}");
+        assert!(fog * 3 < snake, "fog {fog}, snake {snake}");
     }
 
     #[test]
