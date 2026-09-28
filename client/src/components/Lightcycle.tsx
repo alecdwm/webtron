@@ -1,6 +1,8 @@
 import { type CSSProperties, memo, type ReactNode, useCallback } from 'react'
 
+import useAnimationsDone from '@/hooks/useAnimationsDone'
 import { useArenaAnimationContext } from '@/hooks/useArenaAnimation'
+import useStore from '@/hooks/useStore'
 import type { Color, Direction, EmoteShown } from '@/types'
 import { colorToCss } from '@/utils/colors'
 import lightcycleImages from '@/utils/lightcycleImages'
@@ -26,10 +28,10 @@ type LightcycleProps = {
   spawning: boolean
   // How long this lightcycle waits to rez in, to stagger a round's spawns.
   spawnDelay: number
-  // Whether the lightcycle is slowing under braking, and for the player's own
-  // lightcycle in a round, how much brake it has left.
+  // Whether the lightcycle is slowing under braking, and whether to show how
+  // much brake it has left, for the player's own lightcycle in a round.
   braking: boolean
-  brake: number | null
+  brakeMeter: boolean
   // The player's latest emote, if it's recent enough to still show over the
   // lightcycle.
   emote: EmoteShown | undefined
@@ -64,7 +66,7 @@ function Lightcycle({
   spawning,
   spawnDelay,
   braking,
-  brake,
+  brakeMeter,
   emote,
   copies,
   portals,
@@ -118,11 +120,7 @@ function Lightcycle({
         <div className={styles.bodyPart} data-part="sprite">
           <div className={styles.partOrigin}>{sprite}</div>
         </div>
-        {brake !== null && !dead && (brake < 1 || braking) ? (
-          <div className={styles.brakeMeter}>
-            <div className={styles.brakeFill} style={{ transform: `scaleX(${brake})` }} />
-          </div>
-        ) : null}
+        {brakeMeter && !dead ? <BrakeMeter id={id} /> : null}
         {emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost={false} /> : null}
         {rezzing ? (
           <div className={styles.effect}>
@@ -138,7 +136,7 @@ function Lightcycle({
           </div>
         ) : null}
         {dead ? (
-          <div className={styles.effect}>
+          <Derez>
             <div className={styles.ring} />
             <div className={styles.flash} />
             {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => (
@@ -148,7 +146,7 @@ function Lightcycle({
                 style={{ '--angle': `${index * 45 + 20}deg` } as CSSProperties}
               />
             ))}
-          </div>
+          </Derez>
         ) : null}
       </div>
       {copies && !dead
@@ -203,7 +201,35 @@ function Copy({ id, index, colorVars, emote, children: [nameTag, headlight, spri
       <div className={styles.bodyPart} data-part="sprite">
         <div className={styles.partOrigin}>{sprite}</div>
       </div>
-      <div data-part="emote">{emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost /> : null}</div>
+      <div className={styles.emotePart} data-part="emote">
+        {emote ? <EmoteBubble key={emote.key} id={id} emote={emote} ghost /> : null}
+      </div>
+    </div>
+  )
+}
+
+// How much brake the player's own lightcycle has left, while it has used
+// any. It reads the store itself, so the lightcycle doesn't re-render each
+// time the brake changes.
+function BrakeMeter({ id }: { id: string }) {
+  const brake = useStore((store) => store.arena?.lightcycles[id]?.brake ?? 1)
+  const braking = useStore((store) => store.arena?.lightcycles[id]?.braking ?? false)
+  if (brake >= 1 && !(braking && brake > 0)) return null
+  return (
+    <div className={styles.brakeMeter}>
+      <div className={styles.brakeFill} style={{ transform: `scaleX(${brake})` }} />
+    </div>
+  )
+}
+
+// The ring, flash and 8 shards a lightcycle breaks into, taken out of the
+// page once they have all faded out.
+function Derez({ children }: { children: ReactNode }) {
+  const { done, onAnimationEnd } = useAnimationsDone(10)
+  if (done) return null
+  return (
+    <div className={styles.effect} onAnimationEnd={onAnimationEnd}>
+      {children}
     </div>
   )
 }

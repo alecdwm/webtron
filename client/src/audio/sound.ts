@@ -824,6 +824,8 @@ function simulateRevUp(untilStart: number, plan: StartupPlan) {
 export class Engine {
   private nodes: { stop: (t: number) => void } | null = null
   private panner: StereoPannerNode | null = null
+  // The pan last set, to skip setting one too close to it to hear.
+  private pan: number | null = null
   private voices: EngineVoice[] = []
   private env: GainNode | null = null
   private level: GainNode | null = null
@@ -1062,7 +1064,10 @@ export class Engine {
 
   setPan(pan: number) {
     if (!ctx || !this.panner) return
-    this.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), ctx.currentTime, 0.05)
+    pan = Math.max(-1, Math.min(1, pan))
+    if (this.pan !== null && Math.abs(pan - this.pan) < 0.005) return
+    this.pan = pan
+    this.panner.pan.setTargetAtTime(pan, ctx.currentTime, 0.05)
   }
 
   // Sets how close this engine is to the listener, from 0 (across the arena)

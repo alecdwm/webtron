@@ -36,7 +36,7 @@ const BEAM_SPREAD = (40 * Math.PI) / 180
 const EYE_BACK = 0.5
 // Further than anything in the arena.
 const FAR = 10000
-const EVERYWHERE: Polygon = [
+export const EVERYWHERE: Polygon = [
   [-FAR, -FAR],
   [FAR, -FAR],
   [FAR, FAR],

@@ -1,4 +1,4 @@
-import { type CSSProperties, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { brake, emote, start, steer, turn } from '@/actions'
@@ -70,7 +70,8 @@ function ArenaView({ arena }: { arena: ArenaType }) {
   useCaptureGameKeys()
 
   const { width, height } = arena
-  const colorOf = (id: string): Color => arena.players[id]?.color ?? 'white'
+  const players = arena.players
+  const colorOf = useCallback((id: string): Color => players[id]?.color ?? 'white', [players])
   const winner = arena.winner ? arena.players[arena.winner] : undefined
   const playerCount = Object.keys(arena.players).length
   // The player count is only meaningful before the first round: afterwards
@@ -142,7 +143,7 @@ function ArenaView({ arena }: { arena: ArenaType }) {
             spawning={spawning}
             spawnDelay={spawnDelayMs(index)}
             braking={braking && brake > 0}
-            brake={id === player.id && inRound ? brake : null}
+            brakeMeter={id === player.id && inRound}
             emote={dead ? undefined : recentEmote(arena.emotes[id], serverTimeOffset)}
             copies={hasMutator(arena.round, 'Wrap') || arena.round.portals.length > 0}
             portals={arena.round.portals.length > 0}
@@ -399,7 +400,7 @@ function recentEmote(emote: EmoteShown | undefined, serverTimeOffset: number) {
 // bubble the emote puts over the player's lightcycle.
 // The arena is drawn in the page's <main>, which clips it, so the bar goes in
 // an element of its own added just after it.
-function EmoteBar({ color }: { color: Color }) {
+const EmoteBar = memo(function EmoteBar({ color }: { color: Color }) {
   const dispatch = useStoreDispatch()
   const [container] = useState(() => {
     const element = document.createElement('div')
@@ -440,7 +441,7 @@ function EmoteBar({ color }: { color: Color }) {
     </div>,
     container,
   )
-}
+})
 
 // A brake to hold down on touchscreens, which have no keys for it.
 function BrakeButton() {

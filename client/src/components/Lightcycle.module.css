@@ -1,7 +1,10 @@
-/* A zero-size box at the lightcycle's position, which the arena animation
-   moves by setting its left and bottom. The lightcycle's elements are placed
-   relative to it. It has no z-index, so their z-indexes still stack them
-   among the arena's other elements. */
+/* A zero-size box in the arena's bottom left corner. The arena animation
+   translates each of the lightcycle's elements in it to the lightcycle's
+   position, which unlike moving the anchor needs no layout. The anchor has
+   no z-index or transform, so the elements' z-indexes still stack them among
+   the arena's other elements. Every element in it has a z-index or an
+   animated transform already, so translating it doesn't change how it
+   stacks. */
 .anchor {
   position: absolute;
   left: 0;
@@ -181,6 +184,16 @@
   content: '';
   transform: translateX(-50%) rotate(45deg);
   background: var(--cycle);
+}
+/* The part of a copy of a lightcycle holding its emote bubble, stacked as
+   the bubble is. */
+.emotePart {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 0;
+  height: 0;
 }
 .emote[data-below] {
   top: 26px;

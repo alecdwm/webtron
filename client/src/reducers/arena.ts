@@ -200,11 +200,18 @@ function appendPoint({ fixed, tip }: Lightribbon, point: Point): Lightribbon {
 
 // Removes `length` from the oldest end of the trail, as the server does (see
 // Lightribbon::trim_front in src/server/arena/entities.rs).
+// Only the path being trimmed is copied, so the rest keep their identity.
 function trimFront(paths: Point[][], length: number): Point[][] {
-  const trimmed = paths.map((path) => [...path])
+  const trimmed = [...paths]
+  // The copy of the first path, once it has been copied.
+  let copied: Point[] | null = null
   while (length > 0 && trimmed.length > 0) {
-    const path = trimmed[0]
-    if (path.length < 2) break
+    if (trimmed[0].length < 2) break
+    if (trimmed[0] !== copied) {
+      copied = [...trimmed[0]]
+      trimmed[0] = copied
+    }
+    const path = copied
     const [[fromX, fromY], [toX, toY]] = path
     const segment = Math.hypot(toX - fromX, toY - fromY)
     if (segment > length) {

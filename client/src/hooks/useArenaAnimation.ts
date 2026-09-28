@@ -25,6 +25,7 @@ import {
 import {
   type Build,
   type Crossing,
+  EVERYWHERE,
   LIGHTCYCLE_BUILD_PX,
   crossingsOf,
   gatesToSee,
@@ -127,9 +128,12 @@ export function useArenaAnimationContext(): ArenaAnimation {
 
 // Moves every tracked lightcycle, and the live end of every tracked trail, to
 // its extrapolated position once per animation frame, writing to the DOM
-// directly so nothing re-renders. A lightcycle element gets its position as
-// its left and bottom, in percent of the arena, and its name and body parts
-// clip-paths hiding what is seen through gates; a copy of it gets its
+// directly so nothing re-renders. Frames are only drawn while something can
+// move: a round with lightcycles still in it, or portals rippling. Each child
+// of a lightcycle element is translated to its position, in pixels from the
+// arena's bottom left corner (see .anchor in
+// components/Lightcycle.module.css), and its body parts get clip-paths
+// hiding what is seen through gates; a copy of it gets its
 // position and clip-paths showing only what is seen of it through them, or
 // is hidden; a trail's live paths get their
 // `d` attribute; the fog gets pools of light round the player's; an emote
@@ -159,10 +163,16 @@ export default function useArenaAnimation(
   const lightribbons = useRef(new Map<string, SVGPathElement[]>())
   const fogs = useRef(new Map<SVGGElement, string>())
   const emotes = useRef(new Map<HTMLElement, TrackedEmote>())
-  // The arena's size in pixels.
+  // The arena's size in pixels, and the same without rounding, which
+  // lightcycles are placed by.
   const arenaSize = useRef<Point>([0, 0])
-  // The last value written to each element, to skip writes that change nothing.
+  const arenaExactSize = useRef<Point>([0, 0])
+  // The parts of each lightcycle and copy element, found once.
+  const parts = useRef(new WeakMap<HTMLElement, Parts>())
+  // The last value written to each element, to skip writes that change nothing,
+  // and the same for the translation of each lightcycle's children.
   const written = useRef(new WeakMap<Element, string>())
+  const translated = useRef(new WeakMap<Element, string>())
 
   const draw = useCallback(() => {
     const { arena, serverTimeOffset, selfId } = latest.current
@@ -199,35 +209,45 @@ export default function useArenaAnimation(
     // Writes where a lightcycle or copy goes and how its parts are clipped,
     // unless it's all as it was. A part is clipped even with nothing cut out
     // of it, since taking the clip off and putting it back as the lightcycle
-    // goes through a gate can make the headlight flicker. A copy's parts are
-    // hidden where it sees nothing of them.
+    // goes through a gate can make the headlight flicker; with nothing cut
+    // out, the clip is the same wherever the lightcycle is, so moving it
+    // doesn't change the clip. A copy's parts are hidden where it sees nothing
+    // of them. Positions are rounded to device pixels, as the browser rounds
+    // a box placed by layout.
+    const [exactWidth, exactHeight] = arenaExactSize.current
+    const pixel = devicePixelRatio || 1
+    const snap = (px: number) => Math.round(px * pixel) / pixel
     const place = (element: HTMLElement, at: Point, view: View, copy: boolean) => {
-      const left = `${(at[0] / width) * 100}%`
-      const bottom = `${(at[1] / height) * 100}%`
+      // Each child is checked, not just the element, since one added since
+      // the last write, such as a crash's derez, has yet to be moved.
+      const translate = `${snap((at[0] / width) * exactWidth)}px ${snap((-at[1] / height) * exactHeight)}px`
+      for (const child of element.children) {
+        if (!(child instanceof HTMLElement) || translated.current.get(child) === translate) continue
+        translated.current.set(child, translate)
+        child.style.translate = translate
+      }
       const clipOf = (seen: Seen | null) => (seen === null ? null : clipPath(seen.region, seen.holes, at, scale))
       const beam = clipOf(view.beam)
       const sprite = clipOf(view.sprite)
-      const value = `${left} ${bottom} ${beam} ${sprite} ${view.wrapOnly}`
+      const value = `${beam} ${sprite} ${view.wrapOnly}`
       if (written.current.get(element) === value) return
       written.current.set(element, value)
       element.style.display = ''
-      element.style.left = left
-      element.style.bottom = bottom
-      const part = (name: string) => element.querySelector<HTMLElement>(`:scope > [data-part=${name}]`)
-      for (const [name, clip] of [
-        ['beam', beam],
-        ['sprite', sprite],
+      const found = partsOf(parts.current, element)
+      for (const [part, clip] of [
+        [found.beam, beam],
+        [found.sprite, sprite],
       ] as const) {
-        const found = part(name)
-        if (!found) continue
-        found.style.display = clip === null ? 'none' : ''
-        found.style.clipPath = clip ?? ''
-        found.style.setProperty('-webkit-clip-path', clip ?? '')
+        const value = clip ?? 'hidden'
+        if (!part || written.current.get(part) === value) continue
+        written.current.set(part, value)
+        part.style.display = clip === null ? 'none' : ''
+        part.style.clipPath = clip ?? ''
+        part.style.setProperty('-webkit-clip-path', clip ?? '')
       }
       if (copy) {
-        for (const name of ['name', 'emote']) {
-          const found = part(name)
-          if (found) found.style.display = view.wrapOnly ? '' : 'none'
+        for (const part of [found.name, found.emote]) {
+          if (part) part.style.display = view.wrapOnly ? '' : 'none'
         }
       }
     }
@@ -360,6 +380,26 @@ export default function useArenaAnimation(
     if (self && fogs.current.size > 0) {
       const reach = FOG_POOL_REACH * width
       const lights = lightsOf(lightcyclePosition(self, started, now, gates), reach, gatesSeen)
+      const transform = `matrix(${1 / width} 0 0 ${-1 / height} 0 1)`
+      // Pools seen whole, as they are away from gates, are circles already
+      // there moved to where they are now, which is cheaper than building the
+      // mask again.
+      if (lights.every(({ region, holes }) => !region && holes.length === 0)) {
+        const shape = `${lights.length} circles ${reach} ${transform}`
+        for (const [element, prefix] of fogs.current) {
+          if (written.current.get(element) !== shape) {
+            written.current.set(element, shape)
+            element.setAttribute('transform', transform)
+            element.innerHTML = lights.map(() => `<circle r="${reach}" fill="url(#${prefix}-pool)"/>`).join('')
+          }
+          lights.forEach(({ center: [x, y] }, index) => {
+            const circle = element.children[index]
+            circle.setAttribute('cx', x.toFixed(2))
+            circle.setAttribute('cy', y.toFixed(2))
+          })
+        }
+        return
+      }
       // Circles in arena units, with y going up, in the fog's box one unit
       // across, each masked to where it is seen.
       const shape = (prefix: string) =>
@@ -378,7 +418,6 @@ export default function useArenaAnimation(
             )
           })
           .join('')
-      const transform = `matrix(${1 / width} 0 0 ${-1 / height} 0 1)`
       for (const [element, prefix] of fogs.current) {
         const value = shape(prefix)
         if (written.current.get(element) === value) continue
@@ -389,35 +428,64 @@ export default function useArenaAnimation(
     }
   }, [])
 
+  // Whether anything drawn can change from one frame to the next without the
+  // arena changing: lightcycles moving in a round, or portals rippling.
+  const moving = useCallback(() => {
+    const { arena } = latest.current
+    if (portals.current.size > 0) return true
+    return arena.started !== null && Object.values(arena.lightcycles).some(({ dead }) => !dead)
+  }, [])
+
+  // Draws once per animation frame while anything is moving, and starts
+  // again when woken.
+  const frame = useRef<number | null>(null)
+  const wake = useCallback(() => {
+    if (frame.current !== null || !moving()) return
+    frame.current = requestAnimationFrame(function onFrame() {
+      draw()
+      frame.current = moving() ? requestAnimationFrame(onFrame) : null
+    })
+  }, [draw, moving])
+  useEffect(
+    () => () => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current)
+      frame.current = null
+    },
+    [],
+  )
+
+  useLayoutEffect(() => {
+    const element = arenaRef.current
+    if (!element) return
+    const measure = () => {
+      const style = getComputedStyle(element)
+      arenaSize.current = [element.clientWidth, element.clientHeight]
+      arenaExactSize.current = [parseFloat(style.width) || 0, parseFloat(style.height) || 0]
+    }
+    const observer = new ResizeObserver(() => {
+      measure()
+      draw()
+    })
+    observer.observe(element)
+    measure()
+    return () => observer.disconnect()
+  }, [arenaRef, draw])
+
   useLayoutEffect(() => {
     latest.current = { arena, serverTimeOffset, selfId }
     draw()
+    wake()
   })
-
-  useEffect(() => {
-    const element = arenaRef.current
-    if (!element) return
-    const observer = new ResizeObserver(() => {
-      arenaSize.current = [element.clientWidth, element.clientHeight]
-    })
-    observer.observe(element)
-    arenaSize.current = [element.clientWidth, element.clientHeight]
-    return () => observer.disconnect()
-  }, [arenaRef])
-
-  useEffect(() => {
-    let frame = requestAnimationFrame(function onFrame() {
-      draw()
-      frame = requestAnimationFrame(onFrame)
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [draw])
 
   return useMemo(
     () => ({
-      trackLightcycle: (id, element) => track(lightcycles.current, id, element),
+      trackLightcycle: (id, element) => {
+        parts.current.delete(element)
+        return track(lightcycles.current, id, element)
+      },
       trackLightribbon: (id, livePaths) => track(lightribbons.current, id, livePaths),
       trackCopy: (id, element, index) => {
+        parts.current.delete(element)
         copies.current.set(element, { id, index })
         return () => copies.current.delete(element)
       },
@@ -427,6 +495,7 @@ export default function useArenaAnimation(
       },
       trackPortal: (element, portal, twin, appearAt) => {
         portals.current.set(element, { portal, twin, appearAt })
+        wake()
         return () => portals.current.delete(element)
       },
       trackEmote: (id, element, at, ghost) => {
@@ -450,7 +519,7 @@ export default function useArenaAnimation(
         return () => fogs.current.delete(element)
       },
     }),
-    [],
+    [wake],
   )
 }
 
@@ -483,7 +552,7 @@ function portalSurface(
   nowMs: number,
   reveal: number,
 ): [string, string] {
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const still = reducedMotion.matches
   const t = still ? 0 : nowMs / 1000
   if (still) reveal = 1
   const [start, end] = lines[0]
@@ -573,6 +642,7 @@ const PART_SIZE = 600
 // way from the region, rather than by the even-odd rule, which not every
 // browser takes in a clip-path.
 function clipPath(region: Polygon, holes: Polygon[], [fromX, fromY]: Point, [scaleX, scaleY]: Point) {
+  if (region === EVERYWHERE && holes.length === 0) return UNCLIPPED
   const middle = PART_SIZE / 2
   const onScreen = (polygon: Polygon): Polygon =>
     polygon.map(([x, y]) => [(x - fromX) * scaleX + middle, (fromY - y) * scaleY + middle])
@@ -590,6 +660,25 @@ function clipPath(region: Polygon, holes: Polygon[], [fromX, fromY]: Point, [sca
 
 // Further than anything in the arena, in arena units.
 const FAR = 10000
+
+// The clip-path of a part with nothing cut out of it: further than anything
+// in the arena, in pixels, however big it is drawn.
+const UNCLIPPED = "path('M-1000000 -1000000L1000000 -1000000L1000000 1000000L-1000000 1000000Z')"
+
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
+
+// The parts of a lightcycle or copy element (see components/Lightcycle.tsx).
+type Parts = Record<'name' | 'beam' | 'sprite' | 'emote', HTMLElement | null>
+
+function partsOf(found: WeakMap<HTMLElement, Parts>, element: HTMLElement): Parts {
+  let parts = found.get(element)
+  if (!parts) {
+    const part = (name: string) => element.querySelector<HTMLElement>(`:scope > [data-part=${name}]`)
+    parts = { name: part('name'), beam: part('beam'), sprite: part('sprite'), emote: part('emote') }
+    found.set(element, parts)
+  }
+  return parts
+}
 
 // A polygon's points for an SVG polygon's points attribute.
 function pointsOf(polygon: Polygon) {
@@ -613,7 +702,7 @@ const EMOTE_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 // motion it only fades in and out.
 function emoteKeyframes(below: boolean): Keyframe[] {
   const away = below ? -1 : 1
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const still = reducedMotion.matches
   const at = (y: number, scale: number) =>
     still ? 'translate(-50%, 0)' : `translate(-50%, ${-y * away}px) scale(${scale})`
   return [

@@ -33,9 +33,13 @@ export default memo(ArenaGrid)
 // turn, in an order seeded by the start time so every player sees the same
 // one; then the grid dims to its in-play level as a scanline sweeps down it,
 // finishing as the round starts. A countdown already partly over is played
-// in the time left.
+// in the time left. Once the sweep has finished, the grid is drawn as it was
+// left, without the animations, so the browser can drop the layers they
+// need.
 function PoweredGrid({ startAt, serverTimeOffset }: { startAt: number; serverTimeOffset: number }) {
-  const [timings] = useState(() => powerUpTimings(startAt, startAt - serverNow(serverTimeOffset)))
+  const [powerUp] = useState(() => powerUpTimings(startAt, startAt - serverNow(serverTimeOffset)))
+  const [settled, setSettled] = useState(false)
+  const timings = settled ? null : powerUp
 
   const squares = Array.from({ length: GRID_SIZE * GRID_SIZE }, (_, index) => {
     const style = {
@@ -55,7 +59,15 @@ function PoweredGrid({ startAt, serverTimeOffset }: { startAt: number; serverTim
       <div className={timings ? styles.dimming : styles.powered} style={dim || undefined}>
         {squares}
       </div>
-      {dim ? <div className={styles.sweep} style={dim} /> : null}
+      {dim ? (
+        <div
+          className={styles.sweep}
+          style={dim}
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) setSettled(true)
+          }}
+        />
+      ) : null}
     </>
   )
 }
