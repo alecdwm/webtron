@@ -114,6 +114,9 @@ pub struct Arena {
 
     #[serde(skip)]
     pub npc_states: HashMap<PlayerId, npc::NpcState>,
+    /// What NPCs' planning keeps from one update to the next.
+    #[serde(skip)]
+    pub npc_planner_cache: npc::PlannerCache,
     /// Turns human players have made that are yet to be taken, oldest first.
     /// Each update takes one per lightcycle, so turns made close together
     /// are all kept and each has a segment of trail between them.
@@ -378,9 +381,13 @@ impl Arena {
 
         self.take_queued_turns().apply_updates();
 
-        // run NPC AI — extract npc_states so we can mutate it while reading arena immutably
+        // run NPC AI — extract npc_states and the planner cache so we can mutate them while
+        // reading arena immutably
         let mut npc_states = mem::take(&mut self.npc_states);
-        let npc_updates = npc::update_npc_inputs(self, &mut npc_states, delta_time);
+        let mut planner_cache = mem::take(&mut self.npc_planner_cache);
+        let npc_updates =
+            npc::update_npc_inputs(self, &mut npc_states, &mut planner_cache, delta_time);
+        self.npc_planner_cache = planner_cache;
         let emotes: Vec<(PlayerId, Emote)> = npc_states
             .iter_mut()
             .filter_map(|(id, state)| Some((*id, state.emote.take()?)))
@@ -1086,6 +1093,7 @@ impl Default for Arena {
             emote_at: Default::default(),
 
             npc_states: Default::default(),
+            npc_planner_cache: Default::default(),
             queued_turns: Default::default(),
 
             winner_at: None,

@@ -4,6 +4,7 @@ use super::*;
 use getrandom::SysRng;
 use rand_core::{Rng, UnwrapErr};
 
+pub use planner::PlannerCache;
 use planner::{Caution, Options, Planner};
 
 /// Every round has at least this many lightcycles, human or NPC.
@@ -749,11 +750,12 @@ struct Context<'a> {
 
 /// Run AI for all NPCs, producing turn updates where needed.
 ///
-/// `npc_states` is passed separately (extracted from the arena via `mem::take`) so that we can
-/// read the arena immutably while mutating NPC state.
+/// `npc_states` and `planner_cache` are passed separately (extracted from the arena via
+/// `mem::take`) so that we can read the arena immutably while mutating them.
 pub fn update_npc_inputs(
     arena: &Arena,
     npc_states: &mut HashMap<PlayerId, NpcState>,
+    planner_cache: &mut PlannerCache,
     delta_time: f64,
 ) -> Vec<ArenaUpdate> {
     let mut updates = Vec::new();
@@ -769,7 +771,7 @@ pub fn update_npc_inputs(
         return updates;
     }
 
-    let planner = Planner::new(arena);
+    let planner = Planner::new(arena, planner_cache);
     let snake = arena.round.has(Mutator::Snake).then(|| arena.elapsed());
 
     for (npc_id, state) in npc_states.iter_mut() {
@@ -2824,7 +2826,8 @@ mod tests {
             npc,
             vec![ArenaPoint::new(300.0, 450.0), npc.position],
         );
-        let planner = Planner::new(&arena);
+        let mut cache = PlannerCache::default();
+        let planner = Planner::new(&arena, &mut cache);
         let options = planner.options(npc_id, &npc, 0.05, None);
         let personality = Personality::new(Style::Sentinel);
         let (direction, _) = options.vet(
@@ -2928,7 +2931,8 @@ mod tests {
         for portals in [true, false] {
             let (arena, npc_id) = corridor(portals);
             let npc = arena.lightcycles[&npc_id];
-            let options = Planner::new(&arena).options(npc_id, &npc, 0.05, None);
+            let options = Planner::new(&arena, &mut PlannerCache::default())
+                .options(npc_id, &npc, 0.05, None);
             assert_eq!(
                 options.straight.space > 500.0,
                 portals,

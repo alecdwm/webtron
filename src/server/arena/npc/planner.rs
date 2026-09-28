@@ -54,7 +54,23 @@ struct Search {
 }
 
 impl Grid {
-    fn new(arena: &Arena) -> Self {
+    /// The grid of the arena with the part outside `bounds` blocked, as
+    /// `Arena::bounds` gives them.
+    #[cfg(test)]
+    fn new(arena: &Arena, bounds: (ArenaPoint, ArenaPoint)) -> Self {
+        let mut grid = Self::open(arena);
+        grid.block_walls(arena);
+        grid.block_outside(arena, bounds);
+        for (id, lightribbon) in arena.lightribbons.iter() {
+            grid.block_trail(arena, *id, lightribbon);
+            grid.block_tip(arena, *id, lightribbon);
+        }
+        grid
+    }
+
+    /// The grid of the arena with only its border blocked, and its portals
+    /// linked.
+    fn open(arena: &Arena) -> Self {
         let columns = (arena.width / CELL_SIZE).ceil().max(1.0) as usize;
         let rows = (arena.height / CELL_SIZE).ceil().max(1.0) as usize;
         let stride = columns + 2;
@@ -98,7 +114,19 @@ impl Grid {
             }
         }
 
-        let (min, max) = arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS);
+        grid
+    }
+
+    /// Blocks the round's walled-off cells.
+    fn block_walls(&mut self, arena: &Arena) {
+        for (min, max) in arena.round.blocked_rects(arena.width, arena.height) {
+            self.block_rect(min, max);
+        }
+    }
+
+    /// Blocks the part of the arena outside `bounds`. The cells blocked for
+    /// bounds inside others include all of those blocked for the others.
+    fn block_outside(&mut self, arena: &Arena, (min, max): (ArenaPoint, ArenaPoint)) {
         let outside = [
             (ArenaPoint::origin(), ArenaPoint::new(arena.width, min.y)),
             (
@@ -111,32 +139,52 @@ impl Grid {
                 ArenaPoint::new(arena.width, arena.height),
             ),
         ];
-        let walled_off = arena.round.blocked_rects(arena.width, arena.height);
-        for (min, max) in outside.into_iter().chain(walled_off) {
-            grid.block_rect(min, max);
+        for (min, max) in outside {
+            self.block_rect(min, max);
         }
+    }
 
-        for (id, lightribbon) in arena.lightribbons.iter() {
-            let trim = snake_trim(arena, *id, lightribbon);
-            let mut along = 0.0;
-            for (from, to) in lightribbon.segments() {
-                let length = (to - from).length();
-                grid.block_segment(from, to, |distance| match trim {
-                    // Free once the whole cell the point is in has gone.
-                    Some(trim) => trim.gone_at(along + distance + CELL_SIZE) as f32,
-                    None => f32::INFINITY,
-                });
-                along += length;
-            }
-            if let (Some(last_point), Some(lightcycle)) =
-                (lightribbon.last_point(), arena.lightcycles.get(id))
-                && !lightcycle.dead
-            {
-                grid.block_segment(last_point, lightcycle.position, |_| f32::INFINITY);
-            }
+    /// Blocks the cells along every segment of the trail of lightcycle `id`.
+    fn block_trail(&mut self, arena: &Arena, id: PlayerId, lightribbon: &Lightribbon) {
+        let trim = snake_trim(arena, id, lightribbon);
+        let mut along = 0.0;
+        for (from, to) in lightribbon.segments() {
+            let length = (to - from).length();
+            self.block_segment(from, to, |distance| match trim {
+                // Free once the whole cell the point is in has gone.
+                Some(trim) => trim.gone_at(along + distance + CELL_SIZE) as f32,
+                None => f32::INFINITY,
+            });
+            along += length;
         }
+    }
 
-        grid
+    /// Blocks the cells from the end of the trail of lightcycle `id` to the
+    /// lightcycle, if it is alive.
+    fn block_tip(&mut self, arena: &Arena, id: PlayerId, lightribbon: &Lightribbon) {
+        if let (Some(last_point), Some(lightcycle)) =
+            (lightribbon.last_point(), arena.lightcycles.get(&id))
+            && !lightcycle.dead
+        {
+            self.block_segment(last_point, lightcycle.position, |_| f32::INFINITY);
+        }
+    }
+
+    /// Panics unless the grid is the same as `other`.
+    #[cfg(all(test, debug_assertions))]
+    fn assert_matches(&self, other: &Grid) {
+        assert_eq!(
+            (self.stride, self.columns, self.rows, self.wrap),
+            (other.stride, other.columns, other.rows, other.wrap)
+        );
+        assert_eq!(self.linked, other.linked);
+        assert_eq!(self.links, other.links);
+        if let Some(cell) = (0..self.free_at.len()).find(|&i| self.free_at[i] != other.free_at[i]) {
+            panic!(
+                "cell {cell} is free at {} rather than {}",
+                self.free_at[cell], other.free_at[cell]
+            );
+        }
     }
 
     /// Blocks the cells along a segment until the time `free_at` gives for
@@ -300,6 +348,152 @@ impl Grid {
     }
 }
 
+/// The segments of a trail that are laid for good: all but the last segment
+/// of its last path, which the lightcycle is still stretching.
+fn laid_paths(lightribbon: &Lightribbon) -> impl Iterator<Item = &[ArenaPoint]> {
+    let last = lightribbon.paths.len().saturating_sub(1);
+    lightribbon.paths.iter().enumerate().map(move |(i, path)| {
+        if i == last {
+            &path[..path.len().saturating_sub(1)]
+        } else {
+            &path[..]
+        }
+    })
+}
+
+/// A grid kept from one update to the next. `base` has the cells blocked by
+/// walls, by the edges, and by the laid segments of trails that aren't being
+/// trimmed. Each update adds the segments laid since the last one to it, and
+/// blocks the rest of each trail on a copy of it.
+///
+/// Anything else that changes what `base` would hold starts it again: a
+/// different round, arena size or portals, bounds that aren't inside the
+/// last ones, and any trail blocked in it that has been cut, trimmed or
+/// removed.
+struct CachedGrid {
+    width: f64,
+    height: f64,
+    round: Round,
+    portals: Vec<[(ArenaPoint, ArenaPoint); 2]>,
+    bounds: (ArenaPoint, ArenaPoint),
+    base: Vec<f32>,
+    /// For each trail with segments blocked in `base`, the paths they make.
+    laid: HashMap<PlayerId, Vec<Vec<ArenaPoint>>>,
+    /// `base` with the rest of each trail blocked.
+    grid: Grid,
+}
+
+impl CachedGrid {
+    fn new(arena: &Arena, bounds: (ArenaPoint, ArenaPoint)) -> Self {
+        let mut grid = Grid::open(arena);
+        grid.block_walls(arena);
+        grid.block_outside(arena, bounds);
+        Self {
+            width: arena.width,
+            height: arena.height,
+            round: arena.round.clone(),
+            portals: arena.portals.clone(),
+            bounds,
+            base: grid.free_at.clone(),
+            laid: HashMap::new(),
+            grid,
+        }
+    }
+
+    /// Whether `base` can be brought up to date for the arena by blocking
+    /// more cells.
+    fn fits(&self, arena: &Arena, (min, max): (ArenaPoint, ArenaPoint)) -> bool {
+        let (last_min, last_max) = self.bounds;
+        let inside = min.x >= last_min.x
+            && min.y >= last_min.y
+            && max.x <= last_max.x
+            && max.y <= last_max.y;
+        inside
+            && self.width == arena.width
+            && self.height == arena.height
+            && self.round == arena.round
+            && self.portals == arena.portals
+            && self.laid.iter().all(|(id, laid)| {
+                arena.lightribbons.get(id).is_some_and(|lightribbon| {
+                    snake_trim(arena, *id, lightribbon).is_none()
+                        && laid.len() <= lightribbon.paths.len()
+                        && laid_paths(lightribbon)
+                            .zip(laid)
+                            .all(|(path, laid)| path.starts_with(laid))
+                })
+            })
+    }
+
+    /// Brings the grid up to date for the arena, with the part outside
+    /// `bounds` blocked.
+    fn update(&mut self, arena: &Arena, bounds: (ArenaPoint, ArenaPoint)) {
+        if !self.fits(arena, bounds) {
+            *self = Self::new(arena, bounds);
+        }
+
+        // The blocking methods work on the grid's `free_at`, so `base` takes
+        // its place while the newly laid segments are blocked.
+        std::mem::swap(&mut self.base, &mut self.grid.free_at);
+        if bounds != self.bounds {
+            self.grid.block_outside(arena, bounds);
+            self.bounds = bounds;
+        }
+        for (id, lightribbon) in arena.lightribbons.iter() {
+            if snake_trim(arena, *id, lightribbon).is_some() {
+                continue;
+            }
+            let laid = self.laid.entry(*id).or_default();
+            for (i, path) in laid_paths(lightribbon).enumerate() {
+                if i == laid.len() {
+                    laid.push(Vec::new());
+                }
+                let known = laid[i].len();
+                for segment in path[known.saturating_sub(1)..].windows(2) {
+                    self.grid
+                        .block_segment(segment[0], segment[1], |_| f32::INFINITY);
+                }
+                laid[i].extend_from_slice(&path[known..]);
+            }
+        }
+        std::mem::swap(&mut self.base, &mut self.grid.free_at);
+
+        self.grid.free_at.copy_from_slice(&self.base);
+        for (id, lightribbon) in arena.lightribbons.iter() {
+            if snake_trim(arena, *id, lightribbon).is_some() {
+                self.grid.block_trail(arena, *id, lightribbon);
+            } else if let Some(path) = lightribbon.paths.last()
+                && let [.., from, to] = path[..]
+            {
+                self.grid.block_segment(from, to, |_| f32::INFINITY);
+            }
+            self.grid.block_tip(arena, *id, lightribbon);
+        }
+    }
+}
+
+/// Planning data kept from one update to the next, so it doesn't have to be
+/// worked out again from scratch. It holds nothing an update doesn't bring
+/// up to date, so a copy of it starts empty.
+#[derive(Default)]
+pub struct PlannerCache {
+    grid: Option<CachedGrid>,
+    first: Vec<f32>,
+    first_owner: Vec<u8>,
+    second: Vec<f32>,
+}
+
+impl Clone for PlannerCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl std::fmt::Debug for PlannerCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlannerCache").finish_non_exhaustive()
+    }
+}
+
 /// One of the three directions an NPC can take next, and what it leads to.
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluation {
@@ -335,50 +529,55 @@ pub enum Caution {
 /// Shared per-update planning data for every NPC in an arena.
 pub struct Planner<'a> {
     arena: &'a Arena,
-    grid: Grid,
+    grid: &'a Grid,
     /// The live lightcycles, indexed by `first_owner`.
     lightcycles: Vec<PlayerId>,
     /// For each cell, the earliest time any live lightcycle can reach it, in
     /// cells per unit of speed, and the index of that lightcycle.
-    first: Vec<f32>,
-    first_owner: Vec<u8>,
+    first: &'a [f32],
+    first_owner: &'a [u8],
     /// For each cell, the earliest time any other lightcycle can reach it.
-    second: Vec<f32>,
+    second: &'a [f32],
 }
 
 impl<'a> Planner<'a> {
-    pub fn new(arena: &'a Arena) -> Self {
-        let grid = Grid::new(arena);
-        let mut planner = Self {
-            arena,
-            lightcycles: Vec::new(),
-            first: vec![f32::INFINITY; grid.free_at.len()],
-            first_owner: vec![u8::MAX; grid.free_at.len()],
-            second: vec![f32::INFINITY; grid.free_at.len()],
+    /// Plans for the arena, keeping what can be kept for the next update in
+    /// `cache`.
+    pub fn new(arena: &'a Arena, cache: &'a mut PlannerCache) -> Self {
+        let bounds = arena.bounds(NPC_SHRINK_LOOK_AHEAD_SECONDS);
+        let PlannerCache {
             grid,
-        };
+            first,
+            first_owner,
+            second,
+        } = cache;
+        let cached = grid.get_or_insert_with(|| CachedGrid::new(arena, bounds));
+        cached.update(arena, bounds);
+        let grid: &'a Grid = &cached.grid;
+        // Tests check every kept grid against one built from scratch.
+        #[cfg(all(test, debug_assertions))]
+        grid.assert_matches(&Grid::new(arena, bounds));
 
+        let cells = grid.free_at.len();
+        first.clear();
+        first.resize(cells, f32::INFINITY);
+        second.clear();
+        second.resize(cells, f32::INFINITY);
+        first_owner.clear();
+        first_owner.resize(cells, u8::MAX);
+
+        let mut lightcycles = Vec::new();
         for (id, lightcycle) in arena.lightcycles.iter() {
             if lightcycle.dead {
                 continue;
             }
-            let Some(start) = planner
-                .grid
-                .cell_of(lightcycle.position, lightcycle.direction)
-            else {
+            let Some(start) = grid.cell_of(lightcycle.position, lightcycle.direction) else {
                 continue;
             };
 
-            let index = planner.lightcycles.len() as u8;
-            planner.lightcycles.push(*id);
+            let index = lightcycles.len() as u8;
+            lightcycles.push(*id);
             let speed = lightcycle.speed as f32;
-            let Self {
-                grid,
-                first,
-                first_owner,
-                second,
-                ..
-            } = &mut planner;
             let mut arrive = |cell: usize, distance: u16| {
                 let time = distance as f32 / speed;
                 if time < first[cell] {
@@ -399,7 +598,14 @@ impl<'a> Planner<'a> {
             });
         }
 
-        planner
+        Self {
+            arena,
+            grid,
+            lightcycles,
+            first,
+            first_owner,
+            second,
+        }
     }
 
     /// Evaluates going straight and turning either way. The path ahead of
@@ -641,7 +847,8 @@ mod tests {
             },
         );
 
-        let planner = Planner::new(&arena);
+        let mut cache = PlannerCache::default();
+        let planner = Planner::new(&arena, &mut cache);
         let options = planner.options(npc_id, &lightcycle, 0.05, None);
         let left = options.get(Direction::Left).unwrap();
         let right = options.get(Direction::Right).unwrap();
@@ -670,18 +877,79 @@ mod tests {
         let npc = cycle(100.0, 280.0, Direction::Up);
         arena.lightcycles.insert(npc_id, npc);
 
-        let alone = Planner::new(&arena).options(npc_id, &npc, 0.05, None);
+        let alone =
+            Planner::new(&arena, &mut PlannerCache::default()).options(npc_id, &npc, 0.05, None);
 
         let other = Lightcycle {
             speed: LIGHTCYCLE_BOOST_SPEED,
             ..cycle(160.0, 280.0, Direction::Up)
         };
         arena.lightcycles.insert(PlayerId::default(), other);
-        let contested = Planner::new(&arena).options(npc_id, &npc, 0.05, None);
+        let contested =
+            Planner::new(&arena, &mut PlannerCache::default()).options(npc_id, &npc, 0.05, None);
 
         assert!(contested.straight.territory < alone.straight.territory * 0.75);
         let left = contested.get(Direction::Left).unwrap();
         let right = contested.get(Direction::Right).unwrap();
         assert!(right.territory < left.territory);
+    }
+
+    #[test]
+    fn kept_grids_match_fresh_ones() {
+        // `Planner::new` checks the grid it keeps against a fresh one every
+        // update, in rounds where lightcycles crash and cut holes, trails are
+        // trimmed and derezzed, the walls close in, and a new round starts
+        // partway through.
+        for mutators in [
+            vec![Mutator::Obstacles],
+            vec![Mutator::Snake],
+            vec![Mutator::Wrap, Mutator::Portals],
+            vec![Mutator::Shrink, Mutator::Obstacles],
+            vec![Mutator::Snake, Mutator::Wrap, Mutator::Overdrive],
+        ] {
+            let mut arena = Arena::default();
+            let start = |arena: &mut Arena| {
+                arena.process_input(
+                    PlayerId::default(),
+                    ArenaInput::Start(Some(Scenario {
+                        shape: None,
+                        mutators: Some(mutators.clone()),
+                        npcs: Some(Style::for_round(7)),
+                    })),
+                );
+                arena.apply_updates();
+                // Far enough in for the walls to be closing.
+                arena.started = Some(Utc::now() - chrono::Duration::seconds(12));
+            };
+            start(&mut arena);
+            for tick in 0..160 {
+                if arena.started.is_none() || tick == 100 {
+                    start(&mut arena);
+                }
+                if tick % 40 == 10
+                    && let Some(id) = arena
+                        .lightcycles
+                        .iter()
+                        .find(|(_, lightcycle)| !lightcycle.dead)
+                        .map(|(id, _)| *id)
+                {
+                    ArenaUpdate::UpdateLightcycleApplyDeath(id, DeathCause::Boundary)
+                        .apply(&mut arena);
+                }
+                if tick % 40 == 30 {
+                    let dead: Vec<PlayerId> = arena
+                        .lightcycles
+                        .iter()
+                        .filter(|(_, lightcycle)| lightcycle.dead)
+                        .map(|(id, _)| *id)
+                        .collect();
+                    for id in dead {
+                        ArenaUpdate::DerezLightribbon(id).apply(&mut arena);
+                    }
+                }
+                arena.update(0.05);
+                arena.clear_updates();
+            }
+        }
     }
 }
