@@ -33,7 +33,7 @@ const MAX_UPDATE_SECONDS: f64 = 0.1;
 /// next update.
 const MAX_MESSAGES_PER_UPDATE: usize = 512;
 /// Most arenas open at once.
-const MAX_ARENAS: usize = 64;
+const MAX_ARENAS: usize = 16;
 /// Longest player name, in characters, the same as the client's name input.
 const MAX_PLAYER_NAME_LENGTH: usize = 10;
 
@@ -208,6 +208,13 @@ impl Server {
             ..
         } = self;
 
+        // Each arena's patch is made once, and cloned for each of its clients.
+        let patches: HashMap<ArenaId, MessageOut> = arenas
+            .iter()
+            .filter(|(_, arena)| !arena.updates.is_empty())
+            .map(|(id, arena)| (*id, MessageOut::patch(time, arena.updates.clone())))
+            .collect();
+
         for client in clients.values_mut() {
             let Some(arena) = client.arena.and_then(|id| arenas.get(&id)) else {
                 continue;
@@ -222,15 +229,8 @@ impl Server {
                     },
                     lagging,
                 );
-            } else if !arena.updates.is_empty() {
-                send(
-                    client,
-                    MessageOut::ArenaStatePatch {
-                        time,
-                        updates: arena.updates.clone(),
-                    },
-                    lagging,
-                );
+            } else if let Some(patch) = patches.get(&arena.id) {
+                send(client, patch.clone(), lagging);
             }
         }
 

@@ -6,6 +6,8 @@ pub use outgoing::Message as MessageOut;
 /// Server to client messages
 ///
 pub mod outgoing {
+    use std::sync::{Arc, OnceLock};
+
     use chrono::serde::ts_milliseconds;
     use chrono::{DateTime, Utc};
     use serde_derive::Serialize;
@@ -30,19 +32,44 @@ pub mod outgoing {
             time: DateTime<Utc>,
             state: Box<Arena>,
         },
-        /// The arena's changes in the update that ran at `time`.
+        /// The arena's changes in the update that ran at `time`. One patch
+        /// goes to every client in the arena, and its clones share `updates`
+        /// and `json`, which holds the patch as JSON once the first client's
+        /// copy of it has been serialized, for the rest to reuse.
         ArenaStatePatch {
             #[serde(with = "ts_milliseconds")]
             time: DateTime<Utc>,
-            updates: Vec<ArenaUpdate>,
+            updates: Arc<Vec<ArenaUpdate>>,
+            #[serde(skip)]
+            json: Arc<OnceLock<String>>,
         },
 
         Leaderboard(LeaderboardStandings),
     }
 
     impl Message {
+        /// A patch of the changes in `updates`, made in the update that ran
+        /// at `time`.
+        pub fn patch(time: DateTime<Utc>, updates: Vec<ArenaUpdate>) -> Self {
+            Message::ArenaStatePatch {
+                time,
+                updates: Arc::new(updates),
+                json: Default::default(),
+            }
+        }
+
         pub fn to_json(&self) -> Result<String, serde_json::error::Error> {
-            serde_json::to_string(self)
+            let Message::ArenaStatePatch { json, .. } = self else {
+                return serde_json::to_string(self);
+            };
+            if let Some(text) = json.get() {
+                return Ok(text.clone());
+            }
+            let text = serde_json::to_string(self)?;
+            // Another client's copy may have been serialized meanwhile, to
+            // the same JSON.
+            let _ = json.set(text.clone());
+            Ok(text)
         }
     }
 }
@@ -116,5 +143,22 @@ pub mod incoming {
                 payload: serde_json::from_str(json)?,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::MessageOut;
+    use crate::server::ArenaUpdate;
+
+    #[test]
+    fn a_patch_and_its_clones_serialize_the_same() {
+        let patch = MessageOut::patch(Utc::now(), vec![ArenaUpdate::End]);
+        let clone = patch.clone();
+        let fresh = serde_json::to_string(&patch).unwrap();
+        assert_eq!(patch.to_json().unwrap(), fresh);
+        assert_eq!(clone.to_json().unwrap(), fresh);
     }
 }
